@@ -19,7 +19,7 @@ import com.example.fitguard.analysis.PPGAnalysisUtils
 import java.text.SimpleDateFormat
 import java.util.*
 
-class MainActivity : AppCompatActivity(), DataClient.OnDataChangedListener {
+class  MainActivity : AppCompatActivity(), DataClient.OnDataChangedListener {
 
     private lateinit var dataClient: DataClient
     private lateinit var sensorDataText: TextView

@@ -1,15 +1,16 @@
 package com.example.fitguard.auth
 
+import android.app.Activity
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.fitguard.data.repository.AuthRepository
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.launch
 
 class AuthViewModel : ViewModel() {
-    // No need to create instance, use object directly
     private val _authState = MutableLiveData<AuthState>()
     val authState: LiveData<AuthState> = _authState
 
@@ -24,6 +25,10 @@ class AuthViewModel : ViewModel() {
         _currentUser.value = AuthRepository.currentUser
     }
 
+    fun initGoogleSignIn(activity: Activity, webClientId: String) {
+        AuthRepository.initGoogleSignIn(activity, webClientId)
+    }
+
     fun signUp(email: String, password: String, displayName: String) {
         if (!validateInput(email, password, displayName)) {
             return
@@ -35,7 +40,9 @@ class AuthViewModel : ViewModel() {
             result.fold(
                 onSuccess = { user ->
                     _currentUser.value = user
-                    _authState.value = AuthState.Success("Account created successfully!")
+                    _authState.value = AuthState.VerificationRequired(
+                        "Account created! Please check your email to verify your account."
+                    )
                 },
                 onFailure = { exception ->
                     _authState.value = AuthState.Error(exception.message ?: "Unknown error occurred")
@@ -56,12 +63,61 @@ class AuthViewModel : ViewModel() {
             result.fold(
                 onSuccess = { user ->
                     _currentUser.value = user
-                    _authState.value = AuthState.Success("Welcome back!")
+                    // Check if email is verified
+                    if (user?.isEmailVerified == true) {
+                        _authState.value = AuthState.Success("Welcome back!")
+                    } else {
+                        _authState.value = AuthState.VerificationRequired(
+                            "Please verify your email before logging in."
+                        )
+                    }
                 },
                 onFailure = { exception ->
                     _authState.value = AuthState.Error(exception.message ?: "Login failed")
                 }
             )
+        }
+    }
+
+    fun signInWithGoogle(account: GoogleSignInAccount) {
+        _authState.value = AuthState.Loading
+        viewModelScope.launch {
+            val result = AuthRepository.signInWithGoogle(account)
+            result.fold(
+                onSuccess = { user ->
+                    _currentUser.value = user
+                    _authState.value = AuthState.Success("Welcome!")
+                },
+                onFailure = { exception ->
+                    _authState.value = AuthState.Error(exception.message ?: "Google Sign-In failed")
+                }
+            )
+        }
+    }
+
+    fun resendVerificationEmail() {
+        _authState.value = AuthState.Loading
+        viewModelScope.launch {
+            val result = AuthRepository.resendVerificationEmail()
+            result.fold(
+                onSuccess = {
+                    _authState.value = AuthState.Info("Verification email sent!")
+                },
+                onFailure = { exception ->
+                    _authState.value = AuthState.Error(exception.message ?: "Failed to send email")
+                }
+            )
+        }
+    }
+
+    fun checkEmailVerification() {
+        viewModelScope.launch {
+            AuthRepository.reloadUser()
+            if (AuthRepository.isEmailVerified()) {
+                _authState.value = AuthState.Success("Email verified! You can now log in.")
+            } else {
+                _authState.value = AuthState.Info("Email not yet verified. Please check your inbox.")
+            }
         }
     }
 
@@ -114,4 +170,6 @@ sealed class AuthState {
     object Loading : AuthState()
     data class Success(val message: String) : AuthState()
     data class Error(val message: String) : AuthState()
+    data class VerificationRequired(val message: String) : AuthState()
+    data class Info(val message: String) : AuthState()
 }

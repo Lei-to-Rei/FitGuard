@@ -5,8 +5,8 @@ import android.os.Bundle
 import android.view.View
 import android.widget.Toast
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import com.example.fitguard.MainActivity
 import com.example.fitguard.databinding.ActivityRegisterBinding
 
 class RegisterActivity : AppCompatActivity() {
@@ -31,11 +31,18 @@ class RegisterActivity : AppCompatActivity() {
                 is AuthState.Success -> {
                     showLoading(false)
                     Toast.makeText(this, state.message, Toast.LENGTH_SHORT).show()
-                    navigateToMain()
+                }
+                is AuthState.VerificationRequired -> {
+                    showLoading(false)
+                    showVerificationSuccessDialog(state.message)
                 }
                 is AuthState.Error -> {
                     showLoading(false)
                     Toast.makeText(this, state.message, Toast.LENGTH_LONG).show()
+                }
+                is AuthState.Info -> {
+                    showLoading(false)
+                    Toast.makeText(this, state.message, Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -61,13 +68,19 @@ class RegisterActivity : AppCompatActivity() {
         }
     }
 
+    private fun showVerificationSuccessDialog(message: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Verify Your Email")
+            .setMessage("$message\n\nPlease check your inbox and verify your email before logging in.")
+            .setPositiveButton("Go to Login") { _, _ ->
+                finish()
+            }
+            .setCancelable(false)
+            .show()
+    }
+
     private fun showLoading(isLoading: Boolean) {
         binding.progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
         binding.btnRegister.isEnabled = !isLoading
-    }
-
-    private fun navigateToMain() {
-        startActivity(Intent(this, MainActivity::class.java))
-        finish()
     }
 }
