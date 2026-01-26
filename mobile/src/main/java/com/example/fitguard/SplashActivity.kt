@@ -7,13 +7,11 @@ import com.example.fitguard.auth.LoginActivity
 import com.example.fitguard.data.repository.AuthRepository
 
 class SplashActivity : AppCompatActivity() {
-    private val authRepository = AuthRepository()
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Check if user is logged in
-        if (authRepository.isUserLoggedIn()) {
+        // Check if user is logged in (using object directly)
+        if (AuthRepository.isUserLoggedIn()) {
             startActivity(Intent(this, MainActivity::class.java))
         } else {
             startActivity(Intent(this, LoginActivity::class.java))

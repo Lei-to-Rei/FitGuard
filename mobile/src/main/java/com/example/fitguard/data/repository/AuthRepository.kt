@@ -5,7 +5,8 @@ import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.UserProfileChangeRequest
 import kotlinx.coroutines.tasks.await
 
-class AuthRepository {
+// Changed to 'object' to make it a singleton
+object AuthRepository {
     private val auth = FirebaseAuth.getInstance()
 
     val currentUser: FirebaseUser?

@@ -9,8 +9,7 @@ import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.launch
 
 class AuthViewModel : ViewModel() {
-    private val repository = AuthRepository()
-
+    // No need to create instance, use object directly
     private val _authState = MutableLiveData<AuthState>()
     val authState: LiveData<AuthState> = _authState
 
@@ -22,7 +21,7 @@ class AuthViewModel : ViewModel() {
     }
 
     private fun checkAuthStatus() {
-        _currentUser.value = repository.currentUser
+        _currentUser.value = AuthRepository.currentUser
     }
 
     fun signUp(email: String, password: String, displayName: String) {
@@ -32,7 +31,7 @@ class AuthViewModel : ViewModel() {
 
         _authState.value = AuthState.Loading
         viewModelScope.launch {
-            val result = repository.signUp(email, password, displayName)
+            val result = AuthRepository.signUp(email, password, displayName)
             result.fold(
                 onSuccess = { user ->
                     _currentUser.value = user
@@ -53,7 +52,7 @@ class AuthViewModel : ViewModel() {
 
         _authState.value = AuthState.Loading
         viewModelScope.launch {
-            val result = repository.signIn(email, password)
+            val result = AuthRepository.signIn(email, password)
             result.fold(
                 onSuccess = { user ->
                     _currentUser.value = user
@@ -74,7 +73,7 @@ class AuthViewModel : ViewModel() {
 
         _authState.value = AuthState.Loading
         viewModelScope.launch {
-            val result = repository.sendPasswordResetEmail(email)
+            val result = AuthRepository.sendPasswordResetEmail(email)
             result.fold(
                 onSuccess = {
                     _authState.value = AuthState.Success("Password reset email sent!")
@@ -87,7 +86,7 @@ class AuthViewModel : ViewModel() {
     }
 
     fun signOut() {
-        repository.signOut()
+        AuthRepository.signOut()
         _currentUser.value = null
         _authState.value = AuthState.Success("Signed out successfully")
     }
