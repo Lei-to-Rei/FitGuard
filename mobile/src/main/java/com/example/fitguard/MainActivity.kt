@@ -1,9 +1,14 @@
 package com.example.fitguard
 
+import android.content.Intent
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.example.fitguard.auth.LoginActivity
+import com.example.fitguard.data.repository.AuthRepository
 import com.google.android.gms.wearable.DataClient
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
@@ -15,6 +20,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 class MainActivity : AppCompatActivity(), DataClient.OnDataChangedListener {
+
     private lateinit var dataClient: DataClient
     private lateinit var sensorDataText: TextView
     private val batchHistory = mutableListOf<String>()
@@ -28,18 +34,46 @@ class MainActivity : AppCompatActivity(), DataClient.OnDataChangedListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Check authentication
+        if (!AuthRepository.isUserLoggedIn()) {
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+            return
+        }
+
         val scrollView = ScrollView(this)
         sensorDataText = TextView(this).apply {
             setPadding(32, 32, 32, 32)
             textSize = 12f
             typeface = android.graphics.Typeface.MONOSPACE
-            text = "Waiting for PPG batch data from watch..."
+
+            // Show user info
+            val user = AuthRepository.currentUser
+            text = "Welcome, ${user?.displayName ?: user?.email}!\n\n" +
+                    "Waiting for PPG batch data from watch..."
         }
         scrollView.addView(sensorDataText)
         setContentView(scrollView)
 
         dataClient = Wearable.getDataClient(this)
         Log.d("PhonePPG", "Phone app started, waiting for PPG batch data...")
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_logout -> {
+                AuthRepository.signOut()
+                startActivity(Intent(this, LoginActivity::class.java))
+                finish()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
     }
 
     override fun onResume() {
