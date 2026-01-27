@@ -58,6 +58,78 @@
             android:exported="false"
             android:screenOrientation="portrait" />
 
+        <!-- ========================================== -->
+        <!-- METRICS MONITORING -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.metrics.MetricsMonitoringActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- ========================================== -->
+        <!-- ACTIVITY TRACKING -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.activity.ActivityTrackingActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- ========================================== -->
+        <!-- FATIGUE PREDICTION -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.fatigue.FatiguePredictionActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- ========================================== -->
+        <!-- NUTRITION TRACKING -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.nutrition.NutritionTrackingActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- ========================================== -->
+        <!-- RECOVERY RECOMMENDATIONS -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.recommendations.RecoveryRecommendationsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- ========================================== -->
+        <!-- RECOVERY PROGRESS -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.recovery.RecoveryProgressActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- ========================================== -->
+        <!-- SLEEP AND STRESS -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.sleep.SleepStressActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- ========================================== -->
+        <!-- WORKOUT -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.workout.WorkoutHistoryActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+
     </application>
 
 </manifest>
