@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
@@ -30,6 +31,34 @@ class MainActivity : Activity() {
     companion object {
         private const val PERMISSION_REQUEST_CODE = 100
         private const val TAG = "WatchHealthTrackers"
+
+        // New granular health permissions for API 36+ (Wear OS 6)
+        // These show as "Fitness and Wellness" in Settings
+        private val HEALTH_PERMISSIONS_API36 = arrayOf(
+            "android.permission.health.READ_HEART_RATE",
+            "android.permission.health.READ_OXYGEN_SATURATION",
+            "android.permission.health.READ_SKIN_TEMPERATURE",
+            "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
+        )
+
+        // Legacy permissions for API 30-35
+        private val LEGACY_PERMISSIONS = arrayOf(
+            Manifest.permission.BODY_SENSORS,
+            Manifest.permission.BODY_SENSORS_BACKGROUND
+        )
+
+        // Activity recognition permissions
+        private val ACTIVITY_PERMISSIONS = arrayOf(
+            Manifest.permission.ACTIVITY_RECOGNITION
+        )
+
+        // Other required permissions
+        private val OTHER_PERMISSIONS = buildList {
+            add(Manifest.permission.WAKE_LOCK)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }.toTypedArray()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,7 +78,7 @@ class MainActivity : Activity() {
             textSize = 12f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            text = "Health Trackers\nInitializing..."
+            text = "FitGuard Health Trackers\nInitializing..."
         }
 
         val scrollView = ScrollView(this).apply {
@@ -70,33 +99,59 @@ class MainActivity : Activity() {
         mainContainer.addView(scrollView)
         setContentView(mainContainer)
 
-        if (!hasRequiredPermissions()) {
-            requestPermissions()
+        checkAndRequestPermissions()
+    }
+
+    private fun checkAndRequestPermissions() {
+        // Determine which permissions to use based on SDK version
+        val healthPermissions = if (Build.VERSION.SDK_INT >= 36) {
+            HEALTH_PERMISSIONS_API36
         } else {
-            initializeHealthTrackers()
+            LEGACY_PERMISSIONS
+        }
+
+        val allPermissions = healthPermissions + ACTIVITY_PERMISSIONS + OTHER_PERMISSIONS
+
+        val missingPermissions = allPermissions.filter { permission ->
+            ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (missingPermissions.isEmpty()) {
+            onPermissionsGranted()
+        } else {
+            val permissionLabels = if (Build.VERSION.SDK_INT >= 36) {
+                """
+                Requesting permissions:
+                
+                ✓ Fitness & Wellness
+                  • Heart Rate
+                  • Blood Oxygen (SpO2)
+                  • Skin Temperature
+                  • Background Health Data
+                
+                ✓ Physical Activity
+                  • Activity Recognition
+                  • Step Counting
+                """.trimIndent()
+            } else {
+                """
+                Requesting permissions:
+                
+                ✓ Body Sensors
+                ✓ Physical Activity
+                ✓ Background Monitoring
+                """.trimIndent()
+            }
+
+            statusText.text = permissionLabels
+            requestPermissions(allPermissions)
         }
     }
 
-    private fun hasRequiredPermissions(): Boolean {
-        val bodySensors = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.BODY_SENSORS
-        ) == PackageManager.PERMISSION_GRANTED
-
-        val activityRecognition = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.ACTIVITY_RECOGNITION
-        ) == PackageManager.PERMISSION_GRANTED
-
-        return bodySensors && activityRecognition
-    }
-
-    private fun requestPermissions() {
+    private fun requestPermissions(permissions: Array<String>) {
         ActivityCompat.requestPermissions(
             this,
-            arrayOf(
-                Manifest.permission.BODY_SENSORS,
-                Manifest.permission.ACTIVITY_RECOGNITION,
-                Manifest.permission.BODY_SENSORS_BACKGROUND
-            ),
+            permissions,
             PERMISSION_REQUEST_CODE
         )
     }
@@ -109,18 +164,82 @@ class MainActivity : Activity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 
         if (requestCode == PERMISSION_REQUEST_CODE) {
-            if (grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                initializeHealthTrackers()
+            val allGranted = grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+
+            if (allGranted) {
+                onPermissionsGranted()
             } else {
-                statusText.text = "Permissions denied.\nGo to Settings to enable."
+                // Check which permissions were denied
+                val deniedPermissions = permissions.filterIndexed { index, permission ->
+                    grantResults[index] != PackageManager.PERMISSION_GRANTED
+                }
+
+                val deniedLabels = deniedPermissions.joinToString("\n") { getPermissionLabel(it) }
+
+                statusText.text = """
+                    ⚠️ Some permissions denied:
+                    
+                    $deniedLabels
+                    
+                    These are required for FitGuard to work.
+                    Please enable in Settings.
+                """.trimIndent()
+
                 addSettingsButton()
             }
         }
     }
 
+    private fun getPermissionLabel(permission: String): String {
+        return when {
+            permission.contains("health.READ_HEART_RATE") -> "• Heart Rate"
+            permission.contains("health.READ_OXYGEN_SATURATION") -> "• Blood Oxygen"
+            permission.contains("health.READ_SKIN_TEMPERATURE") -> "• Skin Temperature"
+            permission.contains("health.READ_HEALTH_DATA_IN_BACKGROUND") -> "• Background Health Data"
+            permission == Manifest.permission.BODY_SENSORS -> "• Body Sensors"
+            permission == Manifest.permission.BODY_SENSORS_BACKGROUND -> "• Background Body Sensors"
+            permission == Manifest.permission.ACTIVITY_RECOGNITION -> "• Physical Activity"
+            permission == Manifest.permission.POST_NOTIFICATIONS -> "• Notifications"
+            else -> "• ${permission.substringAfterLast('.')}"
+        }
+    }
+
     private fun addSettingsButton() {
+        buttonContainer.removeAllViews()
+
+        val apiVersion = if (Build.VERSION.SDK_INT >= 36) "API 36+ (Wear OS 6)" else "API 30-35"
+
+        val infoText = TextView(this).apply {
+            text = """
+                FitGuard needs access to:
+                
+                📊 Fitness and Wellness
+                  • Heart Rate monitoring
+                  • SpO2 (Blood Oxygen)
+                  • Skin Temperature
+                
+                🏃 Physical Activity
+                  • Activity Recognition
+                  • Step Counting
+                
+                🔄 Background Monitoring
+                  • Continuous tracking
+                
+                Running: $apiVersion
+                
+                Tap Settings below to enable permissions.
+            """.trimIndent()
+            textSize = 10f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(16, 16, 16, 32)
+        }
+        buttonContainer.addView(infoText)
+
         val settingsButton = Button(this).apply {
-            text = "Open Settings"
+            text = "⚙️ Open Settings"
+            textSize = 14f
+            setPadding(24, 16, 24, 16)
             setOnClickListener {
                 val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
                 intent.data = Uri.fromParts("package", packageName, null)
@@ -128,6 +247,33 @@ class MainActivity : Activity() {
             }
         }
         buttonContainer.addView(settingsButton)
+
+        val retryButton = Button(this).apply {
+            text = "🔄 Retry"
+            textSize = 14f
+            setPadding(24, 16, 24, 16)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 16
+            }
+            setOnClickListener {
+                checkAndRequestPermissions()
+            }
+        }
+        buttonContainer.addView(retryButton)
+    }
+
+    private fun onPermissionsGranted() {
+        val apiInfo = if (Build.VERSION.SDK_INT >= 36) {
+            "Using granular health permissions (API 36+)"
+        } else {
+            "Using legacy body sensors (API 30-35)"
+        }
+
+        statusText.text = "✓ All permissions granted!\n$apiInfo\nConnecting to Health Service..."
+        initializeHealthTrackers()
     }
 
     private fun initializeHealthTrackers() {
@@ -147,7 +293,14 @@ class MainActivity : Activity() {
             },
             onError = { error ->
                 runOnUiThread {
-                    statusText.text = "Connection failed: ${error.errorCode}"
+                    statusText.text = """
+                        ❌ Connection failed: ${error.errorCode}
+                        
+                        Make sure:
+                        • Samsung Health is installed
+                        • All permissions are granted
+                        • Background access is "Always"
+                    """.trimIndent()
                 }
             }
         )
@@ -222,12 +375,18 @@ class MainActivity : Activity() {
             setPadding(12, 12, 12, 12)
             setOnClickListener {
                 healthTrackerManager.stopAllTrackers()
-                activeTrackerButtons.values.forEach { it.setBackgroundColor(Color.DKGRAY); it.text = it.text.toString().replace("⏹", "▶") }
+                activeTrackerButtons.values.forEach {
+                    it.setBackgroundColor(Color.DKGRAY)
+                    it.text = it.text.toString().replace("⏹", "▶")
+                }
                 activeTrackerButtons.clear()
-                statusText.text = "All stopped"
+                statusText.text = "All trackers stopped"
             }
         }
-        buttonContainer.addView(LinearLayout(this).apply { setPadding(0, 16, 0, 0); addView(stopAllButton) })
+        buttonContainer.addView(LinearLayout(this).apply {
+            setPadding(0, 16, 0, 0)
+            addView(stopAllButton)
+        })
     }
 
     private fun addSectionHeader(title: String) {
@@ -239,7 +398,12 @@ class MainActivity : Activity() {
         })
     }
 
-    private fun addTrackerButton(name: String, type: HealthTrackerType, desc: String, start: () -> Boolean) {
+    private fun addTrackerButton(
+        name: String,
+        type: HealthTrackerType,
+        desc: String,
+        start: () -> Boolean
+    ) {
         val button = Button(this).apply {
             text = "▶ $name"
             setBackgroundColor(Color.DKGRAY)
@@ -258,9 +422,9 @@ class MainActivity : Activity() {
                         activeTrackerButtons[type] = this
                         setBackgroundColor(Color.GREEN)
                         text = "⏹ $name"
-                        statusText.text = "✓ $name"
+                        statusText.text = "✓ $name active"
                     } else {
-                        statusText.text = "❌ Failed: $name"
+                        statusText.text = "❌ Failed to start: $name"
                     }
                 }
             }
@@ -340,8 +504,8 @@ class MainActivity : Activity() {
         }.asPutDataRequest().setUrgent()
 
         Wearable.getDataClient(this).putDataItem(request)
-            .addOnSuccessListener { Log.d(TAG, "✓ Sent") }
-            .addOnFailureListener { Log.e(TAG, "✗ Failed: ${it.message}") }
+            .addOnSuccessListener { Log.d(TAG, "✓ Data sent to phone") }
+            .addOnFailureListener { Log.e(TAG, "✗ Failed to send: ${it.message}") }
     }
 
     override fun onDestroy() {
