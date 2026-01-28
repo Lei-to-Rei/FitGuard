@@ -17,14 +17,19 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.google.android.gms.wearable.PutDataMapRequest
+import com.google.android.gms.wearable.Wearable
+import com.samsung.android.service.health.tracking.data.HealthTrackerType
 
 class MainActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var buttonContainer: LinearLayout
+    private lateinit var healthTrackerManager: HealthTrackerManager
+    private val activeTrackerButtons = mutableMapOf<HealthTrackerType, Button>()
 
     companion object {
         private const val PERMISSION_REQUEST_CODE = 100
-        private const val TAG = "WatchSensors"
+        private const val TAG = "WatchHealthTrackers"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,7 +49,7 @@ class MainActivity : Activity() {
             textSize = 12f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            text = "PPG Data Collection\nStarting..."
+            text = "Health Trackers\nInitializing..."
         }
 
         val scrollView = ScrollView(this).apply {
@@ -68,7 +73,7 @@ class MainActivity : Activity() {
         if (!hasRequiredPermissions()) {
             requestPermissions()
         } else {
-            createControlButtons()
+            initializeHealthTrackers()
         }
     }
 
@@ -81,11 +86,7 @@ class MainActivity : Activity() {
             this, Manifest.permission.ACTIVITY_RECOGNITION
         ) == PackageManager.PERMISSION_GRANTED
 
-        val wakeLock = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.WAKE_LOCK
-        ) == PackageManager.PERMISSION_GRANTED
-
-        return bodySensors && activityRecognition && wakeLock
+        return bodySensors && activityRecognition
     }
 
     private fun requestPermissions() {
@@ -94,7 +95,7 @@ class MainActivity : Activity() {
             arrayOf(
                 Manifest.permission.BODY_SENSORS,
                 Manifest.permission.ACTIVITY_RECOGNITION,
-                Manifest.permission.WAKE_LOCK
+                Manifest.permission.BODY_SENSORS_BACKGROUND
             ),
             PERMISSION_REQUEST_CODE
         )
@@ -109,7 +110,7 @@ class MainActivity : Activity() {
 
         if (requestCode == PERMISSION_REQUEST_CODE) {
             if (grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                createControlButtons()
+                initializeHealthTrackers()
             } else {
                 statusText.text = "Permissions denied.\nGo to Settings to enable."
                 addSettingsButton()
@@ -129,63 +130,222 @@ class MainActivity : Activity() {
         buttonContainer.addView(settingsButton)
     }
 
-    private fun createControlButtons() {
+    private fun initializeHealthTrackers() {
+        healthTrackerManager = HealthTrackerManager(
+            context = this,
+            onDataCallback = { data ->
+                sendDataToPhone(data)
+            }
+        )
+
+        healthTrackerManager.initialize(
+            onSuccess = {
+                runOnUiThread {
+                    statusText.text = "✓ Connected to Health Service"
+                    createTrackerButtons()
+                }
+            },
+            onError = { error ->
+                runOnUiThread {
+                    statusText.text = "Connection failed: ${error.errorCode}"
+                }
+            }
+        )
+    }
+
+    private fun createTrackerButtons() {
         buttonContainer.removeAllViews()
 
-        // Start PPG Service Button
-        val startButton = Button(this).apply {
-            text = "▶ START PPG COLLECTION"
-            setBackgroundColor(Color.GREEN)
-            setTextColor(Color.BLACK)
-            setOnClickListener {
-                startPPGService()
+        val availableTrackers = healthTrackerManager.getAvailableTrackers()
+
+        Log.d(TAG, "Available trackers: ${availableTrackers.map { it.name }}")
+
+        val headerText = TextView(this).apply {
+            text = "Samsung Health Trackers\n(${availableTrackers.size} available)"
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(8, 8, 8, 16)
+        }
+        buttonContainer.addView(headerText)
+
+        addSectionHeader("Continuous Trackers")
+
+        if (availableTrackers.contains(HealthTrackerType.PPG_CONTINUOUS)) {
+            addTrackerButton("PPG", HealthTrackerType.PPG_CONTINUOUS, "3 LEDs @ 100Hz") {
+                healthTrackerManager.startPPGContinuous()
             }
         }
-        buttonContainer.addView(startButton)
 
-        // Stop PPG Service Button
-        val stopButton = Button(this).apply {
-            text = "⏹ STOP PPG COLLECTION"
+        if (availableTrackers.contains(HealthTrackerType.HEART_RATE_CONTINUOUS)) {
+            addTrackerButton("Heart Rate", HealthTrackerType.HEART_RATE_CONTINUOUS, "BPM + IBI") {
+                healthTrackerManager.startHeartRateContinuous()
+            }
+        }
+
+        addSectionHeader("On-Demand Trackers")
+
+        if (availableTrackers.contains(HealthTrackerType.SPO2_ON_DEMAND)) {
+            addTrackerButton("SpO2", HealthTrackerType.SPO2_ON_DEMAND, "30 sec") {
+                healthTrackerManager.startSpO2OnDemand()
+            }
+        }
+
+        if (availableTrackers.contains(HealthTrackerType.ECG_ON_DEMAND)) {
+            addTrackerButton("ECG", HealthTrackerType.ECG_ON_DEMAND, "30 sec, touch bezel") {
+                healthTrackerManager.startECGOnDemand()
+            }
+        }
+
+        if (availableTrackers.contains(HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND)) {
+            addTrackerButton("Skin Temp", HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND, "Body temp") {
+                healthTrackerManager.startSkinTemperatureOnDemand()
+            }
+        }
+
+        if (availableTrackers.contains(HealthTrackerType.BIA)) {
+            addTrackerButton("BIA", HealthTrackerType.BIA, "Body comp, 15 sec") {
+                healthTrackerManager.startBIA()
+            }
+        }
+
+        if (availableTrackers.contains(HealthTrackerType.SWEAT_LOSS)) {
+            addTrackerButton("Sweat", HealthTrackerType.SWEAT_LOSS, "Hydration") {
+                healthTrackerManager.startSweatLoss()
+            }
+        }
+
+        val stopAllButton = Button(this).apply {
+            text = "⏹ STOP ALL"
             setBackgroundColor(Color.RED)
             setTextColor(Color.WHITE)
+            setPadding(12, 12, 12, 12)
             setOnClickListener {
-                stopPPGService()
+                healthTrackerManager.stopAllTrackers()
+                activeTrackerButtons.values.forEach { it.setBackgroundColor(Color.DKGRAY); it.text = it.text.toString().replace("⏹", "▶") }
+                activeTrackerButtons.clear()
+                statusText.text = "All stopped"
             }
         }
-        buttonContainer.addView(stopButton)
+        buttonContainer.addView(LinearLayout(this).apply { setPadding(0, 16, 0, 0); addView(stopAllButton) })
+    }
 
-        // Status info
-        val infoText = TextView(this).apply {
-            text = "\n📊 PPG Data Collection Info:\n\n" +
-                    "• Collects Green, IR, Red wavelengths\n" +
-                    "• 30-second batching window\n" +
-                    "• Runs in background\n" +
-                    "• Auto-sends to phone\n\n" +
-                    "Press START to begin collection"
-            textSize = 10f
+    private fun addSectionHeader(title: String) {
+        buttonContainer.addView(TextView(this).apply {
+            text = "\n$title"
+            textSize = 12f
             setTextColor(Color.LTGRAY)
-            setPadding(8, 16, 8, 8)
+            setPadding(8, 8, 8, 8)
+        })
+    }
+
+    private fun addTrackerButton(name: String, type: HealthTrackerType, desc: String, start: () -> Boolean) {
+        val button = Button(this).apply {
+            text = "▶ $name"
+            setBackgroundColor(Color.DKGRAY)
+            setTextColor(Color.WHITE)
+            textSize = 11f
+            setPadding(12, 12, 12, 12)
+            setOnClickListener {
+                if (activeTrackerButtons.containsKey(type)) {
+                    healthTrackerManager.stopTracker(type)
+                    activeTrackerButtons.remove(type)
+                    setBackgroundColor(Color.DKGRAY)
+                    text = "▶ $name"
+                    statusText.text = "Stopped: $name"
+                } else {
+                    if (start()) {
+                        activeTrackerButtons[type] = this
+                        setBackgroundColor(Color.GREEN)
+                        text = "⏹ $name"
+                        statusText.text = "✓ $name"
+                    } else {
+                        statusText.text = "❌ Failed: $name"
+                    }
+                }
+            }
         }
-        buttonContainer.addView(infoText)
 
-        statusText.text = "Ready to start PPG collection"
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 4, 0, 4)
+            addView(button)
+            addView(TextView(this@MainActivity).apply {
+                text = desc
+                textSize = 9f
+                setTextColor(Color.LTGRAY)
+                setPadding(12, 2, 12, 6)
+            })
+        }
+        buttonContainer.addView(container)
     }
 
-    private fun startPPGService() {
-        val intent = Intent(this, PPGBackgroundService::class.java)
-        startForegroundService(intent)
-        statusText.text = "✓ PPG Service Started\nCollecting data in background..."
-        Log.d(TAG, "PPG Service started")
-    }
+    private fun sendDataToPhone(data: HealthTrackerManager.TrackerData) {
+        val request = PutDataMapRequest.create("/health_tracker_data").apply {
+            when (data) {
+                is HealthTrackerManager.TrackerData.PPGData -> {
+                    dataMap.putString("type", "PPG")
+                    dataMap.putInt("green", data.green ?: 0)
+                    dataMap.putInt("ir", data.ir ?: 0)
+                    dataMap.putInt("red", data.red ?: 0)
+                    dataMap.putLong("timestamp", data.timestamp)
+                }
+                is HealthTrackerManager.TrackerData.SpO2Data -> {
+                    dataMap.putString("type", "SpO2")
+                    dataMap.putInt("spo2", data.spO2)
+                    dataMap.putInt("heart_rate", data.heartRate)
+                    dataMap.putInt("status", data.status)
+                    dataMap.putLong("timestamp", data.timestamp)
+                }
+                is HealthTrackerManager.TrackerData.HeartRateData -> {
+                    dataMap.putString("type", "HeartRate")
+                    dataMap.putInt("heart_rate", data.heartRate)
+                    dataMap.putIntegerArrayList("ibi_list", ArrayList(data.ibiList))
+                    dataMap.putInt("status", data.status)
+                    dataMap.putLong("timestamp", data.timestamp)
+                }
+                is HealthTrackerManager.TrackerData.ECGData -> {
+                    dataMap.putString("type", "ECG")
+                    dataMap.putInt("ppg_green", data.ppgGreen)
+                    dataMap.putInt("sequence", data.sequence)
+                    dataMap.putFloat("ecg_mv", data.ecgMv)
+                    dataMap.putInt("lead_off", data.leadOff)
+                    dataMap.putFloat("max_threshold_mv", data.maxThresholdMv)
+                    dataMap.putFloat("min_threshold_mv", data.minThresholdMv)
+                    dataMap.putLong("timestamp", data.timestamp)
+                }
+                is HealthTrackerManager.TrackerData.SkinTemperatureData -> {
+                    dataMap.putString("type", "SkinTemp")
+                    dataMap.putInt("status", data.status)
+                    data.objectTemperature?.let { dataMap.putFloat("object_temp", it) }
+                    data.ambientTemperature?.let { dataMap.putFloat("ambient_temp", it) }
+                    dataMap.putLong("timestamp", data.timestamp)
+                }
+                is HealthTrackerManager.TrackerData.BIAData -> {
+                    dataMap.putString("type", "BIA")
+                    dataMap.putFloat("bmr", data.basalMetabolicRate)
+                    dataMap.putFloat("body_fat_mass", data.bodyFatMass)
+                    dataMap.putFloat("body_fat_ratio", data.bodyFatRatio)
+                    dataMap.putFloat("fat_free_mass", data.fatFreeMass)
+                    dataMap.putFloat("muscle_mass", data.skeletalMuscleMass)
+                    dataMap.putLong("timestamp", data.timestamp)
+                }
+                is HealthTrackerManager.TrackerData.SweatLossData -> {
+                    dataMap.putString("type", "Sweat")
+                    dataMap.putFloat("sweat_loss", data.sweatLoss)
+                    dataMap.putLong("timestamp", data.timestamp)
+                }
+            }
+            dataMap.putLong("sent_at", System.currentTimeMillis())
+        }.asPutDataRequest().setUrgent()
 
-    private fun stopPPGService() {
-        val intent = Intent(this, PPGBackgroundService::class.java)
-        stopService(intent)
-        statusText.text = "PPG Service Stopped"
-        Log.d(TAG, "PPG Service stopped")
+        Wearable.getDataClient(this).putDataItem(request)
+            .addOnSuccessListener { Log.d(TAG, "✓ Sent") }
+            .addOnFailureListener { Log.e(TAG, "✗ Failed: ${it.message}") }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        healthTrackerManager.disconnect()
     }
 }

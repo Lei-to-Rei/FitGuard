@@ -14,7 +14,19 @@
 
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <uses-feature android:name="android.hardware.type.watch" />
+    <!-- CRITICAL: Samsung-specific permission for Health Sensor SDK -->
+    <!-- This is required for Watch7 and newer Samsung watches -->
+    <uses-permission android:name="com.samsung.android.hardware.sensormanager.permission.READ_ADDITIONAL_HEALTH_DATA" />
+
+    <!-- Required for background body sensor access -->
+    <!-- Note: User must set permission to "Allow all the time" in Settings -->
+    <uses-permission android:name="android.permission.BODY_SENSORS_BACKGROUND" />
+
+    <!-- Samsung Health Platform permission -->
+    <uses-permission android:name="com.samsung.android.service.health.permission.READ" />
+
+    <!-- Declare required hardware features -->
+    <uses-feature android:name="android.hardware.sensor.heartrate" android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -48,13 +60,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- PPG Background Service -->
-        <service
-            android:name=".PPGBackgroundService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="health" />
 
     </application>
 
