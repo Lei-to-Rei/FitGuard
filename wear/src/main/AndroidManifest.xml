@@ -1,20 +1,86 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Body Sensors permission for API 35 and below -->
-    <uses-permission android:name="android.permission.BODY_SENSORS" />
+    <!-- ========================================== -->
+    <!-- LEGACY PERMISSIONS (for API 30-35) -->
+    <!-- ========================================== -->
+
+    <!-- Legacy Body Sensors - Only for devices running Android 13 and below -->
+    <uses-permission
+        android:name="android.permission.BODY_SENSORS"
+        android:maxSdkVersion="35" />
+
+    <!-- Legacy Background Body Sensors - Only for devices running Android 13 and below -->
+    <uses-permission
+        android:name="android.permission.BODY_SENSORS_BACKGROUND"
+        android:maxSdkVersion="35" />
+
+    <!-- ========================================== -->
+    <!-- NEW GRANULAR HEALTH PERMISSIONS (API 36+) -->
+    <!-- These are what show as "Fitness and Wellness" in Settings -->
+    <!-- ========================================== -->
+
+    <!-- Heart Rate - Required for heart rate monitoring -->
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+
+    <!-- Blood Oxygen (SpO2) - Required for oxygen saturation monitoring -->
+    <uses-permission android:name="android.permission.health.READ_OXYGEN_SATURATION" />
+
+    <!-- Skin Temperature - Required for temperature monitoring -->
+    <uses-permission android:name="android.permission.health.READ_SKIN_TEMPERATURE" />
+
+    <!-- Background Health Data Access - For continuous monitoring -->
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
+
+    <!-- ========================================== -->
+    <!-- PHYSICAL ACTIVITY PERMISSIONS -->
+    <!-- ========================================== -->
+
+    <!-- Activity Recognition - Required for step counting, activity detection -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+
+    <!-- Google Play Services Activity Recognition -->
+    <uses-permission android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION" />
+
+    <!-- ========================================== -->
+    <!-- SAMSUNG HEALTH PLATFORM PERMISSIONS -->
+    <!-- ========================================== -->
+
+    <!-- Samsung Health Sensor SDK - CRITICAL for Watch 7 and newer -->
+    <uses-permission android:name="com.samsung.android.hardware.sensormanager.permission.READ_ADDITIONAL_HEALTH_DATA" />
+
+    <!-- Samsung Health Platform -->
+    <uses-permission android:name="com.samsung.android.service.health.permission.READ" />
+
+    <!-- ========================================== -->
+    <!-- OTHER REQUIRED PERMISSIONS -->
+    <!-- ========================================== -->
+
+    <!-- Wake Lock - Keep device awake during tracking -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Foreground Service - For background tracking -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+
+    <!-- Notifications - For foreground service notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- ========================================== -->
+    <!-- HARDWARE FEATURES -->
+    <!-- ========================================== -->
 
     <!-- Declare that this is a Wear OS app -->
     <uses-feature android:name="android.hardware.type.watch" />
 
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Heart rate sensor (optional - app still works without it) -->
+    <uses-feature android:name="android.hardware.sensor.heartrate" android:required="false" />
 
-    <uses-feature android:name="android.hardware.type.watch" />
+    <!-- Accelerometer (for activity recognition) -->
+    <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false" />
+
+    <!-- Step counter -->
+    <uses-feature android:name="android.hardware.sensor.stepcounter" android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -22,6 +88,8 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault">
+
+        <!-- Wear OS libraries -->
         <uses-library
             android:name="com.google.android.wearable"
             android:required="true" />
@@ -29,14 +97,12 @@
             android:name="wear-sdk"
             android:required="false" />
 
-        <!--
-               Set to true if your app is Standalone, that is, it does not require the handheld
-               app to run.
-        -->
+        <!-- Standalone app metadata -->
         <meta-data
             android:name="com.google.android.wearable.standalone"
             android:value="true" />
 
+        <!-- Main Activity -->
         <activity
             android:name=".presentation.MainActivity"
             android:exported="true"
@@ -44,17 +110,9 @@
             android:theme="@style/MainActivityTheme.Starting">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- PPG Background Service -->
-        <service
-            android:name=".PPGBackgroundService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="health" />
 
     </application>
 
