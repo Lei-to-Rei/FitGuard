@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">FitGuard</string>
+
+    <!-- IMPORTANT: Replace with your actual Web Client ID from Firebase Console -->
+    <!-- Go to: Firebase Console -> Project Settings -> General -> Web Client ID -->
+    <string name="default_web_client_id">332395257944-0p9kjqphpmt39gqj832avomkr3aktd74.apps.googleusercontent.com</string>
 </resources>
