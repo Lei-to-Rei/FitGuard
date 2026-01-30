@@ -180,15 +180,26 @@ class BatchDataManager(private val context: Context) {
     }
 
     /**
-     * Get buffer statistics
+     * Get current settings
      */
-    fun getBufferStats(): BufferStats {
-        return BufferStats(
+    fun getSettings(): Settings {
+        return Settings(
+            batchSizeKB = getSizeThresholdKB(),
+            transferIntervalMinutes = getTimeIntervalMinutes()
+        )
+    }
+
+    /**
+     * Get buffer statistics as formatted string
+     */
+    fun getBufferStats(): String {
+        val stats = BufferStats(
             itemCount = dataBuffer.size,
             sizeKB = getCurrentBufferSizeKB(),
             thresholdKB = getSizeThresholdKB(),
             intervalMinutes = getTimeIntervalMinutes()
         )
+        return "📦 Buffer: ${stats.itemCount} items (${stats.sizeKB}/${stats.thresholdKB} KB)\n⏱️ Transfer every ${stats.intervalMinutes} min"
     }
 
     /**
@@ -235,12 +246,8 @@ class BatchDataManager(private val context: Context) {
         Log.d(TAG, "Transferring batch: ${batch.size} items, $batchSizeKB KB")
 
         try {
-            // Group by type for efficient transfer
-            val groupedData = batch.groupBy { it.getString("type") }
-
-            groupedData.forEach { (type, items) ->
-                sendBatchToPhone(type, items)
-            }
+            // Send all items together (no grouping by type)
+            sendBatchToPhone("mixed", batch)
 
             Log.d(TAG, "✓ Batch transfer complete: ${batch.size} items")
 
@@ -256,25 +263,48 @@ class BatchDataManager(private val context: Context) {
      * Send batch data to phone via Data Layer API
      */
     private fun sendBatchToPhone(type: String, items: List<JSONObject>) {
-        val batchArray = JSONArray()
-        items.forEach { batchArray.put(it) }
+        try {
+            // Calculate batch size
+            val batchSizeKB = items.sumOf { it.toString().toByteArray().size } / 1024.0
 
-        val request = PutDataMapRequest.create("/health_tracker_batch").apply {
-            dataMap.putString("type", type)
-            dataMap.putString("batch_data", batchArray.toString())
-            dataMap.putInt("item_count", items.size)
-            dataMap.putLong("batch_timestamp", System.currentTimeMillis())
-            dataMap.putLong("first_data_timestamp", items.firstOrNull()?.getLong("timestamp") ?: 0)
-            dataMap.putLong("last_data_timestamp", items.lastOrNull()?.getLong("timestamp") ?: 0)
-        }.asPutDataRequest().setUrgent()
+            // Create batch wrapper matching phone's expected format
+            val batchWrapper = JSONObject().apply {
+                put("batch_id", UUID.randomUUID().toString())
+                put("sent_at", System.currentTimeMillis())
+                put("entry_count", items.size)
+                put("buffer_size_kb", batchSizeKB)
 
-        Wearable.getDataClient(context).putDataItem(request)
-            .addOnSuccessListener {
-                Log.d(TAG, "✓ Sent batch: $type (${items.size} items)")
+                // Create entries array with proper structure
+                val entriesArray = JSONArray()
+                items.forEach { item ->
+                    val entry = JSONObject().apply {
+                        put("type", item.getString("type"))
+                        put("data", item) // The full data object
+                        put("timestamp", item.getLong("timestamp"))
+                        put("received_at", System.currentTimeMillis())
+                    }
+                    entriesArray.put(entry)
+                }
+                put("entries", entriesArray)
             }
-            .addOnFailureListener { e ->
-                Log.e(TAG, "✗ Failed to send batch: $type - ${e.message}")
-            }
+
+            val request = PutDataMapRequest.create("/health_tracker_batch").apply {
+                dataMap.putString("batch_data", batchWrapper.toString())
+                dataMap.putLong("timestamp", System.currentTimeMillis()) // Force update
+            }.asPutDataRequest().setUrgent()
+
+            Wearable.getDataClient(context).putDataItem(request)
+                .addOnSuccessListener {
+                    Log.d(TAG, "✓ Sent batch: $type (${items.size} items, ${String.format("%.1f", batchSizeKB)}KB)")
+                }
+                .addOnFailureListener { e ->
+                    Log.e(TAG, "✗ Failed to send batch: $type - ${e.message}")
+                    throw e // Re-throw to trigger re-add to buffer
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error creating batch: ${e.message}", e)
+            throw e
+        }
     }
 
     /**
@@ -297,6 +327,13 @@ class BatchDataManager(private val context: Context) {
     }
 
     /**
+     * Cleanup resources (alias for shutdown)
+     */
+    fun cleanup() {
+        shutdown()
+    }
+
+    /**
      * Cleanup resources
      */
     fun shutdown() {
@@ -304,6 +341,11 @@ class BatchDataManager(private val context: Context) {
         scope.cancel()
         Log.d(TAG, "BatchDataManager shutdown")
     }
+
+    data class Settings(
+        val batchSizeKB: Int,
+        val transferIntervalMinutes: Int
+    )
 
     data class BufferStats(
         val itemCount: Int,
