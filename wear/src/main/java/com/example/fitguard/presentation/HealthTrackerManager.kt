@@ -323,7 +323,7 @@ class HealthTrackerManager(
      */
     fun startBIA(): Boolean {
         return try {
-            val tracker = healthTrackingService?.getHealthTracker(HealthTrackerType.BIA)
+            val tracker = healthTrackingService?.getHealthTracker(HealthTrackerType.BIA_ON_DEMAND)
 
             tracker?.setEventListener(object : HealthTracker.TrackerEventListener {
                 override fun onDataReceived(dataPoints: MutableList<DataPoint>) {

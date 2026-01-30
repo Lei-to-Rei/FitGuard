@@ -15,6 +15,7 @@ import com.example.fitguard.features.metrics.MetricsMonitoringActivity
 import com.example.fitguard.features.nutrition.NutritionTrackingActivity
 import com.example.fitguard.features.recovery.RecoveryProgressActivity
 import com.example.fitguard.features.recommendations.RecoveryRecommendationsActivity
+import com.example.fitguard.features.settings.BatchSettingsActivity
 import com.example.fitguard.features.sleep.SleepStressActivity
 import com.example.fitguard.features.workout.WorkoutHistoryActivity
 import com.example.fitguard.ui.adapter.DashboardAdapter
@@ -120,6 +121,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_batch_settings -> {
+                startActivity(Intent(this, BatchSettingsActivity::class.java))
+                true
+            }
             R.id.action_logout -> {
                 AuthRepository.signOut()
                 startActivity(Intent(this, LoginActivity::class.java))

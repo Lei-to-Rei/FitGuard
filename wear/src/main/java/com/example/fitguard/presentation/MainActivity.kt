@@ -18,14 +18,13 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.google.android.gms.wearable.PutDataMapRequest
-import com.google.android.gms.wearable.Wearable
 import com.samsung.android.service.health.tracking.data.HealthTrackerType
 
 class MainActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var buttonContainer: LinearLayout
     private lateinit var healthTrackerManager: HealthTrackerManager
+    private lateinit var batchDataManager: BatchDataManager
     private val activeTrackerButtons = mutableMapOf<HealthTrackerType, Button>()
 
     companion object {
@@ -33,7 +32,6 @@ class MainActivity : Activity() {
         private const val TAG = "WatchHealthTrackers"
 
         // New granular health permissions for API 36+ (Wear OS 6)
-        // These show as "Fitness and Wellness" in Settings
         private val HEALTH_PERMISSIONS_API36 = arrayOf(
             "android.permission.health.READ_HEART_RATE",
             "android.permission.health.READ_OXYGEN_SATURATION",
@@ -99,11 +97,13 @@ class MainActivity : Activity() {
         mainContainer.addView(scrollView)
         setContentView(mainContainer)
 
+        // Initialize batch data manager
+        batchDataManager = BatchDataManager(this)
+
         checkAndRequestPermissions()
     }
 
     private fun checkAndRequestPermissions() {
-        // Determine which permissions to use based on SDK version
         val healthPermissions = if (Build.VERSION.SDK_INT >= 36) {
             HEALTH_PERMISSIONS_API36
         } else {
@@ -169,7 +169,6 @@ class MainActivity : Activity() {
             if (allGranted) {
                 onPermissionsGranted()
             } else {
-                // Check which permissions were denied
                 val deniedPermissions = permissions.filterIndexed { index, permission ->
                     grantResults[index] != PackageManager.PERMISSION_GRANTED
                 }
@@ -280,14 +279,19 @@ class MainActivity : Activity() {
         healthTrackerManager = HealthTrackerManager(
             context = this,
             onDataCallback = { data ->
-                sendDataToPhone(data)
+                // Add to batch instead of sending immediately
+                batchDataManager.addData(data)
             }
         )
 
         healthTrackerManager.initialize(
             onSuccess = {
                 runOnUiThread {
-                    statusText.text = "✓ Connected to Health Service"
+                    val settings = batchDataManager.getSettings()
+                    statusText.text = """
+                        ✓ Connected to Health Service
+                        📦 Batch Mode: ${settings.batchSizeKB}KB / ${settings.transferIntervalMinutes}min
+                    """.trimIndent()
                     createTrackerButtons()
                 }
             },
@@ -312,6 +316,58 @@ class MainActivity : Activity() {
         val availableTrackers = healthTrackerManager.getAvailableTrackers()
 
         Log.d(TAG, "Available trackers: ${availableTrackers.map { it.name }}")
+
+        // Batch info header
+        val batchInfoText = TextView(this).apply {
+            text = batchDataManager.getBufferStats()
+            textSize = 10f
+            setTextColor(Color.LTGRAY)
+            gravity = Gravity.CENTER
+            setPadding(8, 8, 8, 8)
+        }
+        buttonContainer.addView(batchInfoText)
+
+        // Batch control buttons
+        val batchControlContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 8, 0, 16)
+            gravity = Gravity.CENTER
+        }
+
+        val transferNowButton = Button(this).apply {
+            text = "📤 Transfer Now"
+            textSize = 10f
+            setPadding(12, 8, 12, 8)
+            setOnClickListener {
+                batchDataManager.forceTransfer()
+                statusText.text = "Transferring batch..."
+            }
+        }
+
+        val clearBufferButton = Button(this).apply {
+            text = "🗑️ Clear Buffer"
+            textSize = 10f
+            setPadding(12, 8, 12, 8)
+            setBackgroundColor(Color.rgb(139, 0, 0))
+            setOnClickListener {
+                batchDataManager.clearBuffer()
+                statusText.text = "Buffer cleared"
+                batchInfoText.text = batchDataManager.getBufferStats()
+            }
+        }
+
+        batchControlContainer.addView(transferNowButton)
+        batchControlContainer.addView(clearBufferButton)
+        buttonContainer.addView(batchControlContainer)
+
+        // Divider
+        buttonContainer.addView(TextView(this).apply {
+            text = "━".repeat(20)
+            textSize = 10f
+            setTextColor(Color.DKGRAY)
+            gravity = Gravity.CENTER
+            setPadding(0, 8, 0, 8)
+        })
 
         val headerText = TextView(this).apply {
             text = "Samsung Health Trackers\n(${availableTrackers.size} available)"
@@ -387,6 +443,14 @@ class MainActivity : Activity() {
             setPadding(0, 16, 0, 0)
             addView(stopAllButton)
         })
+
+        // Update buffer stats periodically
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(object : Runnable {
+            override fun run() {
+                batchInfoText.text = batchDataManager.getBufferStats()
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this, 5000)
+            }
+        }, 5000)
     }
 
     private fun addSectionHeader(title: String) {
@@ -422,7 +486,7 @@ class MainActivity : Activity() {
                         activeTrackerButtons[type] = this
                         setBackgroundColor(Color.GREEN)
                         text = "⏹ $name"
-                        statusText.text = "✓ $name active"
+                        statusText.text = "✓ $name active (batch mode)"
                     } else {
                         statusText.text = "❌ Failed to start: $name"
                     }
@@ -444,72 +508,9 @@ class MainActivity : Activity() {
         buttonContainer.addView(container)
     }
 
-    private fun sendDataToPhone(data: HealthTrackerManager.TrackerData) {
-        val request = PutDataMapRequest.create("/health_tracker_data").apply {
-            when (data) {
-                is HealthTrackerManager.TrackerData.PPGData -> {
-                    dataMap.putString("type", "PPG")
-                    dataMap.putInt("green", data.green ?: 0)
-                    dataMap.putInt("ir", data.ir ?: 0)
-                    dataMap.putInt("red", data.red ?: 0)
-                    dataMap.putLong("timestamp", data.timestamp)
-                }
-                is HealthTrackerManager.TrackerData.SpO2Data -> {
-                    dataMap.putString("type", "SpO2")
-                    dataMap.putInt("spo2", data.spO2)
-                    dataMap.putInt("heart_rate", data.heartRate)
-                    dataMap.putInt("status", data.status)
-                    dataMap.putLong("timestamp", data.timestamp)
-                }
-                is HealthTrackerManager.TrackerData.HeartRateData -> {
-                    dataMap.putString("type", "HeartRate")
-                    dataMap.putInt("heart_rate", data.heartRate)
-                    dataMap.putIntegerArrayList("ibi_list", ArrayList(data.ibiList))
-                    dataMap.putInt("status", data.status)
-                    dataMap.putLong("timestamp", data.timestamp)
-                }
-                is HealthTrackerManager.TrackerData.ECGData -> {
-                    dataMap.putString("type", "ECG")
-                    dataMap.putInt("ppg_green", data.ppgGreen)
-                    dataMap.putInt("sequence", data.sequence)
-                    dataMap.putFloat("ecg_mv", data.ecgMv)
-                    dataMap.putInt("lead_off", data.leadOff)
-                    dataMap.putFloat("max_threshold_mv", data.maxThresholdMv)
-                    dataMap.putFloat("min_threshold_mv", data.minThresholdMv)
-                    dataMap.putLong("timestamp", data.timestamp)
-                }
-                is HealthTrackerManager.TrackerData.SkinTemperatureData -> {
-                    dataMap.putString("type", "SkinTemp")
-                    dataMap.putInt("status", data.status)
-                    data.objectTemperature?.let { dataMap.putFloat("object_temp", it) }
-                    data.ambientTemperature?.let { dataMap.putFloat("ambient_temp", it) }
-                    dataMap.putLong("timestamp", data.timestamp)
-                }
-                is HealthTrackerManager.TrackerData.BIAData -> {
-                    dataMap.putString("type", "BIA")
-                    dataMap.putFloat("bmr", data.basalMetabolicRate)
-                    dataMap.putFloat("body_fat_mass", data.bodyFatMass)
-                    dataMap.putFloat("body_fat_ratio", data.bodyFatRatio)
-                    dataMap.putFloat("fat_free_mass", data.fatFreeMass)
-                    dataMap.putFloat("muscle_mass", data.skeletalMuscleMass)
-                    dataMap.putLong("timestamp", data.timestamp)
-                }
-                is HealthTrackerManager.TrackerData.SweatLossData -> {
-                    dataMap.putString("type", "Sweat")
-                    dataMap.putFloat("sweat_loss", data.sweatLoss)
-                    dataMap.putLong("timestamp", data.timestamp)
-                }
-            }
-            dataMap.putLong("sent_at", System.currentTimeMillis())
-        }.asPutDataRequest().setUrgent()
-
-        Wearable.getDataClient(this).putDataItem(request)
-            .addOnSuccessListener { Log.d(TAG, "✓ Data sent to phone") }
-            .addOnFailureListener { Log.e(TAG, "✗ Failed to send: ${it.message}") }
-    }
-
     override fun onDestroy() {
         super.onDestroy()
         healthTrackerManager.disconnect()
+        batchDataManager.cleanup()
     }
 }
