@@ -12,8 +12,6 @@ import com.samsung.android.service.health.tracking.data.ValueKey
 /**
  * Health Tracker Manager for Samsung Watch 7
  * Samsung Health Sensor API 1.4.1 - All Available Trackers
- *
- * Working Trackers: PPG, Heart Rate, SpO2, ECG, Skin Temp, BIA, Sweat Loss
  */
 class HealthTrackerManager(
     private val context: Context,
@@ -26,9 +24,6 @@ class HealthTrackerManager(
         private const val TAG = "HealthTrackerManager"
     }
 
-    /**
-     * Data class to hold tracker data
-     */
     sealed class TrackerData {
         data class PPGData(
             val green: Int?,
@@ -84,9 +79,6 @@ class HealthTrackerManager(
         ) : TrackerData()
     }
 
-    /**
-     * Initialize health tracking service
-     */
     fun initialize(onSuccess: () -> Unit, onError: (HealthTrackerException) -> Unit) {
         val connectionListener = object : com.samsung.android.service.health.tracking.ConnectionListener {
             override fun onConnectionSuccess() {
@@ -108,16 +100,10 @@ class HealthTrackerManager(
         healthTrackingService?.connectService()
     }
 
-    /**
-     * Get available tracker types for this device
-     */
     fun getAvailableTrackers(): List<HealthTrackerType> {
         return healthTrackingService?.trackingCapability?.supportHealthTrackerTypes ?: emptyList()
     }
 
-    /**
-     * Start PPG Continuous tracker
-     */
     fun startPPGContinuous(): Boolean {
         return try {
             val ppgTypes = setOf(
@@ -162,9 +148,6 @@ class HealthTrackerManager(
         }
     }
 
-    /**
-     * Start SpO2 On-Demand tracker
-     */
     fun startSpO2OnDemand(): Boolean {
         return try {
             val tracker = healthTrackingService?.getHealthTracker(HealthTrackerType.SPO2_ON_DEMAND)
@@ -182,27 +165,21 @@ class HealthTrackerManager(
                     }
                 }
 
-                override fun onFlushCompleted() {
-                    Log.d(TAG, "SpO2 On-Demand flush completed")
-                }
+                override fun onFlushCompleted() {}
 
                 override fun onError(error: HealthTracker.TrackerError) {
-                    Log.e(TAG, "SpO2 On-Demand error: ${error.name}")
+                    Log.e(TAG, "SpO2 error: ${error.name}")
                 }
             })
 
             activeTrackers[HealthTrackerType.SPO2_ON_DEMAND] = tracker!!
-            Log.d(TAG, "Started SpO2 On-Demand tracker")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start SpO2 On-Demand: ${e.message}", e)
+            Log.e(TAG, "Failed to start SpO2: ${e.message}", e)
             false
         }
     }
 
-    /**
-     * Start Heart Rate Continuous tracker
-     */
     fun startHeartRateContinuous(): Boolean {
         return try {
             val tracker = healthTrackingService?.getHealthTracker(HealthTrackerType.HEART_RATE_CONTINUOUS)
@@ -221,27 +198,21 @@ class HealthTrackerManager(
                     }
                 }
 
-                override fun onFlushCompleted() {
-                    Log.d(TAG, "Heart Rate Continuous flush completed")
-                }
+                override fun onFlushCompleted() {}
 
                 override fun onError(error: HealthTracker.TrackerError) {
-                    Log.e(TAG, "Heart Rate Continuous error: ${error.name}")
+                    Log.e(TAG, "Heart Rate error: ${error.name}")
                 }
             })
 
             activeTrackers[HealthTrackerType.HEART_RATE_CONTINUOUS] = tracker!!
-            Log.d(TAG, "Started Heart Rate Continuous tracker")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start Heart Rate Continuous: ${e.message}", e)
+            Log.e(TAG, "Failed to start Heart Rate: ${e.message}", e)
             false
         }
     }
 
-    /**
-     * Start ECG On-Demand tracker
-     */
     fun startECGOnDemand(): Boolean {
         return try {
             val tracker = healthTrackingService?.getHealthTracker(HealthTrackerType.ECG_ON_DEMAND)
@@ -262,27 +233,21 @@ class HealthTrackerManager(
                     }
                 }
 
-                override fun onFlushCompleted() {
-                    Log.d(TAG, "ECG On-Demand flush completed")
-                }
+                override fun onFlushCompleted() {}
 
                 override fun onError(error: HealthTracker.TrackerError) {
-                    Log.e(TAG, "ECG On-Demand error: ${error.name}")
+                    Log.e(TAG, "ECG error: ${error.name}")
                 }
             })
 
             activeTrackers[HealthTrackerType.ECG_ON_DEMAND] = tracker!!
-            Log.d(TAG, "Started ECG On-Demand tracker")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start ECG On-Demand: ${e.message}", e)
+            Log.e(TAG, "Failed to start ECG: ${e.message}", e)
             false
         }
     }
 
-    /**
-     * Start Skin Temperature On-Demand tracker
-     */
     fun startSkinTemperatureOnDemand(): Boolean {
         return try {
             val tracker = healthTrackingService?.getHealthTracker(HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND)
@@ -300,27 +265,21 @@ class HealthTrackerManager(
                     }
                 }
 
-                override fun onFlushCompleted() {
-                    Log.d(TAG, "Skin Temperature On-Demand flush completed")
-                }
+                override fun onFlushCompleted() {}
 
                 override fun onError(error: HealthTracker.TrackerError) {
-                    Log.e(TAG, "Skin Temperature On-Demand error: ${error.name}")
+                    Log.e(TAG, "Skin Temp error: ${error.name}")
                 }
             })
 
             activeTrackers[HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND] = tracker!!
-            Log.d(TAG, "Started Skin Temperature On-Demand tracker")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start Skin Temperature On-Demand: ${e.message}", e)
+            Log.e(TAG, "Failed to start Skin Temp: ${e.message}", e)
             false
         }
     }
 
-    /**
-     * Start BIA (Body Composition) tracker
-     */
     fun startBIA(): Boolean {
         return try {
             val tracker = healthTrackingService?.getHealthTracker(HealthTrackerType.BIA_ON_DEMAND)
@@ -340,9 +299,7 @@ class HealthTrackerManager(
                     }
                 }
 
-                override fun onFlushCompleted() {
-                    Log.d(TAG, "BIA flush completed")
-                }
+                override fun onFlushCompleted() {}
 
                 override fun onError(error: HealthTracker.TrackerError) {
                     Log.e(TAG, "BIA error: ${error.name}")
@@ -350,7 +307,6 @@ class HealthTrackerManager(
             })
 
             activeTrackers[HealthTrackerType.BIA] = tracker!!
-            Log.d(TAG, "Started BIA tracker")
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start BIA: ${e.message}", e)
@@ -358,9 +314,6 @@ class HealthTrackerManager(
         }
     }
 
-    /**
-     * Start Sweat Loss tracker
-     */
     fun startSweatLoss(): Boolean {
         return try {
             val tracker = healthTrackingService?.getHealthTracker(HealthTrackerType.SWEAT_LOSS)
@@ -376,9 +329,7 @@ class HealthTrackerManager(
                     }
                 }
 
-                override fun onFlushCompleted() {
-                    Log.d(TAG, "Sweat Loss flush completed")
-                }
+                override fun onFlushCompleted() {}
 
                 override fun onError(error: HealthTracker.TrackerError) {
                     Log.e(TAG, "Sweat Loss error: ${error.name}")
@@ -386,7 +337,6 @@ class HealthTrackerManager(
             })
 
             activeTrackers[HealthTrackerType.SWEAT_LOSS] = tracker!!
-            Log.d(TAG, "Started Sweat Loss tracker")
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start Sweat Loss: ${e.message}", e)
@@ -394,9 +344,6 @@ class HealthTrackerManager(
         }
     }
 
-    /**
-     * Stop a specific tracker
-     */
     fun stopTracker(type: HealthTrackerType) {
         activeTrackers[type]?.let { tracker ->
             tracker.unsetEventListener()
@@ -405,18 +352,12 @@ class HealthTrackerManager(
         }
     }
 
-    /**
-     * Stop all trackers
-     */
     fun stopAllTrackers() {
         activeTrackers.keys.toList().forEach { type ->
             stopTracker(type)
         }
     }
 
-    /**
-     * Disconnect service
-     */
     fun disconnect() {
         stopAllTrackers()
         healthTrackingService?.disconnectService()

@@ -6,29 +6,50 @@ import android.util.Log
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
-import java.text.SimpleDateFormat
+import java.io.File
 import java.util.*
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Manages batch data collection and transfer from watch to phone
- * Transfers data when:
- * 1. Buffer reaches size threshold (KB)
- * 2. Time interval elapses (minutes)
+ *
+ * IMPROVEMENTS:
+ * 1. Added Mutex to prevent concurrent transfer race conditions
+ * 2. Added data persistence to prevent data loss on app crash
+ * 3. Uses unique timestamps to ensure Data Layer updates trigger
+ * 4. Better lifecycle management with explicit cleanup
+ * 5. Added retry logic for failed transfers
  */
 class BatchDataManager(private val context: Context) {
+
     private val dataBuffer = ConcurrentLinkedQueue<JSONObject>()
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val persistencePrefs: SharedPreferences = context.getSharedPreferences(PERSISTENCE_PREFS, Context.MODE_PRIVATE)
+
     private var transferJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+
+    // Mutex to prevent concurrent transfers
+    private val transferMutex = Mutex()
+    private val isTransferring = AtomicBoolean(false)
+
+    // Retry configuration
+    private var retryCount = 0
+    private val maxRetries = 3
 
     companion object {
         private const val TAG = "BatchDataManager"
         private const val PREFS_NAME = "batch_transfer_prefs"
+        private const val PERSISTENCE_PREFS = "batch_persistence"
         private const val KEY_SIZE_THRESHOLD_KB = "size_threshold_kb"
         private const val KEY_TIME_INTERVAL_MINUTES = "time_interval_minutes"
+        private const val KEY_PENDING_DATA = "pending_data"
+        private const val KEY_LAST_TRANSFER_TIME = "last_transfer_time"
 
         // Default values
         private const val DEFAULT_SIZE_THRESHOLD_KB = 50 // 50 KB
@@ -36,10 +57,59 @@ class BatchDataManager(private val context: Context) {
 
         // Maximum buffer size to prevent memory issues
         private const val MAX_BUFFER_SIZE_KB = 500 // 500 KB
+        private const val MAX_BUFFER_ITEMS = 5000 // Maximum items in buffer
     }
 
     init {
+        // Restore any pending data from previous session
+        restorePendingData()
         startPeriodicTransfer()
+    }
+
+    /**
+     * Restore pending data from persistence (crash recovery)
+     */
+    private fun restorePendingData() {
+        try {
+            val pendingJson = persistencePrefs.getString(KEY_PENDING_DATA, null)
+            if (!pendingJson.isNullOrEmpty()) {
+                val array = JSONArray(pendingJson)
+                var restoredCount = 0
+                for (i in 0 until array.length()) {
+                    dataBuffer.offer(array.getJSONObject(i))
+                    restoredCount++
+                }
+                if (restoredCount > 0) {
+                    Log.d(TAG, "Restored $restoredCount pending items from previous session")
+                    // Clear persistence after restoring
+                    persistencePrefs.edit().remove(KEY_PENDING_DATA).apply()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to restore pending data: ${e.message}")
+        }
+    }
+
+    /**
+     * Persist current buffer to survive app crashes
+     */
+    private fun persistPendingData() {
+        try {
+            if (dataBuffer.isEmpty()) {
+                persistencePrefs.edit().remove(KEY_PENDING_DATA).apply()
+                return
+            }
+
+            val array = JSONArray()
+            dataBuffer.forEach { array.put(it) }
+            persistencePrefs.edit()
+                .putString(KEY_PENDING_DATA, array.toString())
+                .apply()
+
+            Log.d(TAG, "Persisted ${dataBuffer.size} items")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to persist pending data: ${e.message}")
+        }
     }
 
     /**
@@ -77,9 +147,18 @@ class BatchDataManager(private val context: Context) {
     }
 
     /**
-     * Add data to buffer
+     * Add data to buffer with overflow protection
      */
     fun addData(data: HealthTrackerManager.TrackerData) {
+        // Prevent buffer overflow
+        if (dataBuffer.size >= MAX_BUFFER_ITEMS) {
+            Log.w(TAG, "Buffer at max capacity, forcing transfer")
+            scope.launch {
+                transferBatch()
+            }
+            return
+        }
+
         val json = convertToJSON(data)
         dataBuffer.offer(json)
 
@@ -103,13 +182,21 @@ class BatchDataManager(private val context: Context) {
                 transferBatch()
             }
         }
+
+        // Periodically persist data (every 10 items)
+        if (dataBuffer.size % 10 == 0) {
+            persistPendingData()
+        }
     }
 
     /**
-     * Convert tracker data to JSON
+     * Convert tracker data to JSON with timestamp for uniqueness
      */
     private fun convertToJSON(data: HealthTrackerManager.TrackerData): JSONObject {
         return JSONObject().apply {
+            // Add unique ID to prevent data layer caching issues
+            put("entry_id", UUID.randomUUID().toString())
+
             when (data) {
                 is HealthTrackerManager.TrackerData.PPGData -> {
                     put("type", "PPG")
@@ -220,56 +307,80 @@ class BatchDataManager(private val context: Context) {
     }
 
     /**
-     * Transfer batch of data to phone
+     * Transfer batch of data to phone with mutex protection
      */
     private suspend fun transferBatch() = withContext(Dispatchers.IO) {
-        if (dataBuffer.isEmpty()) {
-            Log.d(TAG, "Buffer empty, nothing to transfer")
-            return@withContext
-        }
+        // Use mutex to prevent concurrent transfers
+        transferMutex.withLock {
+            if (dataBuffer.isEmpty()) {
+                Log.d(TAG, "Buffer empty, nothing to transfer")
+                return@withContext
+            }
 
-        val batch = mutableListOf<JSONObject>()
-        var batchSizeKB = 0
-        val maxBatchKB = getSizeThresholdKB()
+            if (isTransferring.get()) {
+                Log.d(TAG, "Transfer already in progress, skipping")
+                return@withContext
+            }
 
-        // Collect items up to threshold
-        while (dataBuffer.isNotEmpty() && batchSizeKB < maxBatchKB) {
-            val item = dataBuffer.poll() ?: break
-            batch.add(item)
-            batchSizeKB += item.toString().toByteArray().size / 1024
-        }
+            isTransferring.set(true)
 
-        if (batch.isEmpty()) {
-            return@withContext
-        }
+            try {
+                val batch = mutableListOf<JSONObject>()
+                var batchSizeKB = 0
+                val maxBatchKB = getSizeThresholdKB()
 
-        Log.d(TAG, "Transferring batch: ${batch.size} items, $batchSizeKB KB")
+                // Collect items up to threshold
+                while (dataBuffer.isNotEmpty() && batchSizeKB < maxBatchKB) {
+                    val item = dataBuffer.poll() ?: break
+                    batch.add(item)
+                    batchSizeKB += item.toString().toByteArray().size / 1024
+                }
 
-        try {
-            // Send all items together (no grouping by type)
-            sendBatchToPhone("mixed", batch)
+                if (batch.isEmpty()) {
+                    return@withContext
+                }
 
-            Log.d(TAG, "✓ Batch transfer complete: ${batch.size} items")
+                Log.d(TAG, "Transferring batch: ${batch.size} items, $batchSizeKB KB")
 
-        } catch (e: Exception) {
-            Log.e(TAG, "✗ Batch transfer failed: ${e.message}", e)
+                val success = sendBatchToPhone(batch)
 
-            // Re-add failed items to buffer
-            batch.forEach { dataBuffer.offer(it) }
+                if (success) {
+                    retryCount = 0
+                    persistencePrefs.edit()
+                        .putLong(KEY_LAST_TRANSFER_TIME, System.currentTimeMillis())
+                        .apply()
+                    Log.d(TAG, "✓ Batch transfer complete: ${batch.size} items")
+                } else {
+                    // Re-add failed items to buffer for retry
+                    Log.w(TAG, "Transfer failed, re-queuing ${batch.size} items")
+                    batch.forEach { dataBuffer.offer(it) }
+
+                    retryCount++
+                    if (retryCount >= maxRetries) {
+                        Log.e(TAG, "Max retries reached, persisting data")
+                        persistPendingData()
+                        retryCount = 0
+                    }
+                }
+            } finally {
+                isTransferring.set(false)
+            }
         }
     }
 
     /**
      * Send batch data to phone via Data Layer API
+     * Returns true if successful
      */
-    private fun sendBatchToPhone(type: String, items: List<JSONObject>) {
+    private suspend fun sendBatchToPhone(items: List<JSONObject>): Boolean = suspendCancellableCoroutine { continuation ->
         try {
             // Calculate batch size
             val batchSizeKB = items.sumOf { it.toString().toByteArray().size } / 1024.0
+            val batchId = UUID.randomUUID().toString()
 
             // Create batch wrapper matching phone's expected format
             val batchWrapper = JSONObject().apply {
-                put("batch_id", UUID.randomUUID().toString())
+                put("batch_id", batchId)
                 put("sent_at", System.currentTimeMillis())
                 put("entry_count", items.size)
                 put("buffer_size_kb", batchSizeKB)
@@ -278,9 +389,9 @@ class BatchDataManager(private val context: Context) {
                 val entriesArray = JSONArray()
                 items.forEach { item ->
                     val entry = JSONObject().apply {
-                        put("type", item.getString("type"))
-                        put("data", item) // The full data object
-                        put("timestamp", item.getLong("timestamp"))
+                        put("type", item.optString("type", "Unknown"))
+                        put("data", item)
+                        put("timestamp", item.optLong("timestamp", System.currentTimeMillis()))
                         put("received_at", System.currentTimeMillis())
                     }
                     entriesArray.put(entry)
@@ -288,22 +399,32 @@ class BatchDataManager(private val context: Context) {
                 put("entries", entriesArray)
             }
 
+            // Use unique path with timestamp to ensure updates trigger
             val request = PutDataMapRequest.create("/health_tracker_batch").apply {
                 dataMap.putString("batch_data", batchWrapper.toString())
-                dataMap.putLong("timestamp", System.currentTimeMillis()) // Force update
+                // Use current time + random to ensure uniqueness
+                dataMap.putLong("timestamp", System.currentTimeMillis())
+                dataMap.putString("batch_id", batchId)
             }.asPutDataRequest().setUrgent()
 
             Wearable.getDataClient(context).putDataItem(request)
                 .addOnSuccessListener {
-                    Log.d(TAG, "✓ Sent batch: $type (${items.size} items, ${String.format("%.1f", batchSizeKB)}KB)")
+                    Log.d(TAG, "✓ Sent batch: $batchId (${items.size} items, ${String.format("%.1f", batchSizeKB)}KB)")
+                    if (continuation.isActive) {
+                        continuation.resume(true) {}
+                    }
                 }
                 .addOnFailureListener { e ->
-                    Log.e(TAG, "✗ Failed to send batch: $type - ${e.message}")
-                    throw e // Re-throw to trigger re-add to buffer
+                    Log.e(TAG, "✗ Failed to send batch: $batchId - ${e.message}")
+                    if (continuation.isActive) {
+                        continuation.resume(false) {}
+                    }
                 }
         } catch (e: Exception) {
             Log.e(TAG, "Error creating batch: ${e.message}", e)
-            throw e
+            if (continuation.isActive) {
+                continuation.resume(false) {}
+            }
         }
     }
 
@@ -323,6 +444,7 @@ class BatchDataManager(private val context: Context) {
     fun clearBuffer() {
         val count = dataBuffer.size
         dataBuffer.clear()
+        persistencePrefs.edit().remove(KEY_PENDING_DATA).apply()
         Log.d(TAG, "Buffer cleared: $count items removed")
     }
 
@@ -337,6 +459,9 @@ class BatchDataManager(private val context: Context) {
      * Cleanup resources
      */
     fun shutdown() {
+        // Persist any remaining data before shutdown
+        persistPendingData()
+
         transferJob?.cancel()
         scope.cancel()
         Log.d(TAG, "BatchDataManager shutdown")

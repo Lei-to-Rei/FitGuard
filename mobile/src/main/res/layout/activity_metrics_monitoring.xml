@@ -17,7 +17,20 @@
         app:navigationIcon="@drawable/ic_back"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Instructions Text -->
+    <!-- Tab Layout -->
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@android:color/white"
+        app:tabIndicatorColor="@color/black"
+        app:tabSelectedTextColor="@color/black"
+        app:tabTextColor="@android:color/darker_gray"
+        app:tabMode="fixed"
+        app:tabGravity="fill"
+        app:layout_constraintTop_toBottomOf="@id/toolbar" />
+
+    <!-- Instructions Text (shown initially) -->
     <TextView
         android:id="@+id/tvInstructions"
         android:layout_width="match_parent"
@@ -27,18 +40,59 @@
         android:textColor="@android:color/darker_gray"
         android:lineSpacingExtra="4dp"
         android:gravity="center"
-        app:layout_constraintTop_toBottomOf="@id/toolbar" />
+        android:visibility="visible"
+        app:layout_constraintTop_toBottomOf="@id/tabLayout" />
 
-    <!-- Metrics Container -->
+    <!-- Real-Time View -->
     <ScrollView
+        android:id="@+id/scrollViewRealTime"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:fillViewport="true"
-        app:layout_constraintTop_toBottomOf="@id/toolbar"
+        android:visibility="visible"
+        app:layout_constraintTop_toBottomOf="@id/tabLayout"
         app:layout_constraintBottom_toBottomOf="parent">
 
         <LinearLayout
             android:id="@+id/metricsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp" />
+
+    </ScrollView>
+
+    <!-- Analysis View -->
+    <ScrollView
+        android:id="@+id/scrollViewAnalysis"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:fillViewport="true"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/tabLayout"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <LinearLayout
+            android:id="@+id/analysisContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp" />
+
+    </ScrollView>
+
+    <!-- History View -->
+    <ScrollView
+        android:id="@+id/scrollViewHistory"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:fillViewport="true"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/tabLayout"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <LinearLayout
+            android:id="@+id/historyContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
