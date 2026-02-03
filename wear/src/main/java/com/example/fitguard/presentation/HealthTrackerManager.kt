@@ -17,8 +17,13 @@ import com.samsung.android.service.health.tracking.data.ValueKey
  */
 class HealthTrackerManager(
     private val context: Context,
-    private val onDataCallback: (TrackerData) -> Unit
+    private val defaultDataCallback: (TrackerData) -> Unit
 ) {
+    var onDataCallback: (TrackerData) -> Unit = defaultDataCallback
+
+    fun restoreDefaultCallback() {
+        onDataCallback = defaultDataCallback
+    }
     private var healthTrackingService: HealthTrackingService? = null
     private val activeTrackers = mutableMapOf<HealthTrackerType, HealthTracker>()
 
@@ -52,16 +57,6 @@ class HealthTrackerManager(
             val timestamp: Long
         ) : TrackerData()
 
-        data class ECGData(
-            val ppgGreen: Int,
-            val sequence: Int,
-            val ecgMv: Float,
-            val leadOff: Int,
-            val maxThresholdMv: Float,
-            val minThresholdMv: Float,
-            val timestamp: Long
-        ) : TrackerData()
-
         data class SkinTemperatureData(
             val status: Int,
             val objectTemperature: Float?,
@@ -69,17 +64,10 @@ class HealthTrackerManager(
             val timestamp: Long
         ) : TrackerData()
 
-        data class BIAData(
-            val basalMetabolicRate: Float,
-            val bodyFatMass: Float,
-            val bodyFatRatio: Float,
-            val fatFreeMass: Float,
-            val skeletalMuscleMass: Float,
-            val timestamp: Long
-        ) : TrackerData()
-
-        data class SweatLossData(
-            val sweatLoss: Float,
+        data class AccelerometerData(
+            val x: Int?,
+            val y: Int?,
+            val z: Int?,
             val timestamp: Long
         ) : TrackerData()
     }
@@ -240,47 +228,6 @@ class HealthTrackerManager(
     }
 
     /**
-     * Start ECG On-Demand tracker
-     */
-    fun startECGOnDemand(): Boolean {
-        return try {
-            val tracker = healthTrackingService?.getHealthTracker(HealthTrackerType.ECG_ON_DEMAND)
-
-            tracker?.setEventListener(object : HealthTracker.TrackerEventListener {
-                override fun onDataReceived(dataPoints: MutableList<DataPoint>) {
-                    dataPoints.forEach { dp ->
-                        val data = TrackerData.ECGData(
-                            ppgGreen = dp.getValue(ValueKey.EcgSet.PPG_GREEN) ?: 0,
-                            sequence = dp.getValue(ValueKey.EcgSet.SEQUENCE) ?: 0,
-                            ecgMv = dp.getValue(ValueKey.EcgSet.ECG_MV) ?: 0f,
-                            leadOff = dp.getValue(ValueKey.EcgSet.LEAD_OFF) ?: 0,
-                            maxThresholdMv = dp.getValue(ValueKey.EcgSet.MAX_THRESHOLD_MV) ?: 0f,
-                            minThresholdMv = dp.getValue(ValueKey.EcgSet.MIN_THRESHOLD_MV) ?: 0f,
-                            timestamp = dp.timestamp
-                        )
-                        onDataCallback(data)
-                    }
-                }
-
-                override fun onFlushCompleted() {
-                    Log.d(TAG, "ECG On-Demand flush completed")
-                }
-
-                override fun onError(error: HealthTracker.TrackerError) {
-                    Log.e(TAG, "ECG On-Demand error: ${error.name}")
-                }
-            })
-
-            activeTrackers[HealthTrackerType.ECG_ON_DEMAND] = tracker!!
-            Log.d(TAG, "Started ECG On-Demand tracker")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start ECG On-Demand: ${e.message}", e)
-            false
-        }
-    }
-
-    /**
      * Start Skin Temperature On-Demand tracker
      */
     fun startSkinTemperatureOnDemand(): Boolean {
@@ -319,21 +266,19 @@ class HealthTrackerManager(
     }
 
     /**
-     * Start BIA (Body Composition) tracker
+     * Start Accelerometer Continuous tracker
      */
-    fun startBIA(): Boolean {
+    fun startAccelerometerContinuous(): Boolean {
         return try {
-            val tracker = healthTrackingService?.getHealthTracker(HealthTrackerType.BIA)
+            val tracker = healthTrackingService?.getHealthTracker(HealthTrackerType.ACCELEROMETER_CONTINUOUS)
 
             tracker?.setEventListener(object : HealthTracker.TrackerEventListener {
                 override fun onDataReceived(dataPoints: MutableList<DataPoint>) {
                     dataPoints.forEach { dp ->
-                        val data = TrackerData.BIAData(
-                            basalMetabolicRate = dp.getValue(ValueKey.BiaSet.BASAL_METABOLIC_RATE) ?: 0f,
-                            bodyFatMass = dp.getValue(ValueKey.BiaSet.BODY_FAT_MASS) ?: 0f,
-                            bodyFatRatio = dp.getValue(ValueKey.BiaSet.BODY_FAT_RATIO) ?: 0f,
-                            fatFreeMass = dp.getValue(ValueKey.BiaSet.FAT_FREE_MASS) ?: 0f,
-                            skeletalMuscleMass = dp.getValue(ValueKey.BiaSet.SKELETAL_MUSCLE_MASS) ?: 0f,
+                        val data = TrackerData.AccelerometerData(
+                            x = dp.getValue(ValueKey.AccelerometerSet.ACCELEROMETER_X),
+                            y = dp.getValue(ValueKey.AccelerometerSet.ACCELEROMETER_Y),
+                            z = dp.getValue(ValueKey.AccelerometerSet.ACCELEROMETER_Z),
                             timestamp = dp.timestamp
                         )
                         onDataCallback(data)
@@ -341,55 +286,19 @@ class HealthTrackerManager(
                 }
 
                 override fun onFlushCompleted() {
-                    Log.d(TAG, "BIA flush completed")
+                    Log.d(TAG, "Accelerometer Continuous flush completed")
                 }
 
                 override fun onError(error: HealthTracker.TrackerError) {
-                    Log.e(TAG, "BIA error: ${error.name}")
+                    Log.e(TAG, "Accelerometer Continuous error: ${error.name}")
                 }
             })
 
-            activeTrackers[HealthTrackerType.BIA] = tracker!!
-            Log.d(TAG, "Started BIA tracker")
+            activeTrackers[HealthTrackerType.ACCELEROMETER_CONTINUOUS] = tracker!!
+            Log.d(TAG, "Started Accelerometer Continuous tracker")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start BIA: ${e.message}", e)
-            false
-        }
-    }
-
-    /**
-     * Start Sweat Loss tracker
-     */
-    fun startSweatLoss(): Boolean {
-        return try {
-            val tracker = healthTrackingService?.getHealthTracker(HealthTrackerType.SWEAT_LOSS)
-
-            tracker?.setEventListener(object : HealthTracker.TrackerEventListener {
-                override fun onDataReceived(dataPoints: MutableList<DataPoint>) {
-                    dataPoints.forEach { dp ->
-                        val data = TrackerData.SweatLossData(
-                            sweatLoss = dp.getValue(ValueKey.SweatLossSet.SWEAT_LOSS) ?: 0f,
-                            timestamp = dp.timestamp
-                        )
-                        onDataCallback(data)
-                    }
-                }
-
-                override fun onFlushCompleted() {
-                    Log.d(TAG, "Sweat Loss flush completed")
-                }
-
-                override fun onError(error: HealthTracker.TrackerError) {
-                    Log.e(TAG, "Sweat Loss error: ${error.name}")
-                }
-            })
-
-            activeTrackers[HealthTrackerType.SWEAT_LOSS] = tracker!!
-            Log.d(TAG, "Started Sweat Loss tracker")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start Sweat Loss: ${e.message}", e)
+            Log.e(TAG, "Failed to start Accelerometer Continuous: ${e.message}", e)
             false
         }
     }
