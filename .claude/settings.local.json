@@ -11,7 +11,13 @@
       "Bash(powershell.exe -Command \"cd ''C:\\\\Users\\\\claud\\\\AndroidStudioProjects\\\\FitGuard''; .\\\\gradlew.bat :wear:compileDebugKotlin :mobile:compileDebugKotlin 2>&1\")",
       "Bash(.gradlew:*)",
       "Bash(cmd /c \"gradlew.bat :wear:compileDebugKotlin\")",
-      "Bash(./gradlew.bat:*)"
+      "Bash(./gradlew.bat:*)",
+      "WebSearch",
+      "WebFetch(domain:pmc.ncbi.nlm.nih.gov)",
+      "WebFetch(domain:rpanderson-neurokit2.readthedocs.io)",
+      "WebFetch(domain:neuropsychology.github.io)",
+      "WebFetch(domain:ppg-beats.readthedocs.io)",
+      "Bash(C:/Users/claud/AndroidStudioProjects/FitGuard/gradlew.bat assembleDebug --no-daemon)"
     ]
   }
 }

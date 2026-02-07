@@ -1,6 +1,8 @@
 package com.example.fitguard.services
 
 import android.util.Log
+import com.example.fitguard.data.processing.PpgSample
+import com.example.fitguard.data.processing.SequenceProcessor
 import com.google.android.gms.wearable.*
 import org.json.JSONArray
 import org.json.JSONObject
@@ -12,6 +14,8 @@ class WearableDataListenerService : WearableListenerService() {
     companion object {
         private const val TAG = "WearableDataListener"
     }
+
+    private val sequenceProcessor by lazy { SequenceProcessor(this) }
 
     override fun onDataChanged(dataEvents: DataEventBuffer) {
         dataEvents.forEach { event ->
@@ -50,28 +54,10 @@ class WearableDataListenerService : WearableListenerService() {
                     put("ibi", bundle.getIntegerArrayList("ibi_list")?.toString())
                     put("status", bundle.getInt("status"))
                 }
-                "ECG" -> {
-                    put("ppg_green", bundle.getInt("ppg_green"))
-                    put("sequence", bundle.getInt("sequence"))
-                    put("ecg_mv", bundle.getFloat("ecg_mv"))
-                    put("lead_off", bundle.getInt("lead_off"))
-                    put("max_mv", bundle.getFloat("max_threshold_mv"))
-                    put("min_mv", bundle.getFloat("min_threshold_mv"))
-                }
                 "SkinTemp" -> {
                     put("status", bundle.getInt("status"))
                     if (bundle.containsKey("object_temp")) put("obj", bundle.getFloat("object_temp"))
                     if (bundle.containsKey("ambient_temp")) put("amb", bundle.getFloat("ambient_temp"))
-                }
-                "BIA" -> {
-                    put("bmr", bundle.getFloat("bmr"))
-                    put("fat_mass", bundle.getFloat("body_fat_mass"))
-                    put("fat_ratio", bundle.getFloat("body_fat_ratio"))
-                    put("ffm", bundle.getFloat("fat_free_mass"))
-                    put("muscle", bundle.getFloat("muscle_mass"))
-                }
-                "Sweat" -> {
-                    put("loss", bundle.getFloat("sweat_loss"))
                 }
             }
         }
@@ -107,6 +93,22 @@ class WearableDataListenerService : WearableListenerService() {
 
                 saveToFile(type, entry.toString())
             }
+
+            // Feed PPG entries to the sequence processor accumulator
+            val ppgSamples = mutableListOf<PpgSample>()
+            for (i in 0 until dataArray.length()) {
+                val entry = dataArray.getJSONObject(i)
+                if (entry.getString("type") == "PPG") {
+                    ppgSamples.add(PpgSample(
+                        timestamp = entry.getLong("timestamp"),
+                        green = entry.optInt("green", 0)
+                    ))
+                }
+            }
+            if (ppgSamples.isNotEmpty()) {
+                sequenceProcessor.accumulator.addPpgSamples(sequenceId, totalBatches, ppgSamples)
+            }
+            sequenceProcessor.accumulator.markBatchReceived(sequenceId, batchNumber, totalBatches)
 
             sendBroadcast(android.content.Intent("com.example.fitguard.BATCH_DATA").apply {
                 putExtra("sequence_id", sequenceId)
