@@ -42,8 +42,7 @@ class SequenceProcessor(private val context: Context) {
                         "RMSSD=${String.format("%.2f", hrvResult.rmssdMs)} " +
                         "peaks=${hrvResult.peaksDetected} nn=${hrvResult.nnIntervalsUsed}")
 
-                HrvCsvWriter.writeHrvResult(hrvResult)
-                HrvCsvWriter.writePpgProcessed(processedSamples)
+                HrvCsvWriter.writeSequenceData(hrvResult, processedSamples)
 
                 broadcastResult(hrvResult)
             } catch (e: Exception) {

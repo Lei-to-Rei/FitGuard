@@ -20,7 +20,7 @@ class SensorSequenceManager(
 
     companion object {
         private const val TAG = "SensorSequenceManager"
-        private const val SEQUENCE_DURATION_SECONDS = 340
+        private const val SEQUENCE_DURATION_SECONDS = 100
         private const val SKIN_TEMP_TIMEOUT_SECONDS = 15
         private const val SPO2_TIMEOUT_SECONDS = 60
         private const val SPO2_START_DELAY_SECONDS = 5
