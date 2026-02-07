@@ -16,11 +16,12 @@ class SequenceProcessor(private val context: Context) {
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-    val accumulator = SequenceBatchAccumulator { sequenceId, samples, totalBatches ->
-        processSequence(sequenceId, samples)
+    val accumulator = SequenceBatchAccumulator { sequenceId, samples, spo2Samples, skinTempSamples, totalBatches ->
+        processSequence(sequenceId, samples, spo2Samples, skinTempSamples)
     }
 
-    private fun processSequence(sequenceId: String, samples: List<PpgSample>) {
+    private fun processSequence(sequenceId: String, samples: List<PpgSample>,
+                                spo2Samples: List<SpO2Sample>, skinTempSamples: List<SkinTempSample>) {
         scope.launch {
             try {
                 Log.d(TAG, "Processing sequence $sequenceId with ${samples.size} PPG samples")
@@ -42,7 +43,10 @@ class SequenceProcessor(private val context: Context) {
                         "RMSSD=${String.format("%.2f", hrvResult.rmssdMs)} " +
                         "peaks=${hrvResult.peaksDetected} nn=${hrvResult.nnIntervalsUsed}")
 
-                HrvCsvWriter.writeSequenceData(hrvResult, processedSamples)
+                val bestSpO2 = spo2Samples.firstOrNull { it.spo2 > 0 }
+                val bestSkinTemp = skinTempSamples.firstOrNull { !it.objectTemp.isNaN() }
+
+                HrvCsvWriter.writeSequenceData(hrvResult, processedSamples, bestSpO2, bestSkinTemp)
 
                 broadcastResult(hrvResult)
             } catch (e: Exception) {

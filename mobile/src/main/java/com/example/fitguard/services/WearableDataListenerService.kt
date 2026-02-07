@@ -2,6 +2,8 @@ package com.example.fitguard.services
 
 import android.util.Log
 import com.example.fitguard.data.processing.PpgSample
+import com.example.fitguard.data.processing.SpO2Sample
+import com.example.fitguard.data.processing.SkinTempSample
 import com.example.fitguard.data.processing.SequenceProcessor
 import com.google.android.gms.wearable.*
 import org.json.JSONArray
@@ -94,19 +96,39 @@ class WearableDataListenerService : WearableListenerService() {
                 saveToFile(type, entry.toString())
             }
 
-            // Feed PPG entries to the sequence processor accumulator
+            // Feed PPG, SpO2, and SkinTemp entries to the sequence processor accumulator
             val ppgSamples = mutableListOf<PpgSample>()
+            val spo2Samples = mutableListOf<SpO2Sample>()
+            val skinTempSamples = mutableListOf<SkinTempSample>()
             for (i in 0 until dataArray.length()) {
                 val entry = dataArray.getJSONObject(i)
-                if (entry.getString("type") == "PPG") {
-                    ppgSamples.add(PpgSample(
+                when (entry.getString("type")) {
+                    "PPG" -> ppgSamples.add(PpgSample(
                         timestamp = entry.getLong("timestamp"),
                         green = entry.optInt("green", 0)
+                    ))
+                    "SpO2" -> spo2Samples.add(SpO2Sample(
+                        spo2 = entry.optInt("spo2", 0),
+                        heartRate = entry.optInt("heart_rate", 0),
+                        status = entry.optInt("status", 0),
+                        timestamp = entry.getLong("timestamp")
+                    ))
+                    "SkinTemp" -> skinTempSamples.add(SkinTempSample(
+                        objectTemp = entry.optDouble("object_temp", Double.NaN).toFloat(),
+                        ambientTemp = entry.optDouble("ambient_temp", Double.NaN).toFloat(),
+                        status = entry.optInt("status", 0),
+                        timestamp = entry.getLong("timestamp")
                     ))
                 }
             }
             if (ppgSamples.isNotEmpty()) {
                 sequenceProcessor.accumulator.addPpgSamples(sequenceId, totalBatches, ppgSamples)
+            }
+            if (spo2Samples.isNotEmpty()) {
+                sequenceProcessor.accumulator.addSpO2Samples(sequenceId, totalBatches, spo2Samples)
+            }
+            if (skinTempSamples.isNotEmpty()) {
+                sequenceProcessor.accumulator.addSkinTempSamples(sequenceId, totalBatches, skinTempSamples)
             }
             sequenceProcessor.accumulator.markBatchReceived(sequenceId, batchNumber, totalBatches)
 
