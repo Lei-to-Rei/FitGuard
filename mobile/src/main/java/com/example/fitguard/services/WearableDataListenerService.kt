@@ -2,6 +2,7 @@ package com.example.fitguard.services
 
 import android.util.Log
 import com.google.android.gms.wearable.*
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -14,8 +15,13 @@ class WearableDataListenerService : WearableListenerService() {
 
     override fun onDataChanged(dataEvents: DataEventBuffer) {
         dataEvents.forEach { event ->
-            if (event.type == DataEvent.TYPE_CHANGED && event.dataItem.uri.path == "/health_tracker_data") {
-                processHealthData(DataMapItem.fromDataItem(event.dataItem).dataMap.toBundle())
+            if (event.type == DataEvent.TYPE_CHANGED) {
+                val path = event.dataItem.uri.path
+                val dataMap = DataMapItem.fromDataItem(event.dataItem).dataMap
+                when (path) {
+                    "/health_tracker_data" -> processHealthData(dataMap.toBundle())
+                    "/health_tracker_batch" -> processBatchData(dataMap)
+                }
             }
         }
     }
@@ -75,6 +81,42 @@ class WearableDataListenerService : WearableListenerService() {
             putExtra("type", type)
             putExtra("data", json.toString())
         })
+    }
+
+    private fun processBatchData(dataMap: DataMap) {
+        try {
+            val batchJson = dataMap.getString("batch_json") ?: return
+            val payload = JSONObject(batchJson)
+            val metadata = payload.getJSONObject("metadata")
+            val dataArray = payload.getJSONArray("data")
+
+            val sequenceId = metadata.getString("sequence_id")
+            val batchNumber = metadata.getInt("batch_number")
+            val totalBatches = metadata.getInt("total_batches")
+            val receivedAt = System.currentTimeMillis()
+
+            Log.d(TAG, "Received batch $batchNumber/$totalBatches (${dataArray.length()} points) for $sequenceId")
+
+            for (i in 0 until dataArray.length()) {
+                val entry = dataArray.getJSONObject(i)
+                val type = entry.getString("type")
+
+                entry.put("sequence_id", sequenceId)
+                entry.put("batch_number", batchNumber)
+                entry.put("received_at", receivedAt)
+
+                saveToFile(type, entry.toString())
+            }
+
+            sendBroadcast(android.content.Intent("com.example.fitguard.BATCH_DATA").apply {
+                putExtra("sequence_id", sequenceId)
+                putExtra("batch_number", batchNumber)
+                putExtra("total_batches", totalBatches)
+                putExtra("points", dataArray.length())
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "Batch processing failed: ${e.message}", e)
+        }
     }
 
     private fun saveToFile(type: String, data: String) {

@@ -26,7 +26,11 @@ class MainActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var buttonContainer: LinearLayout
     private lateinit var healthTrackerManager: HealthTrackerManager
+    private lateinit var sensorSequenceManager: SensorSequenceManager
     private val activeTrackerButtons = mutableMapOf<HealthTrackerType, Button>()
+    private val individualButtons = mutableListOf<Button>()
+    private var sequenceButton: Button? = null
+    private var sequenceStatusText: TextView? = null
 
     companion object {
         private const val PERMISSION_REQUEST_CODE = 100
@@ -122,13 +126,13 @@ class MainActivity : Activity() {
             val permissionLabels = if (Build.VERSION.SDK_INT >= 36) {
                 """
                 Requesting permissions:
-                
+
                 ✓ Fitness & Wellness
                   • Heart Rate
                   • Blood Oxygen (SpO2)
                   • Skin Temperature
                   • Background Health Data
-                
+
                 ✓ Physical Activity
                   • Activity Recognition
                   • Step Counting
@@ -136,7 +140,7 @@ class MainActivity : Activity() {
             } else {
                 """
                 Requesting permissions:
-                
+
                 ✓ Body Sensors
                 ✓ Physical Activity
                 ✓ Background Monitoring
@@ -178,9 +182,9 @@ class MainActivity : Activity() {
 
                 statusText.text = """
                     ⚠️ Some permissions denied:
-                    
+
                     $deniedLabels
-                    
+
                     These are required for FitGuard to work.
                     Please enable in Settings.
                 """.trimIndent()
@@ -212,21 +216,21 @@ class MainActivity : Activity() {
         val infoText = TextView(this).apply {
             text = """
                 FitGuard needs access to:
-                
+
                 📊 Fitness and Wellness
                   • Heart Rate monitoring
                   • SpO2 (Blood Oxygen)
                   • Skin Temperature
-                
+
                 🏃 Physical Activity
                   • Activity Recognition
                   • Step Counting
-                
+
                 🔄 Background Monitoring
                   • Continuous tracking
-                
+
                 Running: $apiVersion
-                
+
                 Tap Settings below to enable permissions.
             """.trimIndent()
             textSize = 10f
@@ -279,7 +283,7 @@ class MainActivity : Activity() {
     private fun initializeHealthTrackers() {
         healthTrackerManager = HealthTrackerManager(
             context = this,
-            onDataCallback = { data ->
+            defaultDataCallback = { data ->
                 sendDataToPhone(data)
             }
         )
@@ -287,6 +291,7 @@ class MainActivity : Activity() {
         healthTrackerManager.initialize(
             onSuccess = {
                 runOnUiThread {
+                    initializeSequenceManager()
                     statusText.text = "✓ Connected to Health Service"
                     createTrackerButtons()
                 }
@@ -295,7 +300,7 @@ class MainActivity : Activity() {
                 runOnUiThread {
                     statusText.text = """
                         ❌ Connection failed: ${error.errorCode}
-                        
+
                         Make sure:
                         • Samsung Health is installed
                         • All permissions are granted
@@ -306,8 +311,41 @@ class MainActivity : Activity() {
         )
     }
 
+    private fun initializeSequenceManager() {
+        sensorSequenceManager = SensorSequenceManager(
+            context = this,
+            healthTrackerManager = healthTrackerManager
+        )
+
+        sensorSequenceManager.onPhaseChanged = { phase ->
+            runOnUiThread { updateSequenceUI(phase) }
+        }
+
+        sensorSequenceManager.onProgress = { elapsed, total ->
+            runOnUiThread {
+                val remaining = total - elapsed
+                val minutes = remaining / 60
+                val seconds = remaining % 60
+                val phaseLabel = formatPhase(sensorSequenceManager)
+                sequenceStatusText?.text = "$phaseLabel ${minutes}m ${String.format("%02d", seconds)}s remaining"
+            }
+        }
+
+        sensorSequenceManager.onComplete = {
+            runOnUiThread {
+                sequenceStatusText?.text = "Sequence complete! Data sent."
+                enableIndividualButtons(true)
+                sequenceButton?.apply {
+                    text = "▶ Start Sequence"
+                    setBackgroundColor(Color.parseColor("#1565C0"))
+                }
+            }
+        }
+    }
+
     private fun createTrackerButtons() {
         buttonContainer.removeAllViews()
+        individualButtons.clear()
 
         val availableTrackers = healthTrackerManager.getAvailableTrackers()
 
@@ -336,17 +374,17 @@ class MainActivity : Activity() {
             }
         }
 
+        if (availableTrackers.contains(HealthTrackerType.ACCELEROMETER_CONTINUOUS)) {
+            addTrackerButton("Accel", HealthTrackerType.ACCELEROMETER_CONTINUOUS, "X/Y/Z axes") {
+                healthTrackerManager.startAccelerometerContinuous()
+            }
+        }
+
         addSectionHeader("On-Demand Trackers")
 
         if (availableTrackers.contains(HealthTrackerType.SPO2_ON_DEMAND)) {
             addTrackerButton("SpO2", HealthTrackerType.SPO2_ON_DEMAND, "30 sec") {
                 healthTrackerManager.startSpO2OnDemand()
-            }
-        }
-
-        if (availableTrackers.contains(HealthTrackerType.ECG_ON_DEMAND)) {
-            addTrackerButton("ECG", HealthTrackerType.ECG_ON_DEMAND, "30 sec, touch bezel") {
-                healthTrackerManager.startECGOnDemand()
             }
         }
 
@@ -356,30 +394,76 @@ class MainActivity : Activity() {
             }
         }
 
-        if (availableTrackers.contains(HealthTrackerType.BIA)) {
-            addTrackerButton("BIA", HealthTrackerType.BIA, "Body comp, 15 sec") {
-                healthTrackerManager.startBIA()
+        // Automated Sequence section
+        addSectionHeader("Automated Sequence")
+
+        sequenceStatusText = TextView(this).apply {
+            text = "5-min collection: all sensors"
+            textSize = 9f
+            setTextColor(Color.LTGRAY)
+            setPadding(12, 2, 12, 6)
+        }
+
+        sequenceButton = Button(this).apply {
+            text = "▶ Start Sequence"
+            setBackgroundColor(Color.parseColor("#1565C0"))
+            setTextColor(Color.WHITE)
+            textSize = 11f
+            setPadding(12, 12, 12, 12)
+            setOnClickListener {
+                if (sensorSequenceManager.isRunning) {
+                    sensorSequenceManager.cancelSequence()
+                    sequenceStatusText?.text = "Sequence cancelled"
+                    enableIndividualButtons(true)
+                    setBackgroundColor(Color.parseColor("#1565C0"))
+                    text = "▶ Start Sequence"
+                    statusText.text = "Sequence cancelled"
+                } else {
+                    // Stop any individually-running trackers first
+                    healthTrackerManager.stopAllTrackers()
+                    activeTrackerButtons.values.forEach { btn ->
+                        btn.setBackgroundColor(Color.DKGRAY)
+                        btn.text = btn.text.toString().replace("⏹", "▶")
+                    }
+                    activeTrackerButtons.clear()
+
+                    enableIndividualButtons(false)
+                    setBackgroundColor(Color.RED)
+                    text = "⏹ Stop Sequence"
+                    sensorSequenceManager.startSequence()
+                }
             }
         }
 
-        if (availableTrackers.contains(HealthTrackerType.SWEAT_LOSS)) {
-            addTrackerButton("Sweat", HealthTrackerType.SWEAT_LOSS, "Hydration") {
-                healthTrackerManager.startSweatLoss()
-            }
-        }
+        buttonContainer.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 4, 0, 4)
+            addView(sequenceButton)
+            addView(sequenceStatusText)
+        })
 
+        // Stop All button
         val stopAllButton = Button(this).apply {
             text = "⏹ STOP ALL"
             setBackgroundColor(Color.RED)
             setTextColor(Color.WHITE)
             setPadding(12, 12, 12, 12)
             setOnClickListener {
+                if (sensorSequenceManager.isRunning) {
+                    sensorSequenceManager.cancelSequence()
+                    sequenceButton?.apply {
+                        setBackgroundColor(Color.parseColor("#1565C0"))
+                        text = "▶ Start Sequence"
+                    }
+                    sequenceStatusText?.text = "Sequence cancelled"
+                }
                 healthTrackerManager.stopAllTrackers()
                 activeTrackerButtons.values.forEach {
                     it.setBackgroundColor(Color.DKGRAY)
                     it.text = it.text.toString().replace("⏹", "▶")
                 }
                 activeTrackerButtons.clear()
+                enableIndividualButtons(true)
                 statusText.text = "All trackers stopped"
             }
         }
@@ -411,6 +495,8 @@ class MainActivity : Activity() {
             textSize = 11f
             setPadding(12, 12, 12, 12)
             setOnClickListener {
+                if (sensorSequenceManager.isRunning) return@setOnClickListener
+
                 if (activeTrackerButtons.containsKey(type)) {
                     healthTrackerManager.stopTracker(type)
                     activeTrackerButtons.remove(type)
@@ -430,6 +516,8 @@ class MainActivity : Activity() {
             }
         }
 
+        individualButtons.add(button)
+
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, 4, 0, 4)
@@ -442,6 +530,37 @@ class MainActivity : Activity() {
             })
         }
         buttonContainer.addView(container)
+    }
+
+    private fun enableIndividualButtons(enabled: Boolean) {
+        individualButtons.forEach { button ->
+            button.isEnabled = enabled
+            button.alpha = if (enabled) 1.0f else 0.4f
+        }
+    }
+
+    private fun formatPhase(manager: SensorSequenceManager): String {
+        return when {
+            !manager.isRunning -> ""
+            else -> {
+                // Read the phase from the last callback
+                sequenceStatusText?.text?.toString()?.substringBefore("...")?.plus("...") ?: ""
+            }
+        }
+    }
+
+    private fun updateSequenceUI(phase: SensorSequenceManager.SequencePhase) {
+        val phaseText = when (phase) {
+            SensorSequenceManager.SequencePhase.IDLE -> "Ready"
+            SensorSequenceManager.SequencePhase.SKIN_TEMP -> "Skin Temp..."
+            SensorSequenceManager.SequencePhase.SPO2 -> "SpO2..."
+            SensorSequenceManager.SequencePhase.CONTINUOUS -> "PPG + HR..."
+            SensorSequenceManager.SequencePhase.SENDING -> "Sending data..."
+            SensorSequenceManager.SequencePhase.COMPLETE -> "Complete!"
+            SensorSequenceManager.SequencePhase.CANCELLED -> "Cancelled"
+        }
+        statusText.text = phaseText
+        sequenceStatusText?.text = phaseText
     }
 
     private fun sendDataToPhone(data: HealthTrackerManager.TrackerData) {
@@ -468,16 +587,6 @@ class MainActivity : Activity() {
                     dataMap.putInt("status", data.status)
                     dataMap.putLong("timestamp", data.timestamp)
                 }
-                is HealthTrackerManager.TrackerData.ECGData -> {
-                    dataMap.putString("type", "ECG")
-                    dataMap.putInt("ppg_green", data.ppgGreen)
-                    dataMap.putInt("sequence", data.sequence)
-                    dataMap.putFloat("ecg_mv", data.ecgMv)
-                    dataMap.putInt("lead_off", data.leadOff)
-                    dataMap.putFloat("max_threshold_mv", data.maxThresholdMv)
-                    dataMap.putFloat("min_threshold_mv", data.minThresholdMv)
-                    dataMap.putLong("timestamp", data.timestamp)
-                }
                 is HealthTrackerManager.TrackerData.SkinTemperatureData -> {
                     dataMap.putString("type", "SkinTemp")
                     dataMap.putInt("status", data.status)
@@ -485,18 +594,11 @@ class MainActivity : Activity() {
                     data.ambientTemperature?.let { dataMap.putFloat("ambient_temp", it) }
                     dataMap.putLong("timestamp", data.timestamp)
                 }
-                is HealthTrackerManager.TrackerData.BIAData -> {
-                    dataMap.putString("type", "BIA")
-                    dataMap.putFloat("bmr", data.basalMetabolicRate)
-                    dataMap.putFloat("body_fat_mass", data.bodyFatMass)
-                    dataMap.putFloat("body_fat_ratio", data.bodyFatRatio)
-                    dataMap.putFloat("fat_free_mass", data.fatFreeMass)
-                    dataMap.putFloat("muscle_mass", data.skeletalMuscleMass)
-                    dataMap.putLong("timestamp", data.timestamp)
-                }
-                is HealthTrackerManager.TrackerData.SweatLossData -> {
-                    dataMap.putString("type", "Sweat")
-                    dataMap.putFloat("sweat_loss", data.sweatLoss)
+                is HealthTrackerManager.TrackerData.AccelerometerData -> {
+                    dataMap.putString("type", "Accelerometer")
+                    dataMap.putInt("x", data.x ?: 0)
+                    dataMap.putInt("y", data.y ?: 0)
+                    dataMap.putInt("z", data.z ?: 0)
                     dataMap.putLong("timestamp", data.timestamp)
                 }
             }
@@ -510,6 +612,9 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (::sensorSequenceManager.isInitialized && sensorSequenceManager.isRunning) {
+            sensorSequenceManager.cancelSequence()
+        }
         healthTrackerManager.disconnect()
     }
 }

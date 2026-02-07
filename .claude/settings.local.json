@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew:*)",
+      "Bash(.\\\\gradlew.bat:*)",
+      "Bash(cmd /c \"gradlew.bat :wear:compileDebugKotlin :mobile:compileDebugKotlin 2>&1\")",
+      "Bash(cmd /c \"gradlew.bat :wear:compileDebugKotlin :mobile:compileDebugKotlin\")",
+      "Bash(C:UsersclaudAndroidStudioProjectsFitGuardgradlew.bat :wear:compileDebugKotlin :mobile:compileDebugKotlin)",
+      "Bash(cmd.exe /c \"gradlew.bat :wear:compileDebugKotlin :mobile:compileDebugKotlin\")",
+      "Bash(cmd.exe /c \"cd /d C:\\\\Users\\\\claud\\\\AndroidStudioProjects\\\\FitGuard && gradlew.bat :wear:compileDebugKotlin :mobile:compileDebugKotlin 2>&1\")",
+      "Bash(powershell.exe -Command \"cd ''C:\\\\Users\\\\claud\\\\AndroidStudioProjects\\\\FitGuard''; .\\\\gradlew.bat :wear:compileDebugKotlin :mobile:compileDebugKotlin 2>&1\")",
+      "Bash(.gradlew:*)",
+      "Bash(cmd /c \"gradlew.bat :wear:compileDebugKotlin\")",
+      "Bash(./gradlew.bat:*)"
+    ]
+  }
+}
