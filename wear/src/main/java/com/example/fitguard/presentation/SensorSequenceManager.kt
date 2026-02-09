@@ -85,12 +85,9 @@ class SensorSequenceManager(
     private suspend fun runSequence() {
         val startTime = System.currentTimeMillis()
 
-        // Phase 1: Start Accelerometer + Skin Temp
+        // Phase 1: Start Skin Temp
         setPhase(SequencePhase.SKIN_TEMP)
-        Log.d(TAG, "Phase 1: Starting Accelerometer + Skin Temp")
-
-        val accelStarted = healthTrackerManager.startAccelerometerContinuous()
-        if (!accelStarted) Log.w(TAG, "Failed to start Accelerometer, continuing")
+        Log.d(TAG, "Phase 1: Starting Skin Temp")
 
         val skinTempStarted = healthTrackerManager.startSkinTemperatureOnDemand()
         if (!skinTempStarted) Log.w(TAG, "Failed to start Skin Temp, skipping")
@@ -136,11 +133,11 @@ class SensorSequenceManager(
             }
         }
 
-        // Phase 3: Start PPG + Heart Rate continuous
+        // Phase 3: Start PPG + Heart Rate + Accelerometer continuous
         setPhase(SequencePhase.CONTINUOUS)
-        Log.d(TAG, "Phase 3: Starting PPG + Heart Rate continuous")
+        Log.d(TAG, "Phase 3: Starting PPG + Heart Rate + Accelerometer continuous")
 
-        // Wait until T=40s mark before starting optical continuous sensors
+        // Wait until T=40s mark before starting continuous sensors
         val elapsedBeforeContinuous = (System.currentTimeMillis() - startTime) / 1000
         val continuousDelay = (CONTINUOUS_START_DELAY_SECONDS - elapsedBeforeContinuous).coerceAtLeast(0)
         if (continuousDelay > 0) delay(continuousDelay * 1000)
@@ -150,6 +147,9 @@ class SensorSequenceManager(
 
         val hrStarted = healthTrackerManager.startHeartRateContinuous()
         if (!hrStarted) Log.w(TAG, "Failed to start Heart Rate, continuing")
+
+        val accelStarted = healthTrackerManager.startAccelerometerContinuous()
+        if (!accelStarted) Log.w(TAG, "Failed to start Accelerometer, continuing")
 
         // Run until 5-minute mark with progress updates
         while (true) {

@@ -16,12 +16,13 @@ class SequenceProcessor(private val context: Context) {
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-    val accumulator = SequenceBatchAccumulator { sequenceId, samples, spo2Samples, skinTempSamples, totalBatches ->
-        processSequence(sequenceId, samples, spo2Samples, skinTempSamples)
+    val accumulator = SequenceBatchAccumulator { sequenceId, samples, spo2Samples, skinTempSamples, accelSamples, totalBatches ->
+        processSequence(sequenceId, samples, spo2Samples, skinTempSamples, accelSamples)
     }
 
     private fun processSequence(sequenceId: String, samples: List<PpgSample>,
-                                spo2Samples: List<SpO2Sample>, skinTempSamples: List<SkinTempSample>) {
+                                spo2Samples: List<SpO2Sample>, skinTempSamples: List<SkinTempSample>,
+                                accelSamples: List<AccelSample>) {
         scope.launch {
             try {
                 Log.d(TAG, "Processing sequence $sequenceId with ${samples.size} PPG samples")
@@ -46,16 +47,32 @@ class SequenceProcessor(private val context: Context) {
                 val bestSpO2 = spo2Samples.firstOrNull { it.spo2 > 0 }
                 val bestSkinTemp = skinTempSamples.firstOrNull { !it.objectTemp.isNaN() }
 
-                HrvCsvWriter.writeSequenceData(hrvResult, processedSamples, bestSpO2, bestSkinTemp)
+                val accelResult = if (accelSamples.size >= 10) {
+                    try {
+                        AccelProcessor.process(accelSamples, sequenceId).also {
+                            Log.d(TAG, "Accel results for $sequenceId: steps=${it.totalSteps} " +
+                                    "cadence=${String.format("%.1f", it.cadenceSpm)} " +
+                                    "meanMag=${String.format("%.2f", it.meanAccelMag)}")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Accel processing failed: ${e.message}", e)
+                        null
+                    }
+                } else {
+                    Log.w(TAG, "Too few accel samples (${accelSamples.size}), skipping accel processing")
+                    null
+                }
 
-                broadcastResult(hrvResult)
+                HrvCsvWriter.writeSequenceData(hrvResult, processedSamples, bestSpO2, bestSkinTemp, accelResult)
+
+                broadcastResult(hrvResult, accelResult)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to process sequence $sequenceId: ${e.message}", e)
             }
         }
     }
 
-    private fun broadcastResult(result: HrvResult) {
+    private fun broadcastResult(result: HrvResult, accelResult: AccelResult?) {
         val intent = Intent(ACTION_SEQUENCE_PROCESSED).apply {
             putExtra("sequence_id", result.sequenceId)
             putExtra("duration_seconds", result.durationSeconds)
@@ -68,6 +85,13 @@ class SequenceProcessor(private val context: Context) {
             putExtra("pnn20_pct", result.pnn20Pct)
             putExtra("pnn50_pct", result.pnn50Pct)
             putExtra("sdsd_ms", result.sdsdMs)
+            if (accelResult != null) {
+                putExtra("total_steps", accelResult.totalSteps)
+                putExtra("cadence_spm", accelResult.cadenceSpm)
+                putExtra("mean_accel_mag", accelResult.meanAccelMag)
+                putExtra("accel_variance", accelResult.accelVariance)
+                putExtra("peak_accel_mag", accelResult.peakAccelMag)
+            }
         }
         context.sendBroadcast(intent)
         Log.d(TAG, "Broadcast SEQUENCE_PROCESSED for ${result.sequenceId}")

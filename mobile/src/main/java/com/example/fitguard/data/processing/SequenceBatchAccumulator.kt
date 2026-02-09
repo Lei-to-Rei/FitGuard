@@ -5,11 +5,12 @@ import android.util.Log
 data class PpgSample(val timestamp: Long, val green: Int)
 data class SpO2Sample(val spo2: Int, val heartRate: Int, val status: Int, val timestamp: Long)
 data class SkinTempSample(val objectTemp: Float, val ambientTemp: Float, val status: Int, val timestamp: Long)
+data class AccelSample(val x: Int, val y: Int, val z: Int, val timestamp: Long)
 
 class SequenceBatchAccumulator(
     private val onSequenceReady: (sequenceId: String, ppgSamples: List<PpgSample>,
                                   spo2Samples: List<SpO2Sample>, skinTempSamples: List<SkinTempSample>,
-                                  totalBatches: Int) -> Unit
+                                  accelSamples: List<AccelSample>, totalBatches: Int) -> Unit
 ) {
     companion object {
         private const val TAG = "SeqBatchAccumulator"
@@ -20,7 +21,8 @@ class SequenceBatchAccumulator(
         val receivedBatches: MutableSet<Int> = mutableSetOf(),
         val ppgSamples: MutableList<PpgSample> = mutableListOf(),
         val spo2Samples: MutableList<SpO2Sample> = mutableListOf(),
-        val skinTempSamples: MutableList<SkinTempSample> = mutableListOf()
+        val skinTempSamples: MutableList<SkinTempSample> = mutableListOf(),
+        val accelSamples: MutableList<AccelSample> = mutableListOf()
     )
 
     private val sequences = mutableMapOf<String, SequenceState>()
@@ -46,6 +48,13 @@ class SequenceBatchAccumulator(
         }
     }
 
+    fun addAccelSamples(sequenceId: String, totalBatches: Int, samples: List<AccelSample>) {
+        val state = sequences.getOrPut(sequenceId) { SequenceState(totalBatches) }
+        synchronized(state) {
+            state.accelSamples.addAll(samples)
+        }
+    }
+
     fun markBatchReceived(sequenceId: String, batchNumber: Int, totalBatches: Int) {
         val state = sequences.getOrPut(sequenceId) { SequenceState(totalBatches) }
         synchronized(state) {
@@ -58,8 +67,9 @@ class SequenceBatchAccumulator(
                 val sortedPpg = state.ppgSamples.sortedBy { it.timestamp }
                 val spo2 = state.spo2Samples.toList()
                 val skinTemp = state.skinTempSamples.toList()
+                val sortedAccel = state.accelSamples.sortedBy { it.timestamp }
                 sequences.remove(sequenceId)
-                onSequenceReady(sequenceId, sortedPpg, spo2, skinTemp, totalBatches)
+                onSequenceReady(sequenceId, sortedPpg, spo2, skinTemp, sortedAccel, totalBatches)
             }
         }
     }

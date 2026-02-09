@@ -1,6 +1,7 @@
 package com.example.fitguard.services
 
 import android.util.Log
+import com.example.fitguard.data.processing.AccelSample
 import com.example.fitguard.data.processing.PpgSample
 import com.example.fitguard.data.processing.SpO2Sample
 import com.example.fitguard.data.processing.SkinTempSample
@@ -96,10 +97,11 @@ class WearableDataListenerService : WearableListenerService() {
                 saveToFile(type, entry.toString())
             }
 
-            // Feed PPG, SpO2, and SkinTemp entries to the sequence processor accumulator
+            // Feed PPG, SpO2, SkinTemp, and Accelerometer entries to the sequence processor accumulator
             val ppgSamples = mutableListOf<PpgSample>()
             val spo2Samples = mutableListOf<SpO2Sample>()
             val skinTempSamples = mutableListOf<SkinTempSample>()
+            val accelSamples = mutableListOf<AccelSample>()
             for (i in 0 until dataArray.length()) {
                 val entry = dataArray.getJSONObject(i)
                 when (entry.getString("type")) {
@@ -119,6 +121,12 @@ class WearableDataListenerService : WearableListenerService() {
                         status = entry.optInt("status", 0),
                         timestamp = entry.getLong("timestamp")
                     ))
+                    "Accelerometer" -> accelSamples.add(AccelSample(
+                        x = entry.optInt("x", 0),
+                        y = entry.optInt("y", 0),
+                        z = entry.optInt("z", 0),
+                        timestamp = entry.getLong("timestamp")
+                    ))
                 }
             }
             if (ppgSamples.isNotEmpty()) {
@@ -129,6 +137,9 @@ class WearableDataListenerService : WearableListenerService() {
             }
             if (skinTempSamples.isNotEmpty()) {
                 sequenceProcessor.accumulator.addSkinTempSamples(sequenceId, totalBatches, skinTempSamples)
+            }
+            if (accelSamples.isNotEmpty()) {
+                sequenceProcessor.accumulator.addAccelSamples(sequenceId, totalBatches, accelSamples)
             }
             sequenceProcessor.accumulator.markBatchReceived(sequenceId, batchNumber, totalBatches)
 

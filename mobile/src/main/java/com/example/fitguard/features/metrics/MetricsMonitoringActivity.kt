@@ -84,6 +84,19 @@ class MetricsMonitoringActivity : AppCompatActivity() {
                 val peaks = intent.getIntExtra("peaks_detected", 0)
                 val nn = intent.getIntExtra("nn_intervals_used", 0)
                 val dur = intent.getDoubleExtra("duration_seconds", 0.0)
+                val steps = intent.getIntExtra("total_steps", -1)
+                val cadence = intent.getDoubleExtra("cadence_spm", -1.0)
+                val meanAccelMag = intent.getDoubleExtra("mean_accel_mag", -1.0)
+                val accelVar = intent.getDoubleExtra("accel_variance", -1.0)
+                val peakAccelMag = intent.getDoubleExtra("peak_accel_mag", -1.0)
+
+                val accelText = if (steps >= 0) {
+                    "\n--- Activity ---\n" +
+                    "Steps: $steps | Cadence: ${String.format("%.1f", cadence)} spm\n" +
+                    "Mean Mag: ${String.format("%.2f", meanAccelMag)}\n" +
+                    "Variance: ${String.format("%.4f", accelVar)}\n" +
+                    "Peak Mag: ${String.format("%.2f", peakAccelMag)}"
+                } else ""
 
                 v.findViewById<TextView>(R.id.tvMetricTitle).text = "HRV Analysis"
                 v.findViewById<TextView>(R.id.tvMetricValue).text =
@@ -93,7 +106,8 @@ class MetricsMonitoringActivity : AppCompatActivity() {
                     "pNN20: ${String.format("%.1f", pnn20)}%\n" +
                     "pNN50: ${String.format("%.1f", pnn50)}%\n" +
                     "SDSD: ${String.format("%.2f", sdsd)} ms\n" +
-                    "Peaks: $peaks | NN: $nn | ${String.format("%.0f", dur)}s"
+                    "Peaks: $peaks | NN: $nn | ${String.format("%.0f", dur)}s" +
+                    accelText
                 v.findViewById<TextView>(R.id.tvMetricTimestamp).text =
                     "Processed: ${SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())}"
 

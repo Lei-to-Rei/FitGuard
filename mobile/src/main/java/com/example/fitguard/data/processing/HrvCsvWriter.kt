@@ -14,7 +14,8 @@ object HrvCsvWriter {
         "timestamp", "sequence_id", "ppg_green_raw", "ppg_green_filtered",
         "duration_seconds", "total_ppg_samples", "peaks_detected", "nn_intervals_used",
         "mean_hr_bpm", "sdnn_ms", "rmssd_ms", "pnn20_pct", "pnn50_pct", "sdsd_ms",
-        "spo2_pct", "spo2_hr_bpm", "skin_obj_temp", "skin_amb_temp"
+        "spo2_pct", "spo2_hr_bpm", "skin_obj_temp", "skin_amb_temp",
+        "total_steps", "cadence_spm", "mean_accel_mag", "accel_variance", "peak_accel_mag"
     ).joinToString(",")
 
     private fun getOutputDir(): File {
@@ -27,7 +28,8 @@ object HrvCsvWriter {
     }
 
     fun writeSequenceData(result: HrvResult, samples: List<PpgProcessedSample>,
-                          spo2: SpO2Sample?, skinTemp: SkinTempSample?) {
+                          spo2: SpO2Sample?, skinTemp: SkinTempSample?,
+                          accelResult: AccelResult? = null) {
         try {
             val dir = getOutputDir()
             val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
@@ -42,13 +44,20 @@ object HrvCsvWriter {
                 "${String.format(Locale.US, "%.2f", skinTemp.objectTemp)}," +
                     String.format(Locale.US, "%.2f", skinTemp.ambientTemp)
             } else ","
+            val accelPart = if (accelResult != null) {
+                "${accelResult.totalSteps}," +
+                    "${String.format(Locale.US, "%.1f", accelResult.cadenceSpm)}," +
+                    "${String.format(Locale.US, "%.2f", accelResult.meanAccelMag)}," +
+                    "${String.format(Locale.US, "%.4f", accelResult.accelVariance)}," +
+                    String.format(Locale.US, "%.2f", accelResult.peakAccelMag)
+            } else ",,,,"
 
             val lastIndex = samples.lastIndex
             for ((i, s) in samples.withIndex()) {
                 val ppgPart = "${s.timestamp},${s.sequenceId},${s.rawGreen}," +
                     String.format(Locale.US, "%.4f", s.filteredGreen)
                 if (i == lastIndex) {
-                    // Last signal row: append HRV + SpO2 + SkinTemp results
+                    // Last signal row: append HRV + SpO2 + SkinTemp + Accel results
                     sb.appendLine("$ppgPart,${
                         String.format(Locale.US, "%.1f", result.durationSeconds)},${
                         result.totalSamples},${result.peaksDetected},${result.nnIntervalsUsed},${
@@ -57,9 +66,9 @@ object HrvCsvWriter {
                         String.format(Locale.US, "%.2f", result.rmssdMs)},${
                         String.format(Locale.US, "%.1f", result.pnn20Pct)},${
                         String.format(Locale.US, "%.1f", result.pnn50Pct)},${
-                        String.format(Locale.US, "%.2f", result.sdsdMs)},$spo2Part,$skinTempPart")
+                        String.format(Locale.US, "%.2f", result.sdsdMs)},$spo2Part,$skinTempPart,$accelPart")
                 } else {
-                    sb.appendLine("$ppgPart,,,,,,,,,,,,,,")
+                    sb.appendLine("$ppgPart,,,,,,,,,,,,,,,,,,,")
                 }
             }
 
