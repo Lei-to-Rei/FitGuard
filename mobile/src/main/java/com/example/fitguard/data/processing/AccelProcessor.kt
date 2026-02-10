@@ -19,6 +19,14 @@ object AccelProcessor {
     private const val HIGH_CUTOFF_HZ = 4.0
     private const val ROLLING_MEAN_WINDOW_SECONDS = 0.4
 
+    // Samsung Galaxy Watch accelerometer conversion constants
+    // Raw values use 8g rescaling: divide by 4096 to get g-force,
+    // or multiply by (9.80665 / 4096) to get m/s²
+    // Source: https://developer.samsung.com/sdp/blog/en/2025/04/10/understanding-and-converting-galaxy-watch-accelerometer-data
+    private const val GRAVITY_MS2 = 9.80665
+    private const val SAMSUNG_ACCEL_SCALE = 4096.0
+    private const val RAW_TO_MS2 = GRAVITY_MS2 / SAMSUNG_ACCEL_SCALE
+
     fun process(
         samples: List<AccelSample>,
         sequenceId: String,
@@ -26,15 +34,15 @@ object AccelProcessor {
     ): AccelResult {
         require(samples.size >= 10) { "Too few accel samples" }
 
-        // Step 1: Compute magnitude for each sample
+        // Step 1: Convert raw Samsung values to m/s² and compute magnitude
         val magnitudes = DoubleArray(samples.size) { i ->
-            val x = samples[i].x.toDouble()
-            val y = samples[i].y.toDouble()
-            val z = samples[i].z.toDouble()
+            val x = samples[i].x.toDouble() * RAW_TO_MS2
+            val y = samples[i].y.toDouble() * RAW_TO_MS2
+            val z = samples[i].z.toDouble() * RAW_TO_MS2
             sqrt(x * x + y * y + z * z)
         }
 
-        // Step 2: Summary statistics on raw magnitudes
+        // Step 2: Summary statistics on magnitudes (in m/s²)
         val meanMag = magnitudes.average()
         val variance = magnitudes.map { (it - meanMag) * (it - meanMag) }.average()
         val peakMag = magnitudes.max()

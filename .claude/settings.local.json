@@ -17,7 +17,10 @@
       "WebFetch(domain:rpanderson-neurokit2.readthedocs.io)",
       "WebFetch(domain:neuropsychology.github.io)",
       "WebFetch(domain:ppg-beats.readthedocs.io)",
-      "Bash(C:/Users/claud/AndroidStudioProjects/FitGuard/gradlew.bat assembleDebug --no-daemon)"
+      "Bash(C:/Users/claud/AndroidStudioProjects/FitGuard/gradlew.bat assembleDebug --no-daemon)",
+      "WebFetch(domain:developer.samsung.com)",
+      "WebFetch(domain:www.analog.com)",
+      "Bash(C:/Users/claud/AndroidStudioProjects/FitGuard/gradlew.bat:*)"
     ]
   }
 }
