@@ -317,6 +317,13 @@ class MainActivity : Activity() {
             healthTrackerManager = healthTrackerManager
         )
 
+        // Store references in SessionManager for remote access
+        SessionManager.healthTrackerManager = healthTrackerManager
+        SessionManager.sleepStressSequenceManager = SleepStressSequenceManager(
+            context = this,
+            healthTrackerManager = healthTrackerManager
+        )
+
         sensorSequenceManager.onPhaseChanged = { phase ->
             runOnUiThread { updateSequenceUI(phase) }
         }
@@ -332,6 +339,7 @@ class MainActivity : Activity() {
         }
 
         sensorSequenceManager.onComplete = {
+            SessionManager.endSession()
             runOnUiThread {
                 sequenceStatusText?.text = "Sequence complete! Data sent."
                 enableIndividualButtons(true)
@@ -413,12 +421,18 @@ class MainActivity : Activity() {
             setOnClickListener {
                 if (sensorSequenceManager.isRunning) {
                     sensorSequenceManager.cancelSequence()
+                    SessionManager.endSession()
                     sequenceStatusText?.text = "Sequence cancelled"
                     enableIndividualButtons(true)
                     setBackgroundColor(Color.parseColor("#1565C0"))
                     text = "▶ Start Sequence"
                     statusText.text = "Sequence cancelled"
                 } else {
+                    if (!SessionManager.tryStartActivity()) {
+                        statusText.text = "Sleep/Stress monitoring active on phone"
+                        return@setOnClickListener
+                    }
+
                     // Stop any individually-running trackers first
                     healthTrackerManager.stopAllTrackers()
                     activeTrackerButtons.values.forEach { btn ->
@@ -457,6 +471,10 @@ class MainActivity : Activity() {
                     }
                     sequenceStatusText?.text = "Sequence cancelled"
                 }
+                SessionManager.sleepStressSequenceManager?.let {
+                    if (it.isRunning) it.stopRepeatingSequence()
+                }
+                SessionManager.endSession()
                 healthTrackerManager.stopAllTrackers()
                 activeTrackerButtons.values.forEach {
                     it.setBackgroundColor(Color.DKGRAY)

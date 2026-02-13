@@ -20,7 +20,8 @@
       "Bash(C:/Users/claud/AndroidStudioProjects/FitGuard/gradlew.bat assembleDebug --no-daemon)",
       "WebFetch(domain:developer.samsung.com)",
       "WebFetch(domain:www.analog.com)",
-      "Bash(C:/Users/claud/AndroidStudioProjects/FitGuard/gradlew.bat:*)"
+      "Bash(C:/Users/claud/AndroidStudioProjects/FitGuard/gradlew.bat:*)",
+      "Bash(dir:*)"
     ]
   }
 }

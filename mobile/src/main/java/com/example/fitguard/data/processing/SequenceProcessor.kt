@@ -15,6 +15,7 @@ class SequenceProcessor(private val context: Context) {
     }
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private val sleepStressCsvWriter = SleepStressCsvWriter()
 
     val accumulator = SequenceBatchAccumulator { sequenceId, samples, spo2Samples, skinTempSamples, accelSamples, totalBatches ->
         processSequence(sequenceId, samples, spo2Samples, skinTempSamples, accelSamples)
@@ -63,7 +64,11 @@ class SequenceProcessor(private val context: Context) {
                     null
                 }
 
-                HrvCsvWriter.writeSequenceData(hrvResult, processedSamples, bestSpO2, bestSkinTemp, accelResult)
+                if (sequenceId.startsWith("ss_")) {
+                    sleepStressCsvWriter.writeSequenceData(hrvResult, accelResult)
+                } else {
+                    HrvCsvWriter.writeSequenceData(hrvResult, processedSamples, bestSpO2, bestSkinTemp, accelResult)
+                }
 
                 broadcastResult(hrvResult, accelResult)
             } catch (e: Exception) {

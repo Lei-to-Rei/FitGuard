@@ -6,6 +6,7 @@ import com.example.fitguard.data.processing.PpgSample
 import com.example.fitguard.data.processing.SpO2Sample
 import com.example.fitguard.data.processing.SkinTempSample
 import com.example.fitguard.data.processing.SequenceProcessor
+import com.example.fitguard.features.sleep.SleepStressActivity
 import com.google.android.gms.wearable.*
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,6 +20,25 @@ class WearableDataListenerService : WearableListenerService() {
     }
 
     private val sequenceProcessor by lazy { SequenceProcessor(this) }
+
+    override fun onMessageReceived(messageEvent: MessageEvent) {
+        if (messageEvent.path == "/sleep_stress/status") {
+            try {
+                val json = JSONObject(String(messageEvent.data, Charsets.UTF_8))
+                val status = json.getString("status")
+                val reason = json.optString("reason", "")
+                Log.d(TAG, "Watch status message: $status (reason: $reason)")
+
+                sendBroadcast(android.content.Intent(SleepStressActivity.ACTION_SLEEP_STRESS_STATUS).apply {
+                    setPackage(packageName)
+                    putExtra("status", status)
+                    putExtra("reason", reason)
+                })
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to parse watch status: ${e.message}", e)
+            }
+        }
+    }
 
     override fun onDataChanged(dataEvents: DataEventBuffer) {
         dataEvents.forEach { event ->
@@ -84,7 +104,8 @@ class WearableDataListenerService : WearableListenerService() {
             val totalBatches = metadata.getInt("total_batches")
             val receivedAt = System.currentTimeMillis()
 
-            Log.d(TAG, "Received batch $batchNumber/$totalBatches (${dataArray.length()} points) for $sequenceId")
+            val isSleepStress = sequenceId.startsWith("ss_")
+            Log.d(TAG, "Received batch $batchNumber/$totalBatches (${dataArray.length()} points) for $sequenceId (sleepStress=$isSleepStress)")
 
             for (i in 0 until dataArray.length()) {
                 val entry = dataArray.getJSONObject(i)
@@ -94,7 +115,7 @@ class WearableDataListenerService : WearableListenerService() {
                 entry.put("batch_number", batchNumber)
                 entry.put("received_at", receivedAt)
 
-                saveToFile(type, entry.toString())
+                saveToFile(type, entry.toString(), isSleepStress)
             }
 
             // Feed PPG, SpO2, SkinTemp, and Accelerometer entries to the sequence processor accumulator
@@ -154,10 +175,11 @@ class WearableDataListenerService : WearableListenerService() {
         }
     }
 
-    private fun saveToFile(type: String, data: String) {
+    private fun saveToFile(type: String, data: String, isSleepStress: Boolean = false) {
         try {
+            val subDir = if (isSleepStress) "FitGuard_Data/Sleep_and_Stress_Data" else "FitGuard_Data"
             val dir = File(android.os.Environment.getExternalStoragePublicDirectory(
-                android.os.Environment.DIRECTORY_DOWNLOADS), "FitGuard_Data")
+                android.os.Environment.DIRECTORY_DOWNLOADS), subDir)
             dir.mkdirs()
             File(dir, "${type}_${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())}.jsonl")
                 .appendText(data + "\n")

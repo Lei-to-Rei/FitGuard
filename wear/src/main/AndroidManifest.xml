@@ -114,6 +114,19 @@
             </intent-filter>
         </activity>
 
+        <!-- Message Listener for phone commands (sleep/stress start/stop) -->
+        <service
+            android:name=".presentation.WearMessageListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/sleep_stress" />
+            </intent-filter>
+        </service>
+
     </application>
 
 </manifest>
