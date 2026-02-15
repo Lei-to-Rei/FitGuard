@@ -10,7 +10,8 @@ data class SequenceData(
     val sequenceId: String,
     val ppgSamples: List<PpgSample>,
     val accelSamples: List<AccelSample>,
-    val skinTempSamples: List<SkinTempSample>
+    val skinTempSamples: List<SkinTempSample>,
+    val activityType: String = ""
 )
 
 class SequenceBatchAccumulator(
@@ -25,10 +26,18 @@ class SequenceBatchAccumulator(
         val receivedBatches: MutableSet<Int> = mutableSetOf(),
         val ppgSamples: MutableList<PpgSample> = mutableListOf(),
         val accelSamples: MutableList<AccelSample> = mutableListOf(),
-        val skinTempSamples: MutableList<SkinTempSample> = mutableListOf()
+        val skinTempSamples: MutableList<SkinTempSample> = mutableListOf(),
+        var activityType: String = ""
     )
 
     private val sequences = mutableMapOf<String, SequenceState>()
+
+    fun setActivityType(sequenceId: String, activityType: String) {
+        val state = sequences[sequenceId] ?: return
+        synchronized(state) {
+            state.activityType = activityType
+        }
+    }
 
     fun addPpgSamples(sequenceId: String, totalBatches: Int, samples: List<PpgSample>) {
         val state = sequences.getOrPut(sequenceId) { SequenceState(totalBatches) }
@@ -66,7 +75,8 @@ class SequenceBatchAccumulator(
                     sequenceId = sequenceId,
                     ppgSamples = state.ppgSamples.sortedBy { it.timestamp },
                     accelSamples = state.accelSamples.sortedBy { it.timestamp },
-                    skinTempSamples = state.skinTempSamples.sortedBy { it.timestamp }
+                    skinTempSamples = state.skinTempSamples.sortedBy { it.timestamp },
+                    activityType = state.activityType
                 )
                 sequences.remove(sequenceId)
                 onSequenceReady(data)

@@ -2,7 +2,10 @@ package com.example.fitguard.presentation
 
 import android.Manifest
 import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
@@ -21,6 +24,11 @@ import androidx.core.content.ContextCompat
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import com.samsung.android.service.health.tracking.data.HealthTrackerType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import org.json.JSONObject
 
 class MainActivity : Activity() {
     private lateinit var statusText: TextView
@@ -31,6 +39,7 @@ class MainActivity : Activity() {
     private val individualButtons = mutableListOf<Button>()
     private var sequenceButton: Button? = null
     private var sequenceStatusText: TextView? = null
+    private var activityCommandReceiver: BroadcastReceiver? = null
 
     companion object {
         private const val PERMISSION_REQUEST_CODE = 100
@@ -104,6 +113,7 @@ class MainActivity : Activity() {
         setContentView(mainContainer)
 
         checkAndRequestPermissions()
+        registerActivityCommandReceiver()
     }
 
     private fun checkAndRequestPermissions() {
@@ -341,6 +351,17 @@ class MainActivity : Activity() {
                 }
             }
         }
+
+        sensorSequenceManager.onSequenceLoopComplete = { seqCount ->
+            runOnUiThread {
+                sequenceStatusText?.text = "Continuous: ${sensorSequenceManager.activityType} | Seq #$seqCount"
+            }
+            sendMessageToPhone("/fitguard/activity/heartbeat", JSONObject().apply {
+                put("session_id", sensorSequenceManager.sessionId)
+                put("sequence_count", seqCount)
+                put("elapsed_s", seqCount * 77) // ~75s per sequence + 2s gap
+            })
+        }
     }
 
     private fun createTrackerButtons() {
@@ -400,8 +421,20 @@ class MainActivity : Activity() {
             setPadding(12, 12, 12, 12)
             setOnClickListener {
                 if (sensorSequenceManager.isRunning) {
-                    sensorSequenceManager.cancelSequence()
-                    sequenceStatusText?.text = "Sequence cancelled"
+                    if (sensorSequenceManager.isContinuousMode) {
+                        val seqCount = sensorSequenceManager.sequenceCount
+                        val sid = sensorSequenceManager.sessionId
+                        sensorSequenceManager.cancelSequence()
+                        sendMessageToPhone("/fitguard/activity/stopped", JSONObject().apply {
+                            put("session_id", sid)
+                            put("reason", "watch_stop")
+                            put("sequence_count", seqCount)
+                        })
+                        sequenceStatusText?.text = "Session stopped locally"
+                    } else {
+                        sensorSequenceManager.cancelSequence()
+                        sequenceStatusText?.text = "Sequence cancelled"
+                    }
                     enableIndividualButtons(true)
                     setBackgroundColor(Color.parseColor("#1565C0"))
                     text = "▶ Start Sequence"
@@ -438,7 +471,18 @@ class MainActivity : Activity() {
             setPadding(12, 12, 12, 12)
             setOnClickListener {
                 if (sensorSequenceManager.isRunning) {
-                    sensorSequenceManager.cancelSequence()
+                    if (sensorSequenceManager.isContinuousMode) {
+                        val seqCount = sensorSequenceManager.sequenceCount
+                        val sid = sensorSequenceManager.sessionId
+                        sensorSequenceManager.cancelSequence()
+                        sendMessageToPhone("/fitguard/activity/stopped", JSONObject().apply {
+                            put("session_id", sid)
+                            put("reason", "watch_stop")
+                            put("sequence_count", seqCount)
+                        })
+                    } else {
+                        sensorSequenceManager.cancelSequence()
+                    }
                     sequenceButton?.apply {
                         setBackgroundColor(Color.parseColor("#1565C0"))
                         text = "▶ Start Sequence"
@@ -583,9 +627,102 @@ class MainActivity : Activity() {
             .addOnFailureListener { Log.e(TAG, "✗ Failed to send: ${it.message}") }
     }
 
+    private fun registerActivityCommandReceiver() {
+        activityCommandReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                intent ?: return
+                when (intent.action) {
+                    WearableMessageListenerService.ACTION_START_ACTIVITY -> {
+                        val activityType = intent.getStringExtra("activity_type") ?: ""
+                        val sessionId = intent.getStringExtra("session_id") ?: ""
+                        Log.d(TAG, "Received start command: activity=$activityType session=$sessionId")
+
+                        if (::sensorSequenceManager.isInitialized && !sensorSequenceManager.isRunning) {
+                            runOnUiThread {
+                                enableIndividualButtons(false)
+                                sequenceButton?.apply {
+                                    setBackgroundColor(Color.RED)
+                                    text = "⏹ Stop Session"
+                                }
+                                sequenceStatusText?.text = "Continuous: $activityType"
+                                statusText.text = "Session started from phone"
+                            }
+                            sensorSequenceManager.startContinuousSession(sessionId, activityType)
+                            sendMessageToPhone("/fitguard/activity/ack", JSONObject().apply {
+                                put("session_id", sessionId)
+                                put("status", "started")
+                            })
+                        } else {
+                            sendMessageToPhone("/fitguard/activity/ack", JSONObject().apply {
+                                put("session_id", sessionId)
+                                put("status", "busy")
+                            })
+                        }
+                    }
+                    WearableMessageListenerService.ACTION_STOP_ACTIVITY -> {
+                        val sessionId = intent.getStringExtra("session_id") ?: ""
+                        Log.d(TAG, "Received stop command: session=$sessionId")
+
+                        if (::sensorSequenceManager.isInitialized && sensorSequenceManager.isRunning && sensorSequenceManager.isContinuousMode) {
+                            val seqCount = sensorSequenceManager.sequenceCount
+                            sensorSequenceManager.cancelSequence()
+                            runOnUiThread {
+                                enableIndividualButtons(true)
+                                sequenceButton?.apply {
+                                    setBackgroundColor(Color.parseColor("#1565C0"))
+                                    text = "▶ Start Sequence"
+                                }
+                                sequenceStatusText?.text = "Session stopped by phone"
+                                statusText.text = "Session stopped"
+                            }
+                            sendMessageToPhone("/fitguard/activity/stopped", JSONObject().apply {
+                                put("session_id", sessionId)
+                                put("reason", "phone_stop")
+                                put("sequence_count", seqCount)
+                            })
+                        }
+                    }
+                }
+            }
+        }
+
+        val filter = IntentFilter().apply {
+            addAction(WearableMessageListenerService.ACTION_START_ACTIVITY)
+            addAction(WearableMessageListenerService.ACTION_STOP_ACTIVITY)
+        }
+        registerReceiver(activityCommandReceiver, filter, RECEIVER_NOT_EXPORTED)
+    }
+
+    private fun sendMessageToPhone(path: String, payload: JSONObject) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val nodes = Wearable.getNodeClient(this@MainActivity).connectedNodes.await()
+                val data = payload.toString().toByteArray(Charsets.UTF_8)
+                for (node in nodes) {
+                    Wearable.getMessageClient(this@MainActivity).sendMessage(node.id, path, data).await()
+                    Log.d(TAG, "Sent $path to ${node.displayName}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send message $path: ${e.message}", e)
+            }
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        activityCommandReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: Exception) {}
+        }
         if (::sensorSequenceManager.isInitialized && sensorSequenceManager.isRunning) {
+            if (sensorSequenceManager.isContinuousMode) {
+                val seqCount = sensorSequenceManager.sequenceCount
+                val sid = sensorSequenceManager.sessionId
+                sendMessageToPhone("/fitguard/activity/stopped", JSONObject().apply {
+                    put("session_id", sid)
+                    put("reason", "watch_destroyed")
+                    put("sequence_count", seqCount)
+                })
+            }
             sensorSequenceManager.cancelSequence()
         }
         healthTrackerManager.disconnect()

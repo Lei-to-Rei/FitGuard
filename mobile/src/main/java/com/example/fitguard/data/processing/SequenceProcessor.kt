@@ -71,7 +71,8 @@ class SequenceProcessor(private val context: Context) {
                     skinTempDelta = skinTempDelta,
                     skinTempAmbient = skinTempAmbient,
                     totalSteps = accelFeatures.totalSteps,
-                    cadenceSpm = accelFeatures.cadenceSpm
+                    cadenceSpm = accelFeatures.cadenceSpm,
+                    activityLabel = data.activityType
                 )
 
                 Log.d(TAG, "Features for ${data.sequenceId}: HR=${String.format("%.1f", ppgFeatures.meanHrBpm)} " +

@@ -1,5 +1,6 @@
 package com.example.fitguard.services
 
+import android.content.Intent
 import android.util.Log
 import com.example.fitguard.data.processing.AccelSample
 import com.example.fitguard.data.processing.PpgSample
@@ -14,6 +15,9 @@ import java.util.*
 class WearableDataListenerService : WearableListenerService() {
     companion object {
         private const val TAG = "WearableDataListener"
+        const val ACTION_ACTIVITY_ACK = "com.example.fitguard.ACTIVITY_ACK"
+        const val ACTION_ACTIVITY_STOPPED = "com.example.fitguard.ACTIVITY_STOPPED"
+        const val ACTION_ACTIVITY_HEARTBEAT = "com.example.fitguard.ACTIVITY_HEARTBEAT"
     }
 
     private val sequenceProcessor by lazy { SequenceProcessor(this) }
@@ -28,6 +32,38 @@ class WearableDataListenerService : WearableListenerService() {
                     "/health_tracker_batch" -> processBatchData(dataMap)
                 }
             }
+        }
+    }
+
+    override fun onMessageReceived(messageEvent: MessageEvent) {
+        val path = messageEvent.path
+        Log.d(TAG, "Message received: $path")
+        try {
+            val json = JSONObject(String(messageEvent.data, Charsets.UTF_8))
+            when (path) {
+                "/fitguard/activity/ack" -> {
+                    sendBroadcast(Intent(ACTION_ACTIVITY_ACK).apply {
+                        putExtra("session_id", json.optString("session_id"))
+                        putExtra("status", json.optString("status"))
+                    })
+                }
+                "/fitguard/activity/stopped" -> {
+                    sendBroadcast(Intent(ACTION_ACTIVITY_STOPPED).apply {
+                        putExtra("session_id", json.optString("session_id"))
+                        putExtra("reason", json.optString("reason"))
+                        putExtra("sequence_count", json.optInt("sequence_count", 0))
+                    })
+                }
+                "/fitguard/activity/heartbeat" -> {
+                    sendBroadcast(Intent(ACTION_ACTIVITY_HEARTBEAT).apply {
+                        putExtra("session_id", json.optString("session_id"))
+                        putExtra("sequence_count", json.optInt("sequence_count", 0))
+                        putExtra("elapsed_s", json.optInt("elapsed_s", 0))
+                    })
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to process message on $path: ${e.message}", e)
         }
     }
 
@@ -72,7 +108,10 @@ class WearableDataListenerService : WearableListenerService() {
             val totalBatches = metadata.getInt("total_batches")
             val receivedAt = System.currentTimeMillis()
 
-            Log.d(TAG, "Received batch $batchNumber/$totalBatches (${dataArray.length()} points) for $sequenceId")
+            val activityType = metadata.optString("activity_type", "")
+
+            Log.d(TAG, "Received batch $batchNumber/$totalBatches (${dataArray.length()} points) for $sequenceId" +
+                    if (activityType.isNotEmpty()) " activity=$activityType" else "")
 
             val ppgSamples = mutableListOf<PpgSample>()
             val accelSamples = mutableListOf<AccelSample>()
@@ -123,6 +162,9 @@ class WearableDataListenerService : WearableListenerService() {
             }
             if (skinTempSamples.isNotEmpty()) {
                 sequenceProcessor.accumulator.addSkinTempSamples(sequenceId, totalBatches, skinTempSamples)
+            }
+            if (activityType.isNotEmpty()) {
+                sequenceProcessor.accumulator.setActivityType(sequenceId, activityType)
             }
             sequenceProcessor.accumulator.markBatchReceived(sequenceId, batchNumber, totalBatches)
 

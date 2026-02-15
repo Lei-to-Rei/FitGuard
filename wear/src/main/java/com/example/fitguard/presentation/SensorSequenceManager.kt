@@ -33,10 +33,21 @@ class SensorSequenceManager(
     var onPhaseChanged: ((SequencePhase) -> Unit)? = null
     var onProgress: ((elapsedSeconds: Int, totalSeconds: Int) -> Unit)? = null
     var onComplete: (() -> Unit)? = null
+    var onSequenceLoopComplete: ((sequenceCount: Int) -> Unit)? = null
 
     private var sequenceJob: Job? = null
     private var currentPhase = SequencePhase.IDLE
     private var sequenceId: String = ""
+
+    // Continuous session fields
+    var isContinuousMode: Boolean = false
+        private set
+    var activityType: String = ""
+        private set
+    var sessionId: String = ""
+        private set
+    var sequenceCount: Int = 0
+        private set
 
     val isRunning: Boolean get() = currentPhase != SequencePhase.IDLE &&
             currentPhase != SequencePhase.COMPLETE &&
@@ -71,6 +82,42 @@ class SensorSequenceManager(
             } finally {
                 healthTrackerManager.stopAllTrackers()
                 healthTrackerManager.restoreDefaultCallback()
+            }
+        }
+    }
+
+    fun startContinuousSession(sessionId: String, activityType: String) {
+        if (isRunning) return
+
+        this.isContinuousMode = true
+        this.sessionId = sessionId
+        this.activityType = activityType
+        this.sequenceCount = 0
+
+        clearBuffers()
+        healthTrackerManager.stopAllTrackers()
+        healthTrackerManager.onDataCallback = bufferingCallback
+
+        sequenceJob = CoroutineScope(Dispatchers.Main).launch {
+            try {
+                while (isActive) {
+                    sequenceId = "${sessionId}_seq_${System.currentTimeMillis()}"
+                    runSequence()
+                    sequenceCount++
+                    onSequenceLoopComplete?.invoke(sequenceCount)
+                    delay(2000)
+                    clearBuffers()
+                }
+            } catch (e: CancellationException) {
+                Log.d(TAG, "Continuous session cancelled after $sequenceCount sequences")
+                setPhase(SequencePhase.CANCELLED)
+            } catch (e: Exception) {
+                Log.e(TAG, "Continuous session error: ${e.message}", e)
+                setPhase(SequencePhase.CANCELLED)
+            } finally {
+                healthTrackerManager.stopAllTrackers()
+                healthTrackerManager.restoreDefaultCallback()
+                isContinuousMode = false
             }
         }
     }
@@ -131,8 +178,10 @@ class SensorSequenceManager(
         setPhase(SequencePhase.SENDING)
         batchSendAllData()
 
-        setPhase(SequencePhase.COMPLETE)
-        onComplete?.invoke()
+        if (!isContinuousMode) {
+            setPhase(SequencePhase.COMPLETE)
+            onComplete?.invoke()
+        }
     }
 
     private fun setPhase(phase: SequencePhase) {
@@ -141,11 +190,13 @@ class SensorSequenceManager(
     }
 
     fun cancelSequence() {
+        val wasContinuous = isContinuousMode
         sequenceJob?.cancel()
         sequenceJob = null
         healthTrackerManager.stopAllTrackers()
         healthTrackerManager.restoreDefaultCallback()
         clearBuffers()
+        isContinuousMode = false
         setPhase(SequencePhase.CANCELLED)
     }
 
@@ -226,6 +277,10 @@ class SensorSequenceManager(
                     put("points_in_batch", batch.length())
                     put("total_points", totalPoints)
                     put("sent_at", System.currentTimeMillis())
+                    if (isContinuousMode) {
+                        put("activity_type", activityType)
+                        put("session_id", sessionId)
+                    }
                 }
 
                 val payload = JSONObject().apply {
