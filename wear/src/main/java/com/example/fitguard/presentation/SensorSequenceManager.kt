@@ -15,23 +15,18 @@ class SensorSequenceManager(
     private val healthTrackerManager: HealthTrackerManager
 ) {
     enum class SequencePhase {
-        IDLE, SKIN_TEMP, SPO2, CONTINUOUS, SENDING, COMPLETE, CANCELLED
+        IDLE, SKIN_TEMP, CONTINUOUS, SENDING, COMPLETE, CANCELLED
     }
 
     companion object {
         private const val TAG = "SensorSequenceManager"
-        private const val SEQUENCE_DURATION_SECONDS = 340
+        private const val CONTINUOUS_DURATION_SECONDS = 60
         private const val SKIN_TEMP_TIMEOUT_SECONDS = 15
-        private const val SPO2_TIMEOUT_SECONDS = 60
-        private const val SPO2_START_DELAY_SECONDS = 5
-        private const val CONTINUOUS_START_DELAY_SECONDS = 40
         private const val MAX_BATCH_BYTES = 75_000
         private const val BATCH_SEND_DELAY_MS = 200L
     }
 
     private val ppgBuffer = CopyOnWriteArrayList<HealthTrackerManager.TrackerData.PPGData>()
-    private val heartRateBuffer = CopyOnWriteArrayList<HealthTrackerManager.TrackerData.HeartRateData>()
-    private val spO2Buffer = CopyOnWriteArrayList<HealthTrackerManager.TrackerData.SpO2Data>()
     private val skinTempBuffer = CopyOnWriteArrayList<HealthTrackerManager.TrackerData.SkinTemperatureData>()
     private val accelerometerBuffer = CopyOnWriteArrayList<HealthTrackerManager.TrackerData.AccelerometerData>()
 
@@ -50,8 +45,6 @@ class SensorSequenceManager(
     private val bufferingCallback: (HealthTrackerManager.TrackerData) -> Unit = { data ->
         when (data) {
             is HealthTrackerManager.TrackerData.PPGData -> ppgBuffer.add(data)
-            is HealthTrackerManager.TrackerData.HeartRateData -> heartRateBuffer.add(data)
-            is HealthTrackerManager.TrackerData.SpO2Data -> spO2Buffer.add(data)
             is HealthTrackerManager.TrackerData.SkinTemperatureData -> skinTempBuffer.add(data)
             is HealthTrackerManager.TrackerData.AccelerometerData -> accelerometerBuffer.add(data)
         }
@@ -84,23 +77,44 @@ class SensorSequenceManager(
 
     private suspend fun runSequence() {
         val startTime = System.currentTimeMillis()
+        val totalSeconds = CONTINUOUS_DURATION_SECONDS + SKIN_TEMP_TIMEOUT_SECONDS
 
-        // Phase 1: Start Accelerometer + Skin Temp
-        setPhase(SequencePhase.SKIN_TEMP)
-        Log.d(TAG, "Phase 1: Starting Accelerometer + Skin Temp")
+        // Phase 1: PPG + Accelerometer for 60s
+        setPhase(SequencePhase.CONTINUOUS)
+        Log.d(TAG, "Phase 1: Starting PPG + Accelerometer for ${CONTINUOUS_DURATION_SECONDS}s")
+
+        val ppgStarted = healthTrackerManager.startPPGContinuous()
+        if (!ppgStarted) Log.w(TAG, "Failed to start PPG, continuing")
 
         val accelStarted = healthTrackerManager.startAccelerometerContinuous()
         if (!accelStarted) Log.w(TAG, "Failed to start Accelerometer, continuing")
+
+        // Run for 60s with progress updates
+        while (true) {
+            val elapsed = ((System.currentTimeMillis() - startTime) / 1000).toInt()
+            if (elapsed >= CONTINUOUS_DURATION_SECONDS) break
+            onProgress?.invoke(elapsed, totalSeconds)
+            delay(1000)
+        }
+
+        // Stop continuous trackers
+        healthTrackerManager.stopTracker(HealthTrackerType.PPG_CONTINUOUS)
+        healthTrackerManager.stopTracker(HealthTrackerType.ACCELEROMETER_CONTINUOUS)
+        Log.d(TAG, "Phase 1 complete, stopped PPG + Accelerometer")
+
+        // Phase 2: Skin Temperature
+        setPhase(SequencePhase.SKIN_TEMP)
+        Log.d(TAG, "Phase 2: Starting Skin Temp")
 
         val skinTempStarted = healthTrackerManager.startSkinTemperatureOnDemand()
         if (!skinTempStarted) Log.w(TAG, "Failed to start Skin Temp, skipping")
 
         if (skinTempStarted) {
-            // Wait for skin temp reading or timeout
             val skinTempDeadline = System.currentTimeMillis() + SKIN_TEMP_TIMEOUT_SECONDS * 1000L
             while (!hasValidSkinTemp() && System.currentTimeMillis() < skinTempDeadline) {
+                val elapsed = ((System.currentTimeMillis() - startTime) / 1000).toInt()
+                onProgress?.invoke(elapsed, totalSeconds)
                 delay(500)
-                updateProgress(startTime)
             }
             healthTrackerManager.stopTracker(HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND)
             if (!hasValidSkinTemp()) {
@@ -110,57 +124,8 @@ class SensorSequenceManager(
             }
         }
 
-        // Phase 2: Start SpO2
-        setPhase(SequencePhase.SPO2)
-        Log.d(TAG, "Phase 2: Starting SpO2")
-
-        // Small delay before starting SpO2
-        val elapsedSoFar = (System.currentTimeMillis() - startTime) / 1000
-        val spo2Delay = (SPO2_START_DELAY_SECONDS - elapsedSoFar).coerceAtLeast(0)
-        if (spo2Delay > 0) delay(spo2Delay * 1000)
-
-        val spo2Started = healthTrackerManager.startSpO2OnDemand()
-        if (!spo2Started) Log.w(TAG, "Failed to start SpO2, skipping")
-
-        if (spo2Started) {
-            val spo2Deadline = System.currentTimeMillis() + SPO2_TIMEOUT_SECONDS * 1000L
-            while (!hasValidSpO2() && System.currentTimeMillis() < spo2Deadline) {
-                delay(500)
-                updateProgress(startTime)
-            }
-            healthTrackerManager.stopTracker(HealthTrackerType.SPO2_ON_DEMAND)
-            if (!hasValidSpO2()) {
-                Log.w(TAG, "SpO2 timed out after ${SPO2_TIMEOUT_SECONDS}s")
-            } else {
-                Log.d(TAG, "SpO2 reading received")
-            }
-        }
-
-        // Phase 3: Start PPG + Heart Rate continuous
-        setPhase(SequencePhase.CONTINUOUS)
-        Log.d(TAG, "Phase 3: Starting PPG + Heart Rate continuous")
-
-        // Wait until T=40s mark before starting optical continuous sensors
-        val elapsedBeforeContinuous = (System.currentTimeMillis() - startTime) / 1000
-        val continuousDelay = (CONTINUOUS_START_DELAY_SECONDS - elapsedBeforeContinuous).coerceAtLeast(0)
-        if (continuousDelay > 0) delay(continuousDelay * 1000)
-
-        val ppgStarted = healthTrackerManager.startPPGContinuous()
-        if (!ppgStarted) Log.w(TAG, "Failed to start PPG, continuing")
-
-        val hrStarted = healthTrackerManager.startHeartRateContinuous()
-        if (!hrStarted) Log.w(TAG, "Failed to start Heart Rate, continuing")
-
-        // Run until 5-minute mark with progress updates
-        while (true) {
-            val elapsed = ((System.currentTimeMillis() - startTime) / 1000).toInt()
-            if (elapsed >= SEQUENCE_DURATION_SECONDS) break
-            updateProgress(startTime)
-            delay(1000)
-        }
-
-        // Phase 4: Stop all and send data
-        Log.d(TAG, "Phase 4: Stopping trackers and sending data")
+        // Phase 3: Stop all and send data
+        Log.d(TAG, "Phase 3: Sending data")
         healthTrackerManager.stopAllTrackers()
 
         setPhase(SequencePhase.SENDING)
@@ -168,12 +133,6 @@ class SensorSequenceManager(
 
         setPhase(SequencePhase.COMPLETE)
         onComplete?.invoke()
-    }
-
-    private fun updateProgress(startTime: Long) {
-        val elapsed = ((System.currentTimeMillis() - startTime) / 1000).toInt()
-            .coerceAtMost(SEQUENCE_DURATION_SECONDS)
-        onProgress?.invoke(elapsed, SEQUENCE_DURATION_SECONDS)
     }
 
     private fun setPhase(phase: SequencePhase) {
@@ -192,8 +151,6 @@ class SensorSequenceManager(
 
     private fun clearBuffers() {
         ppgBuffer.clear()
-        heartRateBuffer.clear()
-        spO2Buffer.clear()
         skinTempBuffer.clear()
         accelerometerBuffer.clear()
     }
@@ -207,27 +164,6 @@ class SensorSequenceManager(
                 put("green", data.green ?: 0)
                 put("ir", data.ir ?: 0)
                 put("red", data.red ?: 0)
-                put("timestamp", data.timestamp)
-            })
-        }
-
-        heartRateBuffer.forEach { data ->
-            allEntries.add(JSONObject().apply {
-                put("type", "HeartRate")
-                put("heart_rate", data.heartRate)
-                put("ibi_list", JSONArray(data.ibiList))
-                put("ibi_status_list", JSONArray(data.ibiStatusList))
-                put("status", data.status)
-                put("timestamp", data.timestamp)
-            })
-        }
-
-        spO2Buffer.forEach { data ->
-            allEntries.add(JSONObject().apply {
-                put("type", "SpO2")
-                put("spo2", data.spO2)
-                put("heart_rate", data.heartRate)
-                put("status", data.status)
                 put("timestamp", data.timestamp)
             })
         }
@@ -319,10 +255,6 @@ class SensorSequenceManager(
         }
 
         Log.d(TAG, "Batch send complete")
-    }
-
-    private fun hasValidSpO2(): Boolean {
-        return spO2Buffer.any { it.spO2 > 0 }
     }
 
     private fun hasValidSkinTemp(): Boolean {

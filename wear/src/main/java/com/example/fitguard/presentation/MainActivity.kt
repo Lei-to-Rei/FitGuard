@@ -368,12 +368,6 @@ class MainActivity : Activity() {
             }
         }
 
-        if (availableTrackers.contains(HealthTrackerType.HEART_RATE_CONTINUOUS)) {
-            addTrackerButton("Heart Rate", HealthTrackerType.HEART_RATE_CONTINUOUS, "BPM + IBI") {
-                healthTrackerManager.startHeartRateContinuous()
-            }
-        }
-
         if (availableTrackers.contains(HealthTrackerType.ACCELEROMETER_CONTINUOUS)) {
             addTrackerButton("Accel", HealthTrackerType.ACCELEROMETER_CONTINUOUS, "X/Y/Z axes") {
                 healthTrackerManager.startAccelerometerContinuous()
@@ -381,12 +375,6 @@ class MainActivity : Activity() {
         }
 
         addSectionHeader("On-Demand Trackers")
-
-        if (availableTrackers.contains(HealthTrackerType.SPO2_ON_DEMAND)) {
-            addTrackerButton("SpO2", HealthTrackerType.SPO2_ON_DEMAND, "30 sec") {
-                healthTrackerManager.startSpO2OnDemand()
-            }
-        }
 
         if (availableTrackers.contains(HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND)) {
             addTrackerButton("Skin Temp", HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND, "Body temp") {
@@ -398,7 +386,7 @@ class MainActivity : Activity() {
         addSectionHeader("Automated Sequence")
 
         sequenceStatusText = TextView(this).apply {
-            text = "5-min collection: all sensors"
+            text = "60s PPG+Accel, then Skin Temp"
             textSize = 9f
             setTextColor(Color.LTGRAY)
             setPadding(12, 2, 12, 6)
@@ -552,9 +540,8 @@ class MainActivity : Activity() {
     private fun updateSequenceUI(phase: SensorSequenceManager.SequencePhase) {
         val phaseText = when (phase) {
             SensorSequenceManager.SequencePhase.IDLE -> "Ready"
+            SensorSequenceManager.SequencePhase.CONTINUOUS -> "PPG + Accel..."
             SensorSequenceManager.SequencePhase.SKIN_TEMP -> "Skin Temp..."
-            SensorSequenceManager.SequencePhase.SPO2 -> "SpO2..."
-            SensorSequenceManager.SequencePhase.CONTINUOUS -> "PPG + HR..."
             SensorSequenceManager.SequencePhase.SENDING -> "Sending data..."
             SensorSequenceManager.SequencePhase.COMPLETE -> "Complete!"
             SensorSequenceManager.SequencePhase.CANCELLED -> "Cancelled"
@@ -571,20 +558,6 @@ class MainActivity : Activity() {
                     dataMap.putInt("green", data.green ?: 0)
                     dataMap.putInt("ir", data.ir ?: 0)
                     dataMap.putInt("red", data.red ?: 0)
-                    dataMap.putLong("timestamp", data.timestamp)
-                }
-                is HealthTrackerManager.TrackerData.SpO2Data -> {
-                    dataMap.putString("type", "SpO2")
-                    dataMap.putInt("spo2", data.spO2)
-                    dataMap.putInt("heart_rate", data.heartRate)
-                    dataMap.putInt("status", data.status)
-                    dataMap.putLong("timestamp", data.timestamp)
-                }
-                is HealthTrackerManager.TrackerData.HeartRateData -> {
-                    dataMap.putString("type", "HeartRate")
-                    dataMap.putInt("heart_rate", data.heartRate)
-                    dataMap.putIntegerArrayList("ibi_list", ArrayList(data.ibiList))
-                    dataMap.putInt("status", data.status)
                     dataMap.putLong("timestamp", data.timestamp)
                 }
                 is HealthTrackerManager.TrackerData.SkinTemperatureData -> {

@@ -78,22 +78,21 @@ class MetricsMonitoringActivity : AppCompatActivity() {
                 val hr = intent.getDoubleExtra("mean_hr_bpm", 0.0)
                 val sdnn = intent.getDoubleExtra("sdnn_ms", 0.0)
                 val rmssd = intent.getDoubleExtra("rmssd_ms", 0.0)
-                val pnn20 = intent.getDoubleExtra("pnn20_pct", 0.0)
                 val pnn50 = intent.getDoubleExtra("pnn50_pct", 0.0)
-                val sdsd = intent.getDoubleExtra("sdsd_ms", 0.0)
-                val peaks = intent.getIntExtra("peaks_detected", 0)
-                val nn = intent.getIntExtra("nn_intervals_used", 0)
-                val dur = intent.getDoubleExtra("duration_seconds", 0.0)
+                val lfHf = intent.getDoubleExtra("lf_hf_ratio", 0.0)
+                val spo2 = intent.getDoubleExtra("spo2_mean_pct", 0.0)
+                val skinTemp = intent.getDoubleExtra("skin_temp_obj", 0.0)
+                val steps = intent.getIntExtra("total_steps", 0)
+                val cadence = intent.getDoubleExtra("cadence_spm", 0.0)
 
-                v.findViewById<TextView>(R.id.tvMetricTitle).text = "HRV Analysis"
+                v.findViewById<TextView>(R.id.tvMetricTitle).text = "Feature Analysis"
                 v.findViewById<TextView>(R.id.tvMetricValue).text =
-                    "Mean HR: ${String.format("%.1f", hr)} BPM\n" +
-                    "SDNN: ${String.format("%.2f", sdnn)} ms\n" +
-                    "RMSSD: ${String.format("%.2f", rmssd)} ms\n" +
-                    "pNN20: ${String.format("%.1f", pnn20)}%\n" +
-                    "pNN50: ${String.format("%.1f", pnn50)}%\n" +
-                    "SDSD: ${String.format("%.2f", sdsd)} ms\n" +
-                    "Peaks: $peaks | NN: $nn | ${String.format("%.0f", dur)}s"
+                    "HR: ${String.format("%.1f", hr)} BPM\n" +
+                    "SDNN: ${String.format("%.2f", sdnn)} ms | RMSSD: ${String.format("%.2f", rmssd)} ms\n" +
+                    "pNN50: ${String.format("%.1f", pnn50)}% | LF/HF: ${String.format("%.2f", lfHf)}\n" +
+                    "SpO2: ${String.format("%.1f", spo2)}%\n" +
+                    "Skin: ${String.format("%.1f", skinTemp)}°C\n" +
+                    "Steps: $steps | Cadence: ${String.format("%.1f", cadence)} spm"
                 v.findViewById<TextView>(R.id.tvMetricTimestamp).text =
                     "Processed: ${SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())}"
 
@@ -106,16 +105,12 @@ class MetricsMonitoringActivity : AppCompatActivity() {
 
     private fun getTitle(type: String) = when(type) {
         "PPG" -> "📊 PPG"
-        "SpO2" -> "🫁 SpO2"
-        "HeartRate" -> "❤️ Heart Rate"
         "SkinTemp" -> "🌡️ Skin Temp"
         else -> type
     }
 
     private fun formatData(type: String, d: JSONObject) = when(type) {
         "PPG" -> "Green: ${d.getInt("green")}\nIR: ${d.getInt("ir")}\nRed: ${d.getInt("red")}"
-        "SpO2" -> "SpO2: ${d.getInt("spo2")}%\nHR: ${d.getInt("hr")} BPM"
-        "HeartRate" -> "HR: ${d.getInt("hr")} BPM\nIBI: ${if(d.optString("ibi").length>2) "Available" else "None"}"
         "SkinTemp" -> "Skin: ${if(d.has("obj")) String.format("%.1f", d.getDouble("obj"))+"°C" else "N/A"}\nAmbient: ${if(d.has("amb")) String.format("%.1f", d.getDouble("amb"))+"°C" else "N/A"}"
         else -> "Unknown"
     }

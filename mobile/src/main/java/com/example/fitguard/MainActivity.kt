@@ -55,7 +55,7 @@ class MainActivity : AppCompatActivity() {
         val dashboardItems = listOf(
             DashboardItem(
                 title = "Metrics Monitoring",
-                description = "View heart rate, SpO2, and vital signs",
+                description = "View PPG, skin temperature, and vital signs",
                 icon = R.drawable.ic_metrics,
                 activityClass = MetricsMonitoringActivity::class.java
             ),
