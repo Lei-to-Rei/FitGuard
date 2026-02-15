@@ -20,6 +20,7 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
 
     companion object {
         private const val TAG = "WorkoutControlVM"
+        private const val CONNECT_TIMEOUT_MS = 10_000L
     }
 
     private val _state = MutableLiveData(SessionState.IDLE)
@@ -39,6 +40,7 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
 
     private var sessionId: String = ""
     private var timerJob: Job? = null
+    private var timeoutJob: Job? = null
 
     fun setActivityType(type: String) {
         _activityType.value = type
@@ -74,6 +76,8 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
                         .sendMessage(node.id, "/fitguard/activity/start", data).await()
                     Log.d(TAG, "Start message sent to ${node.displayName}")
                 }
+
+                startConnectTimeout()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send start: ${e.message}", e)
                 _error.value = "Failed to connect: ${e.message}"
@@ -86,6 +90,7 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
         if (_state.value != SessionState.ACTIVE) return
 
         _state.value = SessionState.STOPPING
+        cancelConnectTimeout()
 
         viewModelScope.launch {
             try {
@@ -111,6 +116,8 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
     fun onWatchAck(ackSessionId: String, status: String) {
         if (ackSessionId != sessionId) return
 
+        cancelConnectTimeout()
+
         if (status == "started") {
             _state.value = SessionState.ACTIVE
             _error.value = null
@@ -124,6 +131,7 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
     fun onWatchStopped(stoppedSessionId: String, reason: String, sequenceCount: Int) {
         if (stoppedSessionId != sessionId) return
 
+        cancelConnectTimeout()
         stopTimer()
         _sequenceCount.value = sequenceCount
         _state.value = SessionState.IDLE
@@ -134,6 +142,23 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
         if (hbSessionId != sessionId) return
 
         _sequenceCount.value = sequenceCount
+    }
+
+    private fun startConnectTimeout() {
+        cancelConnectTimeout()
+        timeoutJob = viewModelScope.launch {
+            delay(CONNECT_TIMEOUT_MS)
+            if (_state.value == SessionState.CONNECTING) {
+                Log.w(TAG, "Connect timeout after ${CONNECT_TIMEOUT_MS}ms")
+                _error.value = "Watch not responding"
+                _state.value = SessionState.IDLE
+            }
+        }
+    }
+
+    private fun cancelConnectTimeout() {
+        timeoutJob?.cancel()
+        timeoutJob = null
     }
 
     private fun startTimer() {
@@ -155,6 +180,7 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
 
     override fun onCleared() {
         super.onCleared()
+        cancelConnectTimeout()
         stopTimer()
     }
 }

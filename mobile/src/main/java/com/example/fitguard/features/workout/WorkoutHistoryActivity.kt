@@ -1,48 +1,23 @@
 package com.example.fitguard.features.workout
 
-import android.content.*
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import com.example.fitguard.R
 import com.example.fitguard.databinding.ActivityWorkoutControlBinding
-import com.example.fitguard.services.WearableDataListenerService
+import com.google.android.gms.wearable.MessageClient
+import com.google.android.gms.wearable.MessageEvent
+import com.google.android.gms.wearable.Wearable
+import org.json.JSONObject
 
-class WorkoutHistoryActivity : AppCompatActivity() {
+class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListener {
     private lateinit var binding: ActivityWorkoutControlBinding
     private val viewModel: WorkoutControlViewModel by viewModels()
 
-    private val ackReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            intent ?: return
-            viewModel.onWatchAck(
-                ackSessionId = intent.getStringExtra("session_id") ?: "",
-                status = intent.getStringExtra("status") ?: ""
-            )
-        }
-    }
-
-    private val stoppedReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            intent ?: return
-            viewModel.onWatchStopped(
-                stoppedSessionId = intent.getStringExtra("session_id") ?: "",
-                reason = intent.getStringExtra("reason") ?: "",
-                sequenceCount = intent.getIntExtra("sequence_count", 0)
-            )
-        }
-    }
-
-    private val heartbeatReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            intent ?: return
-            viewModel.onHeartbeat(
-                hbSessionId = intent.getStringExtra("session_id") ?: "",
-                sequenceCount = intent.getIntExtra("sequence_count", 0),
-                elapsedS = intent.getIntExtra("elapsed_s", 0)
-            )
-        }
+    companion object {
+        private const val TAG = "WorkoutHistoryActivity"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,7 +34,40 @@ class WorkoutHistoryActivity : AppCompatActivity() {
         setupActivityTypeSelection()
         setupStartStopButton()
         observeViewModel()
-        registerReceivers()
+
+        Wearable.getMessageClient(this).addListener(this)
+    }
+
+    override fun onMessageReceived(event: MessageEvent) {
+        val json = try {
+            JSONObject(String(event.data, Charsets.UTF_8))
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse message on ${event.path}: ${e.message}")
+            return
+        }
+
+        when (event.path) {
+            "/fitguard/activity/ack" -> runOnUiThread {
+                viewModel.onWatchAck(
+                    ackSessionId = json.optString("session_id", ""),
+                    status = json.optString("status", "")
+                )
+            }
+            "/fitguard/activity/stopped" -> runOnUiThread {
+                viewModel.onWatchStopped(
+                    stoppedSessionId = json.optString("session_id", ""),
+                    reason = json.optString("reason", ""),
+                    sequenceCount = json.optInt("sequence_count", 0)
+                )
+            }
+            "/fitguard/activity/heartbeat" -> runOnUiThread {
+                viewModel.onHeartbeat(
+                    hbSessionId = json.optString("session_id", ""),
+                    sequenceCount = json.optInt("sequence_count", 0),
+                    elapsedS = json.optInt("elapsed_s", 0)
+                )
+            }
+        }
     }
 
     private fun setupActivityTypeSelection() {
@@ -164,17 +172,9 @@ class WorkoutHistoryActivity : AppCompatActivity() {
         binding.etCustomActivity.isEnabled = enabled
     }
 
-    private fun registerReceivers() {
-        registerReceiver(ackReceiver, IntentFilter(WearableDataListenerService.ACTION_ACTIVITY_ACK), RECEIVER_NOT_EXPORTED)
-        registerReceiver(stoppedReceiver, IntentFilter(WearableDataListenerService.ACTION_ACTIVITY_STOPPED), RECEIVER_NOT_EXPORTED)
-        registerReceiver(heartbeatReceiver, IntentFilter(WearableDataListenerService.ACTION_ACTIVITY_HEARTBEAT), RECEIVER_NOT_EXPORTED)
-    }
-
     override fun onDestroy() {
+        Wearable.getMessageClient(this).removeListener(this)
         super.onDestroy()
-        try { unregisterReceiver(ackReceiver) } catch (_: Exception) {}
-        try { unregisterReceiver(stoppedReceiver) } catch (_: Exception) {}
-        try { unregisterReceiver(heartbeatReceiver) } catch (_: Exception) {}
     }
 
     override fun onSupportNavigateUp() = true.also { onBackPressed() }
