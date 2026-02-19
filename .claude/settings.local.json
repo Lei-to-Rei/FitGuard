@@ -19,7 +19,8 @@
       "WebFetch(domain:ppg-beats.readthedocs.io)",
       "Bash(C:/Users/claud/AndroidStudioProjects/FitGuard/gradlew.bat assembleDebug --no-daemon)",
       "Bash(C:/Users/claud/AndroidStudioProjects/FitGuard/gradlew.bat:*)",
-      "WebFetch(domain:developer.samsung.com)"
+      "WebFetch(domain:developer.samsung.com)",
+      "Bash(find:*)"
     ]
   }
 }
