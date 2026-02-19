@@ -14,8 +14,10 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.fitguard.R
+import com.example.fitguard.data.model.DailyNutritionSummary
 import com.example.fitguard.data.model.FoodEntry
 import com.example.fitguard.data.model.MealType
+import com.example.fitguard.data.model.NutritionGoals
 import com.example.fitguard.databinding.ActivityNutritionTrackingBinding
 import com.google.android.material.textfield.TextInputEditText
 
@@ -103,23 +105,11 @@ class NutritionTrackingActivity : AppCompatActivity() {
         }
 
         viewModel.dailyTotals.observe(this) { totals ->
-            val goals = viewModel.goals
-            binding.apply {
-                tvCaloriesValue.text = "${totals.totalCalories} / ${goals.calories}"
-                progressCalories.progress = ((totals.totalCalories.toFloat() / goals.calories) * 100).toInt().coerceAtMost(100)
+            updateNutritionDisplay(totals)
+        }
 
-                tvProteinValue.text = "${"%.1f".format(totals.totalProtein)} / ${goals.protein.toInt()}g"
-                progressProtein.progress = ((totals.totalProtein / goals.protein) * 100).toInt().coerceAtMost(100)
-
-                tvCarbsValue.text = "${"%.1f".format(totals.totalCarbs)} / ${goals.carbs.toInt()}g"
-                progressCarbs.progress = ((totals.totalCarbs / goals.carbs) * 100).toInt().coerceAtMost(100)
-
-                tvFatValue.text = "${"%.1f".format(totals.totalFat)} / ${goals.fat.toInt()}g"
-                progressFat.progress = ((totals.totalFat / goals.fat) * 100).toInt().coerceAtMost(100)
-
-                tvSodiumValue.text = "${"%.0f".format(totals.totalSodium)} / ${goals.sodium.toInt()}mg"
-                progressSodium.progress = ((totals.totalSodium / goals.sodium) * 100).toInt().coerceAtMost(100)
-            }
+        viewModel.goals.observe(this) {
+            viewModel.dailyTotals.value?.let { totals -> updateNutritionDisplay(totals) }
         }
 
         viewModel.savedFoods.observe(this) { saved ->
@@ -260,6 +250,26 @@ class NutritionTrackingActivity : AppCompatActivity() {
             )
 
             dialog.dismiss()
+        }
+    }
+
+    private fun updateNutritionDisplay(totals: DailyNutritionSummary) {
+        val goals = viewModel.goals.value ?: NutritionGoals()
+        binding.apply {
+            tvCaloriesValue.text = "${totals.totalCalories} / ${goals.calories}"
+            progressCalories.progress = ((totals.totalCalories.toFloat() / goals.calories) * 100).toInt().coerceAtMost(100)
+
+            tvProteinValue.text = "${"%.1f".format(totals.totalProtein)} / ${goals.protein.toInt()}g"
+            progressProtein.progress = ((totals.totalProtein / goals.protein) * 100).toInt().coerceAtMost(100)
+
+            tvCarbsValue.text = "${"%.1f".format(totals.totalCarbs)} / ${goals.carbs.toInt()}g"
+            progressCarbs.progress = ((totals.totalCarbs / goals.carbs) * 100).toInt().coerceAtMost(100)
+
+            tvFatValue.text = "${"%.1f".format(totals.totalFat)} / ${goals.fat.toInt()}g"
+            progressFat.progress = ((totals.totalFat / goals.fat) * 100).toInt().coerceAtMost(100)
+
+            tvSodiumValue.text = "${"%.0f".format(totals.totalSodium)} / ${goals.sodium.toInt()}mg"
+            progressSodium.progress = ((totals.totalSodium / goals.sodium) * 100).toInt().coerceAtMost(100)
         }
     }
 

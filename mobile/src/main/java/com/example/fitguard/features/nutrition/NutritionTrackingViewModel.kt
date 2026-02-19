@@ -6,11 +6,15 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.switchMap
 import androidx.lifecycle.viewModelScope
-import android.os.Environment
 import com.example.fitguard.data.db.AppDatabase
+import com.example.fitguard.data.processing.CsvWriter
 import com.example.fitguard.data.model.DailyNutritionSummary
 import com.example.fitguard.data.model.FoodEntry
 import com.example.fitguard.data.model.NutritionGoals
+import com.example.fitguard.data.repository.NutritionRepository
+import com.example.fitguard.data.repository.UserProfileRepository
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -22,25 +26,49 @@ import java.util.Locale
 
 class NutritionTrackingViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val dao = AppDatabase.getInstance(application).foodEntryDao()
+    private val db = AppDatabase.getInstance(application)
+    private val firestore = FirebaseFirestore.getInstance()
+    private val nutritionRepo = NutritionRepository(db.foodEntryDao(), firestore)
+    private val profileRepo = UserProfileRepository(db.userProfileDao(), firestore)
 
-    val goals = NutritionGoals()
+    private val userId: String
+        get() = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
+    private val _goalsLiveData = MutableLiveData(NutritionGoals())
+    val goals: LiveData<NutritionGoals> = _goalsLiveData
 
     private val _currentDateMillis = MutableLiveData(todayMidnightMillis())
     val currentDateMillis: LiveData<Long> = _currentDateMillis
 
     val entries: LiveData<List<FoodEntry>> = _currentDateMillis.switchMap { date ->
-        dao.getEntriesByDate(date)
+        nutritionRepo.getEntriesByDate(date, userId)
     }
 
     val dailyTotals: LiveData<DailyNutritionSummary> = _currentDateMillis.switchMap { date ->
-        dao.getDailyTotals(date)
+        nutritionRepo.getDailyTotals(date, userId)
     }
 
-    val savedFoods: LiveData<List<FoodEntry>> = dao.getSavedFoods()
+    val savedFoods: LiveData<List<FoodEntry>> = nutritionRepo.getSavedFoods(userId)
 
     private val _exportStatus = MutableLiveData<String?>()
     val exportStatus: LiveData<String?> = _exportStatus
+
+    init {
+        viewModelScope.launch {
+            val firebaseUser = FirebaseAuth.getInstance().currentUser
+            if (firebaseUser != null) {
+                val profile = profileRepo.loadOrCreateProfile(firebaseUser)
+                _goalsLiveData.value = NutritionGoals(
+                    calories = profile.caloriesGoal,
+                    protein = profile.proteinGoal,
+                    carbs = profile.carbsGoal,
+                    fat = profile.fatGoal,
+                    sodium = profile.sodiumGoal
+                )
+                nutritionRepo.syncFromFirestore(firebaseUser.uid)
+            }
+        }
+    }
 
     fun addFoodEntry(
         name: String,
@@ -70,15 +98,16 @@ class NutritionTrackingViewModel(application: Application) : AndroidViewModel(ap
                 cholesterol = cholesterol,
                 mealType = mealType,
                 dateMillis = _currentDateMillis.value ?: todayMidnightMillis(),
-                isSaved = isSaved
+                isSaved = isSaved,
+                userId = userId
             )
-            dao.insert(entry)
+            nutritionRepo.insert(entry)
         }
     }
 
     fun deleteFoodEntry(entry: FoodEntry) {
         viewModelScope.launch {
-            dao.delete(entry)
+            nutritionRepo.delete(entry)
         }
     }
 
@@ -86,7 +115,7 @@ class NutritionTrackingViewModel(application: Application) : AndroidViewModel(ap
         viewModelScope.launch {
             try {
                 val dateMillis = _currentDateMillis.value ?: todayMidnightMillis()
-                val entries = dao.getEntriesByDateSync(dateMillis)
+                val entries = nutritionRepo.getEntriesByDateSync(dateMillis, userId)
 
                 if (entries.isEmpty()) {
                     _exportStatus.value = "No entries to export"
@@ -95,10 +124,7 @@ class NutritionTrackingViewModel(application: Application) : AndroidViewModel(ap
                 }
 
                 val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(dateMillis))
-                val dir = File(
-                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                    "FitGuard_Data"
-                )
+                val dir = CsvWriter.getOutputDir(userId)
 
                 withContext(Dispatchers.IO) {
                     if (!dir.exists()) dir.mkdirs()

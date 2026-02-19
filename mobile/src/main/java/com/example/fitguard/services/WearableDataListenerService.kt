@@ -7,6 +7,7 @@ import com.example.fitguard.data.processing.PpgSample
 import com.example.fitguard.data.processing.SequenceProcessor
 import com.example.fitguard.data.processing.SkinTempSample
 import com.google.android.gms.wearable.*
+import com.google.firebase.auth.FirebaseAuth
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -179,11 +180,12 @@ class WearableDataListenerService : WearableListenerService() {
         }
     }
 
+    private val currentUserId: String
+        get() = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
     private fun saveToFile(type: String, data: String) {
         try {
-            val dir = File(android.os.Environment.getExternalStoragePublicDirectory(
-                android.os.Environment.DIRECTORY_DOWNLOADS), "FitGuard_Data")
-            dir.mkdirs()
+            val dir = com.example.fitguard.data.processing.CsvWriter.getOutputDir(currentUserId)
             File(dir, "${type}_${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())}.jsonl")
                 .appendText(data + "\n")
         } catch (e: Exception) {

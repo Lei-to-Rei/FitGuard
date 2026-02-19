@@ -2,6 +2,7 @@ package com.example.fitguard.data.processing
 
 import android.os.Environment
 import android.util.Log
+import com.google.firebase.firestore.FirebaseFirestore
 import java.io.File
 import java.util.*
 
@@ -25,18 +26,19 @@ object CsvWriter {
         "activity_label", "fatigue_level", "rpe_raw"
     ).joinToString(",")
 
-    private fun getOutputDir(): File {
-        val dir = File(
+    fun getOutputDir(userId: String = ""): File {
+        val base = File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
             DIR_NAME
         )
+        val dir = if (userId.isNotEmpty()) File(base, userId) else base
         dir.mkdirs()
         return dir
     }
 
-    fun writeFeatureVector(fv: FeatureVector) {
+    fun writeFeatureVector(fv: FeatureVector, userId: String = "") {
         try {
-            val dir = getOutputDir()
+            val dir = getOutputDir(userId)
             val file = File(dir, FILE_NAME)
             val needsHeader = !file.exists() || file.length() == 0L
 
@@ -88,10 +90,66 @@ object CsvWriter {
             file.appendText(content)
 
             Log.d(TAG, "Feature vector written to ${file.absolutePath}")
+
+            // Backup to Firestore
+            if (userId.isNotEmpty()) {
+                pushToFirestore(fv, userId)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to write features CSV: ${e.message}", e)
         }
     }
+
+    private fun pushToFirestore(fv: FeatureVector, userId: String) {
+        FirebaseFirestore.getInstance()
+            .collection("users").document(userId)
+            .collection("feature_vectors").document(fv.sequenceId)
+            .set(fv.toFirestoreMap())
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Firestore backup failed for ${fv.sequenceId}: ${e.message}", e)
+            }
+    }
+
+    private fun FeatureVector.toFirestoreMap(): Map<String, Any> = mapOf(
+        "timestamp" to timestamp,
+        "sequenceId" to sequenceId,
+        "meanHrBpm" to ppg.meanHrBpm,
+        "hrStdBpm" to ppg.hrStdBpm,
+        "hrMinBpm" to ppg.hrMinBpm,
+        "hrMaxBpm" to ppg.hrMaxBpm,
+        "hrRangeBpm" to ppg.hrRangeBpm,
+        "hrSlopeBpmPerS" to ppg.hrSlopeBpmPerS,
+        "nnQualityRatio" to ppg.nnQualityRatio,
+        "sdnnMs" to ppg.sdnnMs,
+        "rmssdMs" to ppg.rmssdMs,
+        "pnn50Pct" to ppg.pnn50Pct,
+        "meanNnMs" to ppg.meanNnMs,
+        "cvNn" to ppg.cvNn,
+        "lfPowerMs2" to ppg.lfPowerMs2,
+        "hfPowerMs2" to ppg.hfPowerMs2,
+        "lfHfRatio" to ppg.lfHfRatio,
+        "totalPowerMs2" to ppg.totalPowerMs2,
+        "spo2MeanPct" to ppg.spo2MeanPct,
+        "spo2MinPct" to ppg.spo2MinPct,
+        "spo2StdPct" to ppg.spo2StdPct,
+        "accelXMean" to accelXMean,
+        "accelYMean" to accelYMean,
+        "accelZMean" to accelZMean,
+        "accelXVar" to accelXVar,
+        "accelYVar" to accelYVar,
+        "accelZVar" to accelZVar,
+        "accelMagMean" to accelMagMean,
+        "accelMagVar" to accelMagVar,
+        "accelPeak" to accelPeak,
+        "skinTempObj" to skinTempObj,
+        "skinTempDelta" to skinTempDelta,
+        "skinTempAmbient" to skinTempAmbient,
+        "totalSteps" to totalSteps,
+        "cadenceSpm" to cadenceSpm,
+        "activityLabel" to activityLabel,
+        "fatigueLevel" to fatigueLevel,
+        "rpeRaw" to rpeRaw
+    )
 
     private fun fmt(value: Double): String = String.format(Locale.US, "%.4f", value)
 }

@@ -3,6 +3,7 @@ package com.example.fitguard.data.processing
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -108,7 +109,8 @@ class SequenceProcessor(private val context: Context) {
                         "Steps=${accelFeatures.totalSteps} SkinT=${String.format("%.1f", skinTempObj)}")
 
                 // 5. Write to CSV
-                CsvWriter.writeFeatureVector(featureVector)
+                val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                CsvWriter.writeFeatureVector(featureVector, userId)
 
                 // 6. Broadcast key metrics
                 broadcastResult(featureVector)

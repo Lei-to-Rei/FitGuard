@@ -2,6 +2,7 @@ package com.example.fitguard.data.model
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import java.util.UUID
 
 @Entity(tableName = "food_entries")
 data class FoodEntry(
@@ -20,5 +21,7 @@ data class FoodEntry(
     val mealType: String,
     val dateMillis: Long,
     val createdAt: Long = System.currentTimeMillis(),
-    val isSaved: Boolean = false
+    val isSaved: Boolean = false,
+    val userId: String = "",
+    val firestoreId: String = UUID.randomUUID().toString()
 )
