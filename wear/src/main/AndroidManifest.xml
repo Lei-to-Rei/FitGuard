@@ -59,12 +59,18 @@
     <!-- Wake Lock - Keep device awake during tracking -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Vibrate - For RPE prompt haptic feedback -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <!-- Foreground Service - For background tracking -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
 
     <!-- Notifications - For foreground service notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Full-screen intent - Wake watch for RPE prompts -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <!-- ========================================== -->
     <!-- HARDWARE FEATURES -->
@@ -113,6 +119,29 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- RPE Prompt Activity -->
+        <activity
+            android:name=".presentation.RpePromptActivity"
+            android:exported="false"
+            android:turnScreenOn="true"
+            android:showWhenLocked="true"
+            android:theme="@android:style/Theme.DeviceDefault" />
+
+        <!-- Workout Session Foreground Service -->
+        <service
+            android:name=".presentation.SessionForegroundService"
+            android:foregroundServiceType="health"
+            android:exported="false" />
+
+        <!-- RPE Notification Action Receiver -->
+        <receiver
+            android:name=".presentation.RpeNotificationReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.fitguard.wear.RPE_NOTIFICATION_ACTION" />
+            </intent-filter>
+        </receiver>
 
         <!-- Wearable Message Listener Service -->
         <service

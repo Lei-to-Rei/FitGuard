@@ -23,11 +23,13 @@ class WearableMessageListenerService : WearableListenerService() {
                 "/fitguard/activity/start" -> {
                     val activityType = json.optString("activity_type", "")
                     val sessionId = json.optString("session_id", "")
-                    Log.d(TAG, "Start command: activity=$activityType session=$sessionId")
+                    val rpeIntervalMinutes = json.optInt("rpe_interval_minutes", 10)
+                    Log.d(TAG, "Start command: activity=$activityType session=$sessionId rpeInterval=${rpeIntervalMinutes}min")
                     sendBroadcast(Intent(ACTION_START_ACTIVITY).apply {
                         setPackage(packageName)
                         putExtra("activity_type", activityType)
                         putExtra("session_id", sessionId)
+                        putExtra("rpe_interval_minutes", rpeIntervalMinutes)
                     })
                 }
                 "/fitguard/activity/stop" -> {

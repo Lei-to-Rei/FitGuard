@@ -8,6 +8,29 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
+object RpeState {
+    @Volatile var currentRpe: Int = -1
+    @Volatile var lastTimestamp: Long = 0
+
+    fun update(rpe: Int) {
+        currentRpe = rpe
+        lastTimestamp = System.currentTimeMillis()
+    }
+
+    fun reset() {
+        currentRpe = -1
+        lastTimestamp = 0
+    }
+
+    val fatigueLevel: String get() = when (currentRpe) {
+        in 0..2 -> "0"
+        in 3..4 -> "1"
+        in 5..7 -> "2"
+        in 8..10 -> "3"
+        else -> ""
+    }
+}
+
 class SequenceProcessor(private val context: Context) {
     companion object {
         private const val TAG = "SequenceProcessor"
@@ -72,7 +95,9 @@ class SequenceProcessor(private val context: Context) {
                     skinTempAmbient = skinTempAmbient,
                     totalSteps = accelFeatures.totalSteps,
                     cadenceSpm = accelFeatures.cadenceSpm,
-                    activityLabel = data.activityType
+                    activityLabel = data.activityType,
+                    fatigueLevel = RpeState.fatigueLevel,
+                    rpeRaw = RpeState.currentRpe
                 )
 
                 Log.d(TAG, "Features for ${data.sequenceId}: HR=${String.format("%.1f", ppgFeatures.meanHrBpm)} " +

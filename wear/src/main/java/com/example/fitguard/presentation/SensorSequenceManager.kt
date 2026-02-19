@@ -34,6 +34,9 @@ class SensorSequenceManager(
     var onProgress: ((elapsedSeconds: Int, totalSeconds: Int) -> Unit)? = null
     var onComplete: (() -> Unit)? = null
     var onSequenceLoopComplete: ((sequenceCount: Int) -> Unit)? = null
+    var onRpePromptNeeded: ((sequenceCount: Int) -> Unit)? = null
+
+    var rpeIntervalSequences: Int = 8  // default ~10 min at 77s/seq
 
     private var sequenceJob: Job? = null
     private var currentPhase = SequencePhase.IDLE
@@ -105,6 +108,9 @@ class SensorSequenceManager(
                     runSequence()
                     sequenceCount++
                     onSequenceLoopComplete?.invoke(sequenceCount)
+                    if (sequenceCount > 0 && sequenceCount % rpeIntervalSequences == 0) {
+                        onRpePromptNeeded?.invoke(sequenceCount)
+                    }
                     delay(2000)
                     clearBuffers()
                 }

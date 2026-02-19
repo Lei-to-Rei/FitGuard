@@ -48,7 +48,8 @@ data class FeatureVector(
     val totalSteps: Int,
     val cadenceSpm: Double,
     val activityLabel: String = "",
-    val fatigueLevel: String = ""
+    val fatigueLevel: String = "",
+    val rpeRaw: Int = -1
 )
 
 object PpgProcessor {

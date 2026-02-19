@@ -3,6 +3,7 @@ package com.example.fitguard.features.workout
 import android.os.Bundle
 import android.util.Log
 import android.view.View
+import android.widget.SeekBar
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import com.example.fitguard.R
@@ -33,6 +34,7 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
 
         setupActivityTypeSelection()
         setupStartStopButton()
+        setupRpeIntervalSlider()
         observeViewModel()
 
         Wearable.getMessageClient(this).addListener(this)
@@ -65,6 +67,12 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
                     hbSessionId = json.optString("session_id", ""),
                     sequenceCount = json.optInt("sequence_count", 0),
                     elapsedS = json.optInt("elapsed_s", 0)
+                )
+            }
+            "/fitguard/activity/rpe" -> runOnUiThread {
+                viewModel.onRpeReceived(
+                    sessionId = json.optString("session_id", ""),
+                    rpeValue = json.optInt("rpe_value", -1)
                 )
             }
         }
@@ -111,6 +119,19 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
         }
     }
 
+    private fun setupRpeIntervalSlider() {
+        binding.seekRpeInterval.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                binding.tvRpeIntervalValue.text = "$progress min"
+                if (fromUser) {
+                    viewModel.setRpeInterval(progress)
+                }
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+    }
+
     private fun observeViewModel() {
         viewModel.state.observe(this) { state ->
             when (state) {
@@ -121,12 +142,14 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
                     binding.tvSessionStatus.text = "Idle"
                     binding.rgActivityType.isEnabled = true
                     setRadioGroupEnabled(true)
+                    binding.seekRpeInterval.isEnabled = true
                 }
                 WorkoutControlViewModel.SessionState.CONNECTING -> {
                     binding.btnStartStop.text = "Connecting..."
                     binding.btnStartStop.isEnabled = false
                     binding.tvSessionStatus.text = "Connecting to watch..."
                     setRadioGroupEnabled(false)
+                    binding.seekRpeInterval.isEnabled = false
                 }
                 WorkoutControlViewModel.SessionState.ACTIVE -> {
                     binding.btnStartStop.text = "Stop Session"
@@ -134,11 +157,13 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
                     binding.btnStartStop.setBackgroundColor(getColor(R.color.red_stop))
                     binding.tvSessionStatus.text = "Active - ${viewModel.activityType.value}"
                     setRadioGroupEnabled(false)
+                    binding.seekRpeInterval.isEnabled = false
                 }
                 WorkoutControlViewModel.SessionState.STOPPING -> {
                     binding.btnStartStop.text = "Stopping..."
                     binding.btnStartStop.isEnabled = false
                     binding.tvSessionStatus.text = "Stopping session..."
+                    binding.seekRpeInterval.isEnabled = false
                 }
                 null -> {}
             }
@@ -161,6 +186,30 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
                 binding.tvError.visibility = View.VISIBLE
             } else {
                 binding.tvError.visibility = View.GONE
+            }
+        }
+
+        viewModel.lastRpe.observe(this) { rpe ->
+            binding.tvLastRpe.text = if (rpe >= 0) "Last RPE: $rpe" else "Last RPE: --"
+        }
+
+        viewModel.rpeIntervalMinutes.observe(this) { minutes ->
+            binding.seekRpeInterval.progress = minutes
+            binding.tvRpeIntervalValue.text = "$minutes min"
+        }
+
+        viewModel.activityType.observe(this) { type ->
+            val radioId = when (type) {
+                "Walking" -> R.id.rbWalking
+                "Running" -> R.id.rbRunning
+                "Cycling" -> R.id.rbCycling
+                else -> R.id.rbOther
+            }
+            if (binding.rgActivityType.checkedRadioButtonId != radioId) {
+                binding.rgActivityType.check(radioId)
+            }
+            if (radioId == R.id.rbOther && type != "Other") {
+                binding.etCustomActivity.setText(type)
             }
         }
     }

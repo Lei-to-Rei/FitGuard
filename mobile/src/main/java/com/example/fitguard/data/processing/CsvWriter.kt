@@ -22,7 +22,7 @@ object CsvWriter {
         "accel_mag_mean", "accel_mag_var", "accel_peak",
         "skin_temp_obj", "skin_temp_delta", "skin_temp_ambient",
         "total_steps", "cadence_spm",
-        "activity_label", "fatigue_level"
+        "activity_label", "fatigue_level", "rpe_raw"
     ).joinToString(",")
 
     private fun getOutputDir(): File {
@@ -77,7 +77,8 @@ object CsvWriter {
                 fv.totalSteps.toString(),
                 fmt(fv.cadenceSpm),
                 fv.activityLabel,
-                fv.fatigueLevel
+                fv.fatigueLevel,
+                if (fv.rpeRaw >= 0) fv.rpeRaw.toString() else ""
             ).joinToString(",")
 
             val content = buildString {

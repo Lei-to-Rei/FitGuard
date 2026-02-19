@@ -35,11 +35,15 @@ class MainActivity : Activity() {
     private lateinit var buttonContainer: LinearLayout
     private lateinit var healthTrackerManager: HealthTrackerManager
     private lateinit var sensorSequenceManager: SensorSequenceManager
+    private lateinit var rpeNotificationHelper: RpeNotificationHelper
     private val activeTrackerButtons = mutableMapOf<HealthTrackerType, Button>()
     private val individualButtons = mutableListOf<Button>()
     private var sequenceButton: Button? = null
     private var sequenceStatusText: TextView? = null
     private var activityCommandReceiver: BroadcastReceiver? = null
+    private var rpeResponseReceiver: BroadcastReceiver? = null
+    private var lastRpeValue: Int = -1
+    private var pendingStopAction: (() -> Unit)? = null
 
     companion object {
         private const val PERMISSION_REQUEST_CODE = 100
@@ -112,8 +116,11 @@ class MainActivity : Activity() {
         mainContainer.addView(scrollView)
         setContentView(mainContainer)
 
+        rpeNotificationHelper = RpeNotificationHelper(this)
+
         checkAndRequestPermissions()
         registerActivityCommandReceiver()
+        registerRpeResponseReceiver()
     }
 
     private fun checkAndRequestPermissions() {
@@ -362,6 +369,10 @@ class MainActivity : Activity() {
                 put("elapsed_s", seqCount * 77) // ~75s per sequence + 2s gap
             })
         }
+
+        sensorSequenceManager.onRpePromptNeeded = { _ ->
+            runOnUiThread { launchRpePrompt(isEndOfSession = false) }
+        }
     }
 
     private fun createTrackerButtons() {
@@ -425,11 +436,16 @@ class MainActivity : Activity() {
                         val seqCount = sensorSequenceManager.sequenceCount
                         val sid = sensorSequenceManager.sessionId
                         sensorSequenceManager.cancelSequence()
-                        sendMessageToPhone("/fitguard/activity/stopped", JSONObject().apply {
-                            put("session_id", sid)
-                            put("reason", "watch_stop")
-                            put("sequence_count", seqCount)
-                        })
+                        SessionForegroundService.stop(this@MainActivity)
+                        // Defer stop message until end-of-session RPE is collected
+                        pendingStopAction = {
+                            sendMessageToPhone("/fitguard/activity/stopped", JSONObject().apply {
+                                put("session_id", sid)
+                                put("reason", "watch_stop")
+                                put("sequence_count", seqCount)
+                            })
+                        }
+                        launchRpePrompt(isEndOfSession = true)
                         sequenceStatusText?.text = "Session stopped locally"
                     } else {
                         sensorSequenceManager.cancelSequence()
@@ -475,11 +491,15 @@ class MainActivity : Activity() {
                         val seqCount = sensorSequenceManager.sequenceCount
                         val sid = sensorSequenceManager.sessionId
                         sensorSequenceManager.cancelSequence()
-                        sendMessageToPhone("/fitguard/activity/stopped", JSONObject().apply {
-                            put("session_id", sid)
-                            put("reason", "watch_stop")
-                            put("sequence_count", seqCount)
-                        })
+                        SessionForegroundService.stop(this@MainActivity)
+                        pendingStopAction = {
+                            sendMessageToPhone("/fitguard/activity/stopped", JSONObject().apply {
+                                put("session_id", sid)
+                                put("reason", "watch_stop")
+                                put("sequence_count", seqCount)
+                            })
+                        }
+                        launchRpePrompt(isEndOfSession = true)
                     } else {
                         sensorSequenceManager.cancelSequence()
                     }
@@ -635,9 +655,18 @@ class MainActivity : Activity() {
                     WearableMessageListenerService.ACTION_START_ACTIVITY -> {
                         val activityType = intent.getStringExtra("activity_type") ?: ""
                         val sessionId = intent.getStringExtra("session_id") ?: ""
-                        Log.d(TAG, "Received start command: activity=$activityType session=$sessionId")
+                        val rpeIntervalMinutes = intent.getIntExtra("rpe_interval_minutes", 10)
+                        Log.d(TAG, "Received start command: activity=$activityType session=$sessionId rpeInterval=${rpeIntervalMinutes}min")
 
                         if (::sensorSequenceManager.isInitialized && !sensorSequenceManager.isRunning) {
+                            // Convert minutes to sequence count (~77s per sequence)
+                            val rpeIntervalSeqs = ((rpeIntervalMinutes * 60) / 77).coerceAtLeast(1)
+                            sensorSequenceManager.rpeIntervalSequences = rpeIntervalSeqs
+                            lastRpeValue = -1
+
+                            // Start foreground service to keep process alive
+                            SessionForegroundService.start(this@MainActivity, activityType)
+
                             runOnUiThread {
                                 enableIndividualButtons(false)
                                 sequenceButton?.apply {
@@ -666,6 +695,7 @@ class MainActivity : Activity() {
                         if (::sensorSequenceManager.isInitialized && sensorSequenceManager.isRunning && sensorSequenceManager.isContinuousMode) {
                             val seqCount = sensorSequenceManager.sequenceCount
                             sensorSequenceManager.cancelSequence()
+                            SessionForegroundService.stop(this@MainActivity)
                             runOnUiThread {
                                 enableIndividualButtons(true)
                                 sequenceButton?.apply {
@@ -675,11 +705,15 @@ class MainActivity : Activity() {
                                 sequenceStatusText?.text = "Session stopped by phone"
                                 statusText.text = "Session stopped"
                             }
-                            sendMessageToPhone("/fitguard/activity/stopped", JSONObject().apply {
-                                put("session_id", sessionId)
-                                put("reason", "phone_stop")
-                                put("sequence_count", seqCount)
-                            })
+                            // Defer stop message until end-of-session RPE is collected
+                            pendingStopAction = {
+                                sendMessageToPhone("/fitguard/activity/stopped", JSONObject().apply {
+                                    put("session_id", sessionId)
+                                    put("reason", "phone_stop")
+                                    put("sequence_count", seqCount)
+                                })
+                            }
+                            runOnUiThread { launchRpePrompt(isEndOfSession = true) }
                         }
                     }
                 }
@@ -691,6 +725,47 @@ class MainActivity : Activity() {
             addAction(WearableMessageListenerService.ACTION_STOP_ACTIVITY)
         }
         registerReceiver(activityCommandReceiver, filter, RECEIVER_NOT_EXPORTED)
+    }
+
+    private fun registerRpeResponseReceiver() {
+        rpeResponseReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                intent ?: return
+                if (intent.action != RpePromptActivity.ACTION_RPE_RESPONSE) return
+                val rpeValue = intent.getIntExtra(RpePromptActivity.EXTRA_RPE_VALUE, -1)
+                Log.d(TAG, "RPE response received: $rpeValue")
+
+                if (rpeValue >= 0) {
+                    lastRpeValue = rpeValue
+                }
+
+                // Send RPE to phone
+                if (::sensorSequenceManager.isInitialized) {
+                    sendMessageToPhone("/fitguard/activity/rpe", JSONObject().apply {
+                        put("session_id", sensorSequenceManager.sessionId)
+                        put("rpe_value", rpeValue)
+                        put("sequence_count", sensorSequenceManager.sequenceCount)
+                        put("timestamp", System.currentTimeMillis())
+                    })
+                }
+
+                // Execute pending stop action if this was an end-of-session prompt
+                pendingStopAction?.let { action ->
+                    pendingStopAction = null
+                    action()
+                }
+            }
+        }
+
+        val filter = IntentFilter(RpePromptActivity.ACTION_RPE_RESPONSE)
+        registerReceiver(rpeResponseReceiver, filter, RECEIVER_NOT_EXPORTED)
+    }
+
+    private fun launchRpePrompt(isEndOfSession: Boolean = false) {
+        val sessionId = if (::sensorSequenceManager.isInitialized) {
+            sensorSequenceManager.sessionId
+        } else ""
+        rpeNotificationHelper.showRpePrompt(lastRpeValue, isEndOfSession, sessionId)
     }
 
     private fun sendMessageToPhone(path: String, payload: JSONObject) {
@@ -713,10 +788,14 @@ class MainActivity : Activity() {
         activityCommandReceiver?.let {
             try { unregisterReceiver(it) } catch (_: Exception) {}
         }
+        rpeResponseReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: Exception) {}
+        }
         if (::sensorSequenceManager.isInitialized && sensorSequenceManager.isRunning) {
             if (sensorSequenceManager.isContinuousMode) {
                 val seqCount = sensorSequenceManager.sequenceCount
                 val sid = sensorSequenceManager.sessionId
+                SessionForegroundService.stop(this)
                 sendMessageToPhone("/fitguard/activity/stopped", JSONObject().apply {
                     put("session_id", sid)
                     put("reason", "watch_destroyed")
