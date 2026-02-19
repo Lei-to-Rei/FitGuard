@@ -5,7 +5,6 @@ import android.util.Log
 import com.example.fitguard.data.processing.AccelSample
 import com.example.fitguard.data.processing.PpgSample
 import com.example.fitguard.data.processing.SequenceProcessor
-import com.example.fitguard.data.processing.SkinTempSample
 import com.google.android.gms.wearable.*
 import com.google.firebase.auth.FirebaseAuth
 import org.json.JSONObject
@@ -82,11 +81,6 @@ class WearableDataListenerService : WearableListenerService() {
                     put("ir", bundle.getInt("ir"))
                     put("red", bundle.getInt("red"))
                 }
-                "SkinTemp" -> {
-                    put("status", bundle.getInt("status"))
-                    if (bundle.containsKey("object_temp")) put("obj", bundle.getFloat("object_temp"))
-                    if (bundle.containsKey("ambient_temp")) put("amb", bundle.getFloat("ambient_temp"))
-                }
             }
         }
 
@@ -116,7 +110,6 @@ class WearableDataListenerService : WearableListenerService() {
 
             val ppgSamples = mutableListOf<PpgSample>()
             val accelSamples = mutableListOf<AccelSample>()
-            val skinTempSamples = mutableListOf<SkinTempSample>()
 
             for (i in 0 until dataArray.length()) {
                 val entry = dataArray.getJSONObject(i)
@@ -141,17 +134,6 @@ class WearableDataListenerService : WearableListenerService() {
                         y = entry.optDouble("y", 0.0).toFloat(),
                         z = entry.optDouble("z", 0.0).toFloat()
                     ))
-                    "SkinTemp" -> {
-                        val objTemp = entry.optDouble("object_temp", Double.NaN)
-                        val ambTemp = entry.optDouble("ambient_temp", Double.NaN)
-                        if (!objTemp.isNaN() && !ambTemp.isNaN()) {
-                            skinTempSamples.add(SkinTempSample(
-                                timestamp = entry.getLong("timestamp"),
-                                objectTemp = objTemp.toFloat(),
-                                ambientTemp = ambTemp.toFloat()
-                            ))
-                        }
-                    }
                 }
             }
 
@@ -160,9 +142,6 @@ class WearableDataListenerService : WearableListenerService() {
             }
             if (accelSamples.isNotEmpty()) {
                 sequenceProcessor.accumulator.addAccelSamples(sequenceId, totalBatches, accelSamples)
-            }
-            if (skinTempSamples.isNotEmpty()) {
-                sequenceProcessor.accumulator.addSkinTempSamples(sequenceId, totalBatches, skinTempSamples)
             }
             if (activityType.isNotEmpty()) {
                 sequenceProcessor.accumulator.setActivityType(sequenceId, activityType)

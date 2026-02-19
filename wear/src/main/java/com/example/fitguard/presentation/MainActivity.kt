@@ -54,7 +54,6 @@ class MainActivity : Activity() {
         private val HEALTH_PERMISSIONS_API36 = arrayOf(
             "android.permission.health.READ_HEART_RATE",
             "android.permission.health.READ_OXYGEN_SATURATION",
-            "android.permission.health.READ_SKIN_TEMPERATURE",
             "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
         )
 
@@ -147,7 +146,6 @@ class MainActivity : Activity() {
                 ✓ Fitness & Wellness
                   • Heart Rate
                   • Blood Oxygen (SpO2)
-                  • Skin Temperature
                   • Background Health Data
 
                 ✓ Physical Activity
@@ -215,7 +213,6 @@ class MainActivity : Activity() {
         return when {
             permission.contains("health.READ_HEART_RATE") -> "• Heart Rate"
             permission.contains("health.READ_OXYGEN_SATURATION") -> "• Blood Oxygen"
-            permission.contains("health.READ_SKIN_TEMPERATURE") -> "• Skin Temperature"
             permission.contains("health.READ_HEALTH_DATA_IN_BACKGROUND") -> "• Background Health Data"
             permission == Manifest.permission.BODY_SENSORS -> "• Body Sensors"
             permission == Manifest.permission.BODY_SENSORS_BACKGROUND -> "• Background Body Sensors"
@@ -237,7 +234,6 @@ class MainActivity : Activity() {
                 📊 Fitness and Wellness
                   • Heart Rate monitoring
                   • SpO2 (Blood Oxygen)
-                  • Skin Temperature
 
                 🏃 Physical Activity
                   • Activity Recognition
@@ -406,19 +402,11 @@ class MainActivity : Activity() {
             }
         }
 
-        addSectionHeader("On-Demand Trackers")
-
-        if (availableTrackers.contains(HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND)) {
-            addTrackerButton("Skin Temp", HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND, "Body temp") {
-                healthTrackerManager.startSkinTemperatureOnDemand()
-            }
-        }
-
         // Automated Sequence section
         addSectionHeader("Automated Sequence")
 
         sequenceStatusText = TextView(this).apply {
-            text = "60s PPG+Accel, then Skin Temp"
+            text = "60s PPG+Accel"
             textSize = 9f
             setTextColor(Color.LTGRAY)
             setPadding(12, 2, 12, 6)
@@ -605,7 +593,6 @@ class MainActivity : Activity() {
         val phaseText = when (phase) {
             SensorSequenceManager.SequencePhase.IDLE -> "Ready"
             SensorSequenceManager.SequencePhase.CONTINUOUS -> "PPG + Accel..."
-            SensorSequenceManager.SequencePhase.SKIN_TEMP -> "Skin Temp..."
             SensorSequenceManager.SequencePhase.SENDING -> "Sending data..."
             SensorSequenceManager.SequencePhase.COMPLETE -> "Complete!"
             SensorSequenceManager.SequencePhase.CANCELLED -> "Cancelled"
@@ -622,13 +609,6 @@ class MainActivity : Activity() {
                     dataMap.putInt("green", data.green ?: 0)
                     dataMap.putInt("ir", data.ir ?: 0)
                     dataMap.putInt("red", data.red ?: 0)
-                    dataMap.putLong("timestamp", data.timestamp)
-                }
-                is HealthTrackerManager.TrackerData.SkinTemperatureData -> {
-                    dataMap.putString("type", "SkinTemp")
-                    dataMap.putInt("status", data.status)
-                    data.objectTemperature?.let { dataMap.putFloat("object_temp", it) }
-                    data.ambientTemperature?.let { dataMap.putFloat("ambient_temp", it) }
                     dataMap.putLong("timestamp", data.timestamp)
                 }
                 is HealthTrackerManager.TrackerData.AccelerometerData -> {

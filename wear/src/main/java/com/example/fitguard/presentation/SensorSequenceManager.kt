@@ -15,19 +15,17 @@ class SensorSequenceManager(
     private val healthTrackerManager: HealthTrackerManager
 ) {
     enum class SequencePhase {
-        IDLE, SKIN_TEMP, CONTINUOUS, SENDING, COMPLETE, CANCELLED
+        IDLE, CONTINUOUS, SENDING, COMPLETE, CANCELLED
     }
 
     companion object {
         private const val TAG = "SensorSequenceManager"
         private const val CONTINUOUS_DURATION_SECONDS = 60
-        private const val SKIN_TEMP_TIMEOUT_SECONDS = 15
         private const val MAX_BATCH_BYTES = 75_000
         private const val BATCH_SEND_DELAY_MS = 200L
     }
 
     private val ppgBuffer = CopyOnWriteArrayList<HealthTrackerManager.TrackerData.PPGData>()
-    private val skinTempBuffer = CopyOnWriteArrayList<HealthTrackerManager.TrackerData.SkinTemperatureData>()
     private val accelerometerBuffer = CopyOnWriteArrayList<HealthTrackerManager.TrackerData.AccelerometerData>()
 
     var onPhaseChanged: ((SequencePhase) -> Unit)? = null
@@ -59,7 +57,6 @@ class SensorSequenceManager(
     private val bufferingCallback: (HealthTrackerManager.TrackerData) -> Unit = { data ->
         when (data) {
             is HealthTrackerManager.TrackerData.PPGData -> ppgBuffer.add(data)
-            is HealthTrackerManager.TrackerData.SkinTemperatureData -> skinTempBuffer.add(data)
             is HealthTrackerManager.TrackerData.AccelerometerData -> accelerometerBuffer.add(data)
         }
     }
@@ -130,11 +127,11 @@ class SensorSequenceManager(
 
     private suspend fun runSequence() {
         val startTime = System.currentTimeMillis()
-        val totalSeconds = CONTINUOUS_DURATION_SECONDS + SKIN_TEMP_TIMEOUT_SECONDS
+        val totalSeconds = CONTINUOUS_DURATION_SECONDS
 
-        // Phase 1: PPG + Accelerometer for 60s
+        // PPG + Accelerometer for 60s
         setPhase(SequencePhase.CONTINUOUS)
-        Log.d(TAG, "Phase 1: Starting PPG + Accelerometer for ${CONTINUOUS_DURATION_SECONDS}s")
+        Log.d(TAG, "Starting PPG + Accelerometer for ${CONTINUOUS_DURATION_SECONDS}s")
 
         val ppgStarted = healthTrackerManager.startPPGContinuous()
         if (!ppgStarted) Log.w(TAG, "Failed to start PPG, continuing")
@@ -153,32 +150,7 @@ class SensorSequenceManager(
         // Stop continuous trackers
         healthTrackerManager.stopTracker(HealthTrackerType.PPG_CONTINUOUS)
         healthTrackerManager.stopTracker(HealthTrackerType.ACCELEROMETER_CONTINUOUS)
-        Log.d(TAG, "Phase 1 complete, stopped PPG + Accelerometer")
-
-        // Phase 2: Skin Temperature
-        setPhase(SequencePhase.SKIN_TEMP)
-        Log.d(TAG, "Phase 2: Starting Skin Temp")
-
-        val skinTempStarted = healthTrackerManager.startSkinTemperatureOnDemand()
-        if (!skinTempStarted) Log.w(TAG, "Failed to start Skin Temp, skipping")
-
-        if (skinTempStarted) {
-            val skinTempDeadline = System.currentTimeMillis() + SKIN_TEMP_TIMEOUT_SECONDS * 1000L
-            while (!hasValidSkinTemp() && System.currentTimeMillis() < skinTempDeadline) {
-                val elapsed = ((System.currentTimeMillis() - startTime) / 1000).toInt()
-                onProgress?.invoke(elapsed, totalSeconds)
-                delay(500)
-            }
-            healthTrackerManager.stopTracker(HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND)
-            if (!hasValidSkinTemp()) {
-                Log.w(TAG, "Skin Temp timed out after ${SKIN_TEMP_TIMEOUT_SECONDS}s")
-            } else {
-                Log.d(TAG, "Skin Temp reading received")
-            }
-        }
-
-        // Phase 3: Stop all and send data
-        Log.d(TAG, "Phase 3: Sending data")
+        Log.d(TAG, "PPG + Accelerometer complete, sending data")
         healthTrackerManager.stopAllTrackers()
 
         setPhase(SequencePhase.SENDING)
@@ -208,7 +180,6 @@ class SensorSequenceManager(
 
     private fun clearBuffers() {
         ppgBuffer.clear()
-        skinTempBuffer.clear()
         accelerometerBuffer.clear()
     }
 
@@ -221,16 +192,6 @@ class SensorSequenceManager(
                 put("green", data.green ?: 0)
                 put("ir", data.ir ?: 0)
                 put("red", data.red ?: 0)
-                put("timestamp", data.timestamp)
-            })
-        }
-
-        skinTempBuffer.forEach { data ->
-            allEntries.add(JSONObject().apply {
-                put("type", "SkinTemp")
-                put("status", data.status)
-                put("object_temp", data.objectTemperature ?: 0f)
-                put("ambient_temp", data.ambientTemperature ?: 0f)
                 put("timestamp", data.timestamp)
             })
         }
@@ -318,7 +279,4 @@ class SensorSequenceManager(
         Log.d(TAG, "Batch send complete")
     }
 
-    private fun hasValidSkinTemp(): Boolean {
-        return skinTempBuffer.any { it.objectTemperature != null }
-    }
 }

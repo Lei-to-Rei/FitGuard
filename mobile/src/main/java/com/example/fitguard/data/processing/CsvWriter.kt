@@ -21,7 +21,6 @@ object CsvWriter {
         "accel_x_mean", "accel_y_mean", "accel_z_mean",
         "accel_x_var", "accel_y_var", "accel_z_var",
         "accel_mag_mean", "accel_mag_var", "accel_peak",
-        "skin_temp_obj", "skin_temp_delta", "skin_temp_ambient",
         "total_steps", "cadence_spm",
         "activity_label", "fatigue_level", "rpe_raw"
     ).joinToString(",")
@@ -73,9 +72,6 @@ object CsvWriter {
                 fmt(fv.accelMagMean),
                 fmt(fv.accelMagVar),
                 fmt(fv.accelPeak),
-                fmt(fv.skinTempObj),
-                fmt(fv.skinTempDelta),
-                fmt(fv.skinTempAmbient),
                 fv.totalSteps.toString(),
                 fmt(fv.cadenceSpm),
                 fv.activityLabel,
@@ -141,9 +137,6 @@ object CsvWriter {
         "accelMagMean" to accelMagMean,
         "accelMagVar" to accelMagVar,
         "accelPeak" to accelPeak,
-        "skinTempObj" to skinTempObj,
-        "skinTempDelta" to skinTempDelta,
-        "skinTempAmbient" to skinTempAmbient,
         "totalSteps" to totalSteps,
         "cadenceSpm" to cadenceSpm,
         "activityLabel" to activityLabel,

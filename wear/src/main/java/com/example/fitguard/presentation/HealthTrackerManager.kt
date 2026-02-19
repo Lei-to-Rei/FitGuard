@@ -13,7 +13,7 @@ import com.samsung.android.service.health.tracking.data.ValueKey
  * Health Tracker Manager for Samsung Watch 7
  * Samsung Health Sensor API 1.4.1 - All Available Trackers
  *
- * Working Trackers: PPG, Heart Rate, SpO2, ECG, Skin Temp, BIA, Sweat Loss
+ * Working Trackers: PPG, Heart Rate, SpO2, ECG, BIA, Sweat Loss
  */
 class HealthTrackerManager(
     private val context: Context,
@@ -39,13 +39,6 @@ class HealthTrackerManager(
             val green: Int?,
             val ir: Int?,
             val red: Int?,
-            val timestamp: Long
-        ) : TrackerData()
-
-        data class SkinTemperatureData(
-            val status: Int,
-            val objectTemperature: Float?,
-            val ambientTemperature: Float?,
             val timestamp: Long
         ) : TrackerData()
 
@@ -131,44 +124,6 @@ class HealthTrackerManager(
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start PPG Continuous: ${e.message}", e)
-            false
-        }
-    }
-
-    /**
-     * Start Skin Temperature On-Demand tracker
-     */
-    fun startSkinTemperatureOnDemand(): Boolean {
-        return try {
-            val tracker = healthTrackingService?.getHealthTracker(HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND)
-
-            tracker?.setEventListener(object : HealthTracker.TrackerEventListener {
-                override fun onDataReceived(dataPoints: MutableList<DataPoint>) {
-                    dataPoints.forEach { dp ->
-                        val data = TrackerData.SkinTemperatureData(
-                            status = dp.getValue(ValueKey.SkinTemperatureSet.STATUS) ?: 0,
-                            objectTemperature = dp.getValue(ValueKey.SkinTemperatureSet.OBJECT_TEMPERATURE),
-                            ambientTemperature = dp.getValue(ValueKey.SkinTemperatureSet.AMBIENT_TEMPERATURE),
-                            timestamp = dp.timestamp
-                        )
-                        onDataCallback(data)
-                    }
-                }
-
-                override fun onFlushCompleted() {
-                    Log.d(TAG, "Skin Temperature On-Demand flush completed")
-                }
-
-                override fun onError(error: HealthTracker.TrackerError) {
-                    Log.e(TAG, "Skin Temperature On-Demand error: ${error.name}")
-                }
-            })
-
-            activeTrackers[HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND] = tracker!!
-            Log.d(TAG, "Started Skin Temperature On-Demand tracker")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start Skin Temperature On-Demand: ${e.message}", e)
             false
         }
     }

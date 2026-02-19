@@ -26,9 +26,6 @@
     <!-- Blood Oxygen (SpO2) - Required for oxygen saturation monitoring -->
     <uses-permission android:name="android.permission.health.READ_OXYGEN_SATURATION" />
 
-    <!-- Skin Temperature - Required for temperature monitoring -->
-    <uses-permission android:name="android.permission.health.READ_SKIN_TEMPERATURE" />
-
     <!-- Background Health Data Access - For continuous monitoring -->
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
 

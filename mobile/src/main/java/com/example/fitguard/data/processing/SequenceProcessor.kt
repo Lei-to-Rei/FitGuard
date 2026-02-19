@@ -48,8 +48,7 @@ class SequenceProcessor(private val context: Context) {
         scope.launch {
             try {
                 Log.d(TAG, "Processing sequence ${data.sequenceId} with " +
-                        "${data.ppgSamples.size} PPG, ${data.accelSamples.size} accel, " +
-                        "${data.skinTempSamples.size} skinTemp samples")
+                        "${data.ppgSamples.size} PPG, ${data.accelSamples.size} accel samples")
 
                 if (data.ppgSamples.size < 10) {
                     Log.w(TAG, "Too few PPG samples (${data.ppgSamples.size}), skipping processing")
@@ -65,19 +64,7 @@ class SequenceProcessor(private val context: Context) {
                 } else 0.0
                 val accelFeatures = AccelProcessor.process(data.accelSamples, durationSeconds)
 
-                // 3. Extract skin temp values (29-31)
-                val validSkinTemps = data.skinTempSamples.filter {
-                    it.objectTemp > 0 && it.ambientTemp > 0
-                }
-                val skinTempObj = if (validSkinTemps.isNotEmpty()) {
-                    validSkinTemps.map { it.objectTemp.toDouble() }.average()
-                } else 0.0
-                val skinTempAmbient = if (validSkinTemps.isNotEmpty()) {
-                    validSkinTemps.map { it.ambientTemp.toDouble() }.average()
-                } else 0.0
-                val skinTempDelta = skinTempObj - skinTempAmbient
-
-                // 4. Assemble FeatureVector
+                // 3. Assemble FeatureVector
                 val featureVector = FeatureVector(
                     timestamp = System.currentTimeMillis(),
                     sequenceId = data.sequenceId,
@@ -91,9 +78,6 @@ class SequenceProcessor(private val context: Context) {
                     accelMagMean = accelFeatures.magMean,
                     accelMagVar = accelFeatures.magVar,
                     accelPeak = accelFeatures.magPeak,
-                    skinTempObj = skinTempObj,
-                    skinTempDelta = skinTempDelta,
-                    skinTempAmbient = skinTempAmbient,
                     totalSteps = accelFeatures.totalSteps,
                     cadenceSpm = accelFeatures.cadenceSpm,
                     activityLabel = data.activityType,
@@ -106,7 +90,7 @@ class SequenceProcessor(private val context: Context) {
                         "RMSSD=${String.format("%.2f", ppgFeatures.rmssdMs)} " +
                         "LF/HF=${String.format("%.2f", ppgFeatures.lfHfRatio)} " +
                         "SpO2=${String.format("%.1f", ppgFeatures.spo2MeanPct)} " +
-                        "Steps=${accelFeatures.totalSteps} SkinT=${String.format("%.1f", skinTempObj)}")
+                        "Steps=${accelFeatures.totalSteps}")
 
                 // 5. Write to CSV
                 val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
@@ -129,7 +113,6 @@ class SequenceProcessor(private val context: Context) {
             putExtra("pnn50_pct", fv.ppg.pnn50Pct)
             putExtra("lf_hf_ratio", fv.ppg.lfHfRatio)
             putExtra("spo2_mean_pct", fv.ppg.spo2MeanPct)
-            putExtra("skin_temp_obj", fv.skinTempObj)
             putExtra("total_steps", fv.totalSteps)
             putExtra("cadence_spm", fv.cadenceSpm)
         }

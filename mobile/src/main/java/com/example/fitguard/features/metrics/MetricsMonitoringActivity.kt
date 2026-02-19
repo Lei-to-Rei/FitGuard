@@ -81,7 +81,6 @@ class MetricsMonitoringActivity : AppCompatActivity() {
                 val pnn50 = intent.getDoubleExtra("pnn50_pct", 0.0)
                 val lfHf = intent.getDoubleExtra("lf_hf_ratio", 0.0)
                 val spo2 = intent.getDoubleExtra("spo2_mean_pct", 0.0)
-                val skinTemp = intent.getDoubleExtra("skin_temp_obj", 0.0)
                 val steps = intent.getIntExtra("total_steps", 0)
                 val cadence = intent.getDoubleExtra("cadence_spm", 0.0)
 
@@ -91,7 +90,6 @@ class MetricsMonitoringActivity : AppCompatActivity() {
                     "SDNN: ${String.format("%.2f", sdnn)} ms | RMSSD: ${String.format("%.2f", rmssd)} ms\n" +
                     "pNN50: ${String.format("%.1f", pnn50)}% | LF/HF: ${String.format("%.2f", lfHf)}\n" +
                     "SpO2: ${String.format("%.1f", spo2)}%\n" +
-                    "Skin: ${String.format("%.1f", skinTemp)}°C\n" +
                     "Steps: $steps | Cadence: ${String.format("%.1f", cadence)} spm"
                 v.findViewById<TextView>(R.id.tvMetricTimestamp).text =
                     "Processed: ${SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())}"
@@ -105,13 +103,11 @@ class MetricsMonitoringActivity : AppCompatActivity() {
 
     private fun getTitle(type: String) = when(type) {
         "PPG" -> "📊 PPG"
-        "SkinTemp" -> "🌡️ Skin Temp"
         else -> type
     }
 
     private fun formatData(type: String, d: JSONObject) = when(type) {
         "PPG" -> "Green: ${d.getInt("green")}\nIR: ${d.getInt("ir")}\nRed: ${d.getInt("red")}"
-        "SkinTemp" -> "Skin: ${if(d.has("obj")) String.format("%.1f", d.getDouble("obj"))+"°C" else "N/A"}\nAmbient: ${if(d.has("amb")) String.format("%.1f", d.getDouble("amb"))+"°C" else "N/A"}"
         else -> "Unknown"
     }
 
