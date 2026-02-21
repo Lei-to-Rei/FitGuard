@@ -37,6 +37,9 @@ class SequenceProcessor(private val context: Context) {
         private const val TAG = "SequenceProcessor"
         const val ACTION_SEQUENCE_PROCESSED = "com.example.fitguard.SEQUENCE_PROCESSED"
         private const val MAX_GAP_MS = 90_000L
+        private const val OVERLAP_STEP_MS = 15_000L
+        private const val OVERLAP_COUNT = 3
+        private const val WINDOW_DURATION_MS = 60_000L
         private const val MIN_OVERLAP_PPG_SAMPLES = 10
         @Volatile private var previousSequenceData: SequenceData? = null
     }
@@ -50,44 +53,54 @@ class SequenceProcessor(private val context: Context) {
     private fun handleSequenceReady(currentData: SequenceData) {
         val previous = previousSequenceData
         if (previous != null) {
-            val overlapWindow = createOverlapWindow(previous, currentData)
-            if (overlapWindow != null) {
-                processSequence(overlapWindow)
+            for (window in createOverlapWindows(previous, currentData)) {
+                processSequence(window)
             }
         }
         processSequence(currentData)
         previousSequenceData = currentData
     }
 
-    private fun createOverlapWindow(previous: SequenceData, current: SequenceData): SequenceData? {
-        if (previous.ppgSamples.isEmpty() || current.ppgSamples.isEmpty()) return null
+    /**
+     * Creates 3 sliding overlap windows between consecutive 60s sequences.
+     * Given REG₁ (0-60s) and REG₂ (60-120s), produces:
+     *   OVL1 = 15-75s,  OVL2 = 30-90s,  OVL3 = 45-105s
+     * Each window is 60s wide, stepped by 15s.
+     */
+    private fun createOverlapWindows(previous: SequenceData, current: SequenceData): List<SequenceData> {
+        if (previous.ppgSamples.isEmpty() || current.ppgSamples.isEmpty()) return emptyList()
 
         val prevEnd = previous.ppgSamples.last().timestamp
         val currStart = current.ppgSamples.first().timestamp
         val gap = currStart - prevEnd
-        if (gap < 0 || gap > MAX_GAP_MS) return null
+        if (gap < 0 || gap > MAX_GAP_MS) return emptyList()
 
         val prevStart = previous.ppgSamples.first().timestamp
-        val prevMid = prevStart + (prevEnd - prevStart) / 2
-        val currEnd = current.ppgSamples.last().timestamp
-        val currMid = currStart + (currEnd - currStart) / 2
+        val results = mutableListOf<SequenceData>()
 
-        val prevPpgSecondHalf = previous.ppgSamples.filter { it.timestamp >= prevMid }
-        val currPpgFirstHalf = current.ppgSamples.filter { it.timestamp <= currMid }
-        val combinedPpg = prevPpgSecondHalf + currPpgFirstHalf
+        for (i in 1..OVERLAP_COUNT) {
+            val windowStart = prevStart + i * OVERLAP_STEP_MS
+            val windowEnd = windowStart + WINDOW_DURATION_MS
 
-        if (combinedPpg.size < MIN_OVERLAP_PPG_SAMPLES) return null
+            val prevPpg = previous.ppgSamples.filter { it.timestamp >= windowStart }
+            val currPpg = current.ppgSamples.filter { it.timestamp <= windowEnd }
+            val combinedPpg = prevPpg + currPpg
 
-        val prevAccelSecondHalf = previous.accelSamples.filter { it.timestamp >= prevMid }
-        val currAccelFirstHalf = current.accelSamples.filter { it.timestamp <= currMid }
-        val combinedAccel = prevAccelSecondHalf + currAccelFirstHalf
+            if (combinedPpg.size < MIN_OVERLAP_PPG_SAMPLES) continue
 
-        return SequenceData(
-            sequenceId = "OVL_${previous.sequenceId}_${current.sequenceId}",
-            ppgSamples = combinedPpg,
-            accelSamples = combinedAccel,
-            activityType = current.activityType
-        )
+            val prevAccel = previous.accelSamples.filter { it.timestamp >= windowStart }
+            val currAccel = current.accelSamples.filter { it.timestamp <= windowEnd }
+            val combinedAccel = prevAccel + currAccel
+
+            results.add(SequenceData(
+                sequenceId = "OVL${i}_${previous.sequenceId}_${current.sequenceId}",
+                ppgSamples = combinedPpg,
+                accelSamples = combinedAccel,
+                activityType = current.activityType
+            ))
+        }
+
+        return results
     }
 
     fun clearPreviousData() {
@@ -115,8 +128,19 @@ class SequenceProcessor(private val context: Context) {
                 val accelFeatures = AccelProcessor.process(data.accelSamples, durationSeconds)
 
                 // 3. Assemble FeatureVector
+                // Timestamp = midpoint of the actual data window so rows
+                // sort into correct temporal order when sorted by timestamp:
+                // REG₁(30) → OVL1(45) → OVL2(60) → OVL3(75) → REG₂(90) → …
+                val dataTimestamp = if (data.ppgSamples.size >= 2) {
+                    val first = data.ppgSamples.first().timestamp
+                    val last = data.ppgSamples.last().timestamp
+                    first + (last - first) / 2
+                } else {
+                    System.currentTimeMillis()
+                }
                 val featureVector = FeatureVector(
-                    timestamp = System.currentTimeMillis(),
+                    timestamp = dataTimestamp,
+                    timestampEnd = data.ppgSamples.last().timestamp,
                     sequenceId = data.sequenceId,
                     ppg = ppgFeatures,
                     accelXMean = accelFeatures.xMean,

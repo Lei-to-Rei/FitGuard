@@ -12,7 +12,7 @@ object CsvWriter {
     private const val FILE_NAME = "features.csv"
 
     private val HEADER = listOf(
-        "timestamp", "sequence_id",
+        "timestamp", "timestamp_end", "sequence_id",
         "mean_hr_bpm", "hr_std_bpm", "hr_min_bpm", "hr_max_bpm", "hr_range_bpm",
         "hr_slope_bpm_per_s", "nn_quality_ratio",
         "sdnn_ms", "rmssd_ms", "pnn50_pct", "mean_nn_ms", "cv_nn",
@@ -43,6 +43,7 @@ object CsvWriter {
 
             val row = listOf(
                 fv.timestamp.toString(),
+                fv.timestampEnd.toString(),
                 fv.sequenceId,
                 fmt(fv.ppg.meanHrBpm),
                 fmt(fv.ppg.hrStdBpm),
@@ -108,6 +109,7 @@ object CsvWriter {
 
     private fun FeatureVector.toFirestoreMap(): Map<String, Any> = mapOf(
         "timestamp" to timestamp,
+        "timestampEnd" to timestampEnd,
         "sequenceId" to sequenceId,
         "meanHrBpm" to ppg.meanHrBpm,
         "hrStdBpm" to ppg.hrStdBpm,

@@ -31,6 +31,7 @@ data class PpgFeatures(
 
 data class FeatureVector(
     val timestamp: Long,
+    val timestampEnd: Long,
     val sequenceId: String,
     val ppg: PpgFeatures,
     val accelXMean: Double,
