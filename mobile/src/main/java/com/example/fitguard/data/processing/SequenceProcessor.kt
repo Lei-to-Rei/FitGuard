@@ -36,12 +36,62 @@ class SequenceProcessor(private val context: Context) {
     companion object {
         private const val TAG = "SequenceProcessor"
         const val ACTION_SEQUENCE_PROCESSED = "com.example.fitguard.SEQUENCE_PROCESSED"
+        private const val MAX_GAP_MS = 90_000L
+        private const val MIN_OVERLAP_PPG_SAMPLES = 10
+        @Volatile private var previousSequenceData: SequenceData? = null
     }
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     val accumulator = SequenceBatchAccumulator { data ->
-        processSequence(data)
+        handleSequenceReady(data)
+    }
+
+    private fun handleSequenceReady(currentData: SequenceData) {
+        val previous = previousSequenceData
+        if (previous != null) {
+            val overlapWindow = createOverlapWindow(previous, currentData)
+            if (overlapWindow != null) {
+                processSequence(overlapWindow)
+            }
+        }
+        processSequence(currentData)
+        previousSequenceData = currentData
+    }
+
+    private fun createOverlapWindow(previous: SequenceData, current: SequenceData): SequenceData? {
+        if (previous.ppgSamples.isEmpty() || current.ppgSamples.isEmpty()) return null
+
+        val prevEnd = previous.ppgSamples.last().timestamp
+        val currStart = current.ppgSamples.first().timestamp
+        val gap = currStart - prevEnd
+        if (gap < 0 || gap > MAX_GAP_MS) return null
+
+        val prevStart = previous.ppgSamples.first().timestamp
+        val prevMid = prevStart + (prevEnd - prevStart) / 2
+        val currEnd = current.ppgSamples.last().timestamp
+        val currMid = currStart + (currEnd - currStart) / 2
+
+        val prevPpgSecondHalf = previous.ppgSamples.filter { it.timestamp >= prevMid }
+        val currPpgFirstHalf = current.ppgSamples.filter { it.timestamp <= currMid }
+        val combinedPpg = prevPpgSecondHalf + currPpgFirstHalf
+
+        if (combinedPpg.size < MIN_OVERLAP_PPG_SAMPLES) return null
+
+        val prevAccelSecondHalf = previous.accelSamples.filter { it.timestamp >= prevMid }
+        val currAccelFirstHalf = current.accelSamples.filter { it.timestamp <= currMid }
+        val combinedAccel = prevAccelSecondHalf + currAccelFirstHalf
+
+        return SequenceData(
+            sequenceId = "OVL_${previous.sequenceId}_${current.sequenceId}",
+            ppgSamples = combinedPpg,
+            accelSamples = combinedAccel,
+            activityType = current.activityType
+        )
+    }
+
+    fun clearPreviousData() {
+        previousSequenceData = null
     }
 
     private fun processSequence(data: SequenceData) {
