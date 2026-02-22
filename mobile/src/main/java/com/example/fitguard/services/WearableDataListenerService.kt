@@ -25,11 +25,15 @@ class WearableDataListenerService : WearableListenerService() {
     override fun onDataChanged(dataEvents: DataEventBuffer) {
         dataEvents.forEach { event ->
             if (event.type == DataEvent.TYPE_CHANGED) {
-                val path = event.dataItem.uri.path
+                val uri = event.dataItem.uri
+                val path = uri.path
                 val dataMap = DataMapItem.fromDataItem(event.dataItem).dataMap
-                when (path) {
-                    "/health_tracker_data" -> processHealthData(dataMap.toBundle())
-                    "/health_tracker_batch" -> processBatchData(dataMap)
+                when {
+                    path == "/health_tracker_data" -> processHealthData(dataMap.toBundle())
+                    path?.startsWith("/health_tracker_batch/") == true -> {
+                        processBatchData(dataMap)
+                        Wearable.getDataClient(this).deleteDataItems(uri)
+                    }
                 }
             }
         }

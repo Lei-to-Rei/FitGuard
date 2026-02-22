@@ -255,9 +255,8 @@ class SensorSequenceManager(
                     put("data", batch)
                 }
 
-                val request = PutDataMapRequest.create("/health_tracker_batch").apply {
+                val request = PutDataMapRequest.create("/health_tracker_batch/$sequenceId/$batchNumber").apply {
                     dataMap.putString("batch_json", payload.toString())
-                    dataMap.putLong("unique_key", System.currentTimeMillis() + batchNumber)
                 }.asPutDataRequest().setUrgent()
 
                 Wearable.getDataClient(context).putDataItem(request)
