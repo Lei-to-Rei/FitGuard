@@ -1,24 +1,51 @@
 package com.example.fitguard.presentation
 
-import android.app.Activity
 import android.app.NotificationManager
 import android.content.Intent
-import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
-import android.view.Gravity
-import android.view.ViewGroup
 import android.view.WindowManager
-import android.widget.Button
-import android.widget.HorizontalScrollView
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.rotary.onRotaryScrollEvent
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.wear.compose.material.ChipDefaults
+import androidx.wear.compose.material.CompactChip
+import androidx.wear.compose.material.InlineSlider
+import androidx.wear.compose.material.Icon
+import androidx.wear.compose.material.InlineSliderDefaults
+import androidx.wear.compose.material.Text
+import com.example.fitguard.presentation.theme.FitGuardTheme
 
-class RpePromptActivity : Activity() {
+class RpePromptActivity : ComponentActivity() {
 
     companion object {
         const val ACTION_RPE_RESPONSE = "com.example.fitguard.wear.RPE_RESPONSE"
@@ -47,150 +74,21 @@ class RpePromptActivity : Activity() {
         val lastRpe = intent.getIntExtra(EXTRA_LAST_RPE, -1)
         val isEndOfSession = intent.getBooleanExtra(EXTRA_IS_END_OF_SESSION, false)
 
-        buildUI(lastRpe, isEndOfSession)
+        setContent {
+            FitGuardTheme {
+                RpeSliderScreen(
+                    lastRpe = lastRpe,
+                    isEndOfSession = isEndOfSession,
+                    onSubmit = { sendResponse(it) },
+                    onSkip = { sendResponse(-1) }
+                )
+            }
+        }
 
         // Auto-dismiss after 15s (skip) - only for periodic prompts
         if (!isEndOfSession) {
             autoDismissRunnable = Runnable { sendResponse(-1) }
             autoDismissHandler.postDelayed(autoDismissRunnable!!, AUTO_DISMISS_MS)
-        }
-    }
-
-    private fun buildUI(lastRpe: Int, isEndOfSession: Boolean) {
-        val root = ScrollView(this).apply {
-            setBackgroundColor(Color.BLACK)
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        }
-
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(8, 16, 8, 16)
-        }
-
-        // Title
-        val title = TextView(this).apply {
-            text = if (isEndOfSession) "Session RPE?" else "How hard?"
-            textSize = 14f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 4)
-        }
-        container.addView(title)
-
-        // Last RPE subtitle
-        if (lastRpe >= 0) {
-            val subtitle = TextView(this).apply {
-                text = "Last: $lastRpe"
-                textSize = 10f
-                setTextColor(Color.LTGRAY)
-                gravity = Gravity.CENTER
-                setPadding(0, 0, 0, 4)
-            }
-            container.addView(subtitle)
-        }
-
-        // Anchor labels row
-        val anchors = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(4, 2, 4, 6)
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-        val anchorData = listOf("0:Nothing", "3:Moderate", "5:Hard", "10:Max")
-        for (anchor in anchorData) {
-            val (num, label) = anchor.split(":")
-            val tv = TextView(this).apply {
-                text = "$num\n$label"
-                textSize = 8f
-                setTextColor(Color.GRAY)
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            }
-            anchors.addView(tv)
-        }
-        container.addView(anchors)
-
-        // Buttons row (0-10) inside HorizontalScrollView
-        val scrollRow = HorizontalScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            isHorizontalScrollBarEnabled = false
-        }
-
-        val buttonRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(2, 4, 2, 8)
-        }
-
-        for (i in 0..10) {
-            val color = getRpeColor(i)
-            val btn = Button(this).apply {
-                text = "$i"
-                textSize = 12f
-                setTextColor(Color.WHITE)
-                setBackgroundColor(color)
-                minWidth = 0
-                minimumWidth = 0
-                minHeight = 0
-                minimumHeight = 0
-                setPadding(6, 8, 6, 8)
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { setMargins(2, 0, 2, 0) }
-                setOnClickListener { sendResponse(i) }
-            }
-            buttonRow.addView(btn)
-        }
-
-        scrollRow.addView(buttonRow)
-        container.addView(scrollRow)
-
-        // Skip button (not shown for end-of-session)
-        if (!isEndOfSession) {
-            val skipBtn = Button(this).apply {
-                text = "Skip"
-                textSize = 11f
-                setTextColor(Color.LTGRAY)
-                setBackgroundColor(Color.parseColor("#333333"))
-                setPadding(16, 8, 16, 8)
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = 4 }
-                setOnClickListener { sendResponse(-1) }
-            }
-            container.addView(skipBtn)
-        }
-
-        root.addView(container)
-        setContentView(root)
-    }
-
-    private fun getRpeColor(value: Int): Int {
-        return when (value) {
-            0 -> Color.parseColor("#4CAF50")     // Green
-            1 -> Color.parseColor("#66BB6A")
-            2 -> Color.parseColor("#8BC34A")
-            3 -> Color.parseColor("#CDDC39")     // Yellow-green
-            4 -> Color.parseColor("#FFEB3B")     // Yellow
-            5 -> Color.parseColor("#FFC107")     // Amber
-            6 -> Color.parseColor("#FF9800")     // Orange
-            7 -> Color.parseColor("#FF5722")     // Deep orange
-            8 -> Color.parseColor("#F44336")     // Red
-            9 -> Color.parseColor("#D32F2F")     // Dark red
-            10 -> Color.parseColor("#B71C1C")    // Very dark red
-            else -> Color.GRAY
         }
     }
 
@@ -209,5 +107,153 @@ class RpePromptActivity : Activity() {
     override fun onDestroy() {
         super.onDestroy()
         autoDismissRunnable?.let { autoDismissHandler.removeCallbacks(it) }
+    }
+}
+
+@Composable
+private fun RpeSliderScreen(
+    lastRpe: Int,
+    isEndOfSession: Boolean,
+    onSubmit: (Int) -> Unit,
+    onSkip: () -> Unit
+) {
+    val defaultValue = if (lastRpe in 0..10) lastRpe else 0
+    var rpeValue by remember { mutableIntStateOf(defaultValue) }
+    val focusRequester = remember { FocusRequester() }
+    var rotaryAccumulator by remember { mutableFloatStateOf(0f) }
+
+    val backgroundColor = getRpeComposeColor(rpeValue)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(backgroundColor.copy(alpha = 0.3f))
+            .onRotaryScrollEvent { event ->
+                rotaryAccumulator += event.verticalScrollPixels
+                val threshold = 50f
+                while (rotaryAccumulator >= threshold) {
+                    if (rpeValue < 10) rpeValue++
+                    rotaryAccumulator -= threshold
+                }
+                while (rotaryAccumulator <= -threshold) {
+                    if (rpeValue > 0) rpeValue--
+                    rotaryAccumulator += threshold
+                }
+                true
+            }
+            .focusRequester(focusRequester)
+            .focusable(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        ) {
+            // Title
+            Text(
+                text = if (isEndOfSession) "Session RPE?" else "How hard?",
+                fontSize = 14.sp,
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
+
+            // Last RPE subtitle
+            if (lastRpe in 0..10) {
+                Text(
+                    text = "Last: $lastRpe",
+                    fontSize = 10.sp,
+                    color = Color.LightGray,
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            // Large RPE number
+            Text(
+                text = "$rpeValue",
+                fontSize = 44.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
+
+            // Descriptive label
+            Text(
+                text = getRpeLabel(rpeValue),
+                fontSize = 12.sp,
+                color = Color.White.copy(alpha = 0.8f),
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // InlineSlider
+            InlineSlider(
+                value = rpeValue,
+                onValueChange = { rpeValue = it },
+                valueProgression = 0..10,
+                decreaseIcon = { Icon(InlineSliderDefaults.Decrease, "Decrease") },
+                increaseIcon = { Icon(InlineSliderDefaults.Increase, "Increase") },
+                segmented = true,
+                colors = InlineSliderDefaults.colors(),
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Confirm button
+            CompactChip(
+                onClick = { onSubmit(rpeValue) },
+                label = { Text("Confirm", fontSize = 13.sp) },
+                colors = ChipDefaults.primaryChipColors()
+            )
+
+            // Skip button (periodic prompts only)
+            if (!isEndOfSession) {
+                Spacer(modifier = Modifier.height(2.dp))
+                CompactChip(
+                    onClick = onSkip,
+                    label = { Text("Skip", fontSize = 11.sp) },
+                    colors = ChipDefaults.secondaryChipColors()
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+}
+
+private fun getRpeComposeColor(value: Int): Color {
+    val green = Color(0xFF4CAF50)
+    val yellow = Color(0xFFFFEB3B)
+    val orange = Color(0xFFFF9800)
+    val red = Color(0xFFB71C1C)
+
+    val fraction = value / 10f
+    return when {
+        fraction <= 0.33f -> lerp(green, yellow, fraction / 0.33f)
+        fraction <= 0.66f -> lerp(yellow, orange, (fraction - 0.33f) / 0.33f)
+        else -> lerp(orange, red, (fraction - 0.66f) / 0.34f)
+    }
+}
+
+private fun getRpeLabel(value: Int): String {
+    return when (value) {
+        0 -> "Nothing at all"
+        1 -> "Very light"
+        2 -> "Light"
+        3 -> "Moderate"
+        4 -> "Somewhat hard"
+        5 -> "Hard"
+        6 -> "Harder"
+        7 -> "Very hard"
+        8 -> "Very hard+"
+        9 -> "Extreme"
+        10 -> "Max effort"
+        else -> ""
     }
 }
