@@ -13,19 +13,18 @@ import kotlinx.coroutines.sync.withLock
 
 object RpeState {
     @Volatile var currentRpe: Int = -1
-    @Volatile var lastTimestamp: Long = 0
 
     fun update(rpe: Int) {
         currentRpe = rpe
-        lastTimestamp = System.currentTimeMillis()
     }
 
     fun reset() {
         currentRpe = -1
-        lastTimestamp = 0
     }
 
-    val fatigueLevel: String get() = when (currentRpe) {
+    val fatigueLevel: String get() = fatigueLevelForRpe(currentRpe)
+
+    fun fatigueLevelForRpe(rpe: Int): String = when (rpe) {
         in 0..2 -> "0"
         in 3..4 -> "1"
         in 5..7 -> "2"
@@ -35,6 +34,8 @@ object RpeState {
 }
 
 class SequenceProcessor(private val context: Context) {
+    data class PendingWindow(val fv: FeatureVector, val userId: String)
+
     companion object {
         private const val TAG = "SequenceProcessor"
         const val ACTION_SEQUENCE_PROCESSED = "com.example.fitguard.SEQUENCE_PROCESSED"
@@ -50,12 +51,18 @@ class SequenceProcessor(private val context: Context) {
         private var currentActivityType: String = ""
         private val bufferMutex = Mutex()
 
+        // Deferred-flush RPE state
+        private val pendingWindows = mutableListOf<PendingWindow>()
+        private var lastFlushedRpe: Int = -1
+
         fun clearBuffer() {
             ppgBuffer.clear()
             accelBuffer.clear()
             nextWindowStart = -1L
             windowIndex = 0
             currentActivityType = ""
+            pendingWindows.clear()
+            lastFlushedRpe = -1
         }
     }
 
@@ -133,7 +140,7 @@ class SequenceProcessor(private val context: Context) {
             } else 0.0
             val accelFeatures = AccelProcessor.process(data.accelSamples, durationSeconds)
 
-            // 3. Assemble FeatureVector
+            // 3. Assemble FeatureVector (RPE filled later on flush)
             val dataTimestamp = if (data.ppgSamples.size >= 2) {
                 val first = data.ppgSamples.first().timestamp
                 val last = data.ppgSamples.last().timestamp
@@ -141,6 +148,7 @@ class SequenceProcessor(private val context: Context) {
             } else {
                 System.currentTimeMillis()
             }
+
             val featureVector = FeatureVector(
                 timestamp = dataTimestamp,
                 timestampEnd = data.ppgSamples.last().timestamp,
@@ -157,9 +165,7 @@ class SequenceProcessor(private val context: Context) {
                 accelPeak = accelFeatures.magPeak,
                 totalSteps = accelFeatures.totalSteps,
                 cadenceSpm = accelFeatures.cadenceSpm,
-                activityLabel = data.activityType,
-                fatigueLevel = RpeState.fatigueLevel,
-                rpeRaw = RpeState.currentRpe
+                activityLabel = data.activityType
             )
 
             Log.d(TAG, "Features for ${data.sequenceId}: HR=${String.format("%.1f", ppgFeatures.meanHrBpm)} " +
@@ -167,17 +173,60 @@ class SequenceProcessor(private val context: Context) {
                     "RMSSD=${String.format("%.2f", ppgFeatures.rmssdMs)} " +
                     "LF/HF=${String.format("%.2f", ppgFeatures.lfHfRatio)} " +
                     "SpO2=${String.format("%.1f", ppgFeatures.spo2MeanPct)} " +
-                    "Steps=${accelFeatures.totalSteps} " +
-                    "RPE=${RpeState.currentRpe} fatigue=${RpeState.fatigueLevel}")
+                    "Steps=${accelFeatures.totalSteps} (pending RPE)")
 
-            // 5. Write to CSV
+            // 4. Add to pending list — will be flushed when RPE arrives
             val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
-            CsvWriter.writeFeatureVector(featureVector, userId)
-
-            // 6. Broadcast key metrics
-            broadcastResult(featureVector)
+            pendingWindows.add(PendingWindow(featureVector, userId))
         } catch (e: Exception) {
             Log.e(TAG, "Failed to process window ${data.sequenceId}: ${e.message}", e)
+        }
+    }
+
+    fun onRpeReceived(rpe: Int) {
+        scope.launch {
+            bufferMutex.withLock {
+                val n = pendingWindows.size
+                if (n == 0) {
+                    Log.d(TAG, "onRpeReceived($rpe) but no pending windows")
+                    if (rpe >= 0) lastFlushedRpe = rpe
+                    return@withLock
+                }
+
+                if (rpe >= 0) {
+                    // Valid RPE answer — interpolate across pending windows
+                    for (i in pendingWindows.indices) {
+                        val roundedRpe = if (lastFlushedRpe < 0) {
+                            // First RPE of session: assign directly
+                            rpe
+                        } else {
+                            (lastFlushedRpe + (i + 1).toDouble() / n * (rpe - lastFlushedRpe)).toInt()
+                        }
+                        val fatigue = RpeState.fatigueLevelForRpe(roundedRpe)
+                        val pw = pendingWindows[i]
+                        val finalFv = pw.fv.copy(rpeRaw = roundedRpe, fatigueLevel = fatigue)
+                        CsvWriter.writeFeatureVector(finalFv, pw.userId)
+                        broadcastResult(finalFv)
+                    }
+                    Log.d(TAG, "Flushed $n windows with RPE interpolation: " +
+                            "lastFlushed=$lastFlushedRpe -> new=$rpe")
+                    lastFlushedRpe = rpe
+                } else {
+                    // Skipped RPE — carry forward last known value
+                    val carryRpe = if (lastFlushedRpe >= 0) lastFlushedRpe else -1
+                    val fatigue = RpeState.fatigueLevelForRpe(carryRpe)
+                    for (pw in pendingWindows) {
+                        val finalFv = pw.fv.copy(
+                            rpeRaw = carryRpe,
+                            fatigueLevel = fatigue
+                        )
+                        CsvWriter.writeFeatureVector(finalFv, pw.userId)
+                        broadcastResult(finalFv)
+                    }
+                    Log.d(TAG, "Flushed $n windows with carry-forward RPE=$carryRpe (skipped)")
+                }
+                pendingWindows.clear()
+            }
         }
     }
 

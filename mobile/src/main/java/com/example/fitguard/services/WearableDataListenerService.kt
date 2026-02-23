@@ -82,6 +82,7 @@ class WearableDataListenerService : WearableListenerService() {
                     if (rpeValue >= 0) {
                         RpeState.update(rpeValue)
                     }
+                    sequenceProcessor.onRpeReceived(rpeValue)
                     sendBroadcast(Intent(ACTION_RPE_RECEIVED).apply {
                         putExtra("session_id", sessionId)
                         putExtra("rpe_value", rpeValue)
