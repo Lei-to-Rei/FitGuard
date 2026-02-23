@@ -167,7 +167,8 @@ class SequenceProcessor(private val context: Context) {
                     "RMSSD=${String.format("%.2f", ppgFeatures.rmssdMs)} " +
                     "LF/HF=${String.format("%.2f", ppgFeatures.lfHfRatio)} " +
                     "SpO2=${String.format("%.1f", ppgFeatures.spo2MeanPct)} " +
-                    "Steps=${accelFeatures.totalSteps}")
+                    "Steps=${accelFeatures.totalSteps} " +
+                    "RPE=${RpeState.currentRpe} fatigue=${RpeState.fatigueLevel}")
 
             // 5. Write to CSV
             val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""

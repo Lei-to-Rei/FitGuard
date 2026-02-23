@@ -8,6 +8,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.example.fitguard.data.processing.RpeState
+import com.example.fitguard.data.processing.SequenceProcessor
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -95,6 +96,7 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
         _sequenceCount.value = 0
         _lastRpe.value = -1
         RpeState.reset()
+        SequenceProcessor.clearBuffer()
 
         viewModelScope.launch {
             try {

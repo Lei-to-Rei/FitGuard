@@ -102,8 +102,10 @@ class SensorSequenceManager(
             try {
                 while (isActive) {
                     sequenceId = "${sessionId}_seq_${System.currentTimeMillis()}"
+                    Log.d(TAG, "=== Starting sequence #${sequenceCount + 1}: $sequenceId ===")
                     runSequence()
                     sequenceCount++
+                    Log.d(TAG, "=== Sequence #$sequenceCount complete, sent data ===")
                     onSequenceLoopComplete?.invoke(sequenceCount)
                     if (sequenceCount > 0 && sequenceCount % rpeIntervalSequences == 0) {
                         onRpePromptNeeded?.invoke(sequenceCount)
@@ -257,14 +259,15 @@ class SensorSequenceManager(
 
                 val request = PutDataMapRequest.create("/health_tracker_batch/$sequenceId/$batchNumber").apply {
                     dataMap.putString("batch_json", payload.toString())
+                    dataMap.putLong("sent_at", System.nanoTime()) // Force DataClient change detection
                 }.asPutDataRequest().setUrgent()
 
                 Wearable.getDataClient(context).putDataItem(request)
                     .addOnSuccessListener {
-                        Log.d(TAG, "Batch $batchNumber/$totalBatches sent (${batch.length()} points)")
+                        Log.d(TAG, "Batch $batchNumber/$totalBatches sent OK for seq=$sequenceId (${batch.length()} points)")
                     }
                     .addOnFailureListener { e ->
-                        Log.e(TAG, "Batch $batchNumber/$totalBatches failed: ${e.message}")
+                        Log.e(TAG, "Batch $batchNumber/$totalBatches FAILED for seq=$sequenceId: ${e.message}")
                     }
 
                 if (batchNumber < totalBatches) {

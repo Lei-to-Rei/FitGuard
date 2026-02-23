@@ -17,6 +17,9 @@ class SequenceBatchAccumulator(
 ) {
     companion object {
         private const val TAG = "SeqBatchAccumulator"
+
+        // Static so state survives WearableListenerService recreation between batches
+        private val sequences = mutableMapOf<String, SequenceState>()
     }
 
     private data class SequenceState(
@@ -26,8 +29,6 @@ class SequenceBatchAccumulator(
         val accelSamples: MutableList<AccelSample> = mutableListOf(),
         var activityType: String = ""
     )
-
-    private val sequences = mutableMapOf<String, SequenceState>()
 
     fun setActivityType(sequenceId: String, activityType: String) {
         val state = sequences[sequenceId] ?: return

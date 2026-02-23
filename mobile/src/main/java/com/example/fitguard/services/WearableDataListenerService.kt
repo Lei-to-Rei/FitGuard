@@ -4,7 +4,9 @@ import android.content.Intent
 import android.util.Log
 import com.example.fitguard.data.processing.AccelSample
 import com.example.fitguard.data.processing.PpgSample
+import com.example.fitguard.data.processing.RpeState
 import com.example.fitguard.data.processing.SequenceProcessor
+import android.net.Uri
 import com.google.android.gms.wearable.*
 import com.google.firebase.auth.FirebaseAuth
 import org.json.JSONObject
@@ -18,24 +20,32 @@ class WearableDataListenerService : WearableListenerService() {
         const val ACTION_ACTIVITY_ACK = "com.example.fitguard.ACTIVITY_ACK"
         const val ACTION_ACTIVITY_STOPPED = "com.example.fitguard.ACTIVITY_STOPPED"
         const val ACTION_ACTIVITY_HEARTBEAT = "com.example.fitguard.ACTIVITY_HEARTBEAT"
+        const val ACTION_RPE_RECEIVED = "com.example.fitguard.RPE_RECEIVED"
     }
 
     private val sequenceProcessor by lazy { SequenceProcessor(this) }
 
     override fun onDataChanged(dataEvents: DataEventBuffer) {
+        Log.d(TAG, "onDataChanged: ${dataEvents.count} events")
+        val processedUris = mutableListOf<Uri>()
         dataEvents.forEach { event ->
             if (event.type == DataEvent.TYPE_CHANGED) {
                 val uri = event.dataItem.uri
                 val path = uri.path
+                Log.d(TAG, "DataEvent: path=$path")
                 val dataMap = DataMapItem.fromDataItem(event.dataItem).dataMap
                 when {
                     path == "/health_tracker_data" -> processHealthData(dataMap.toBundle())
                     path?.startsWith("/health_tracker_batch/") == true -> {
                         processBatchData(dataMap)
-                        Wearable.getDataClient(this).deleteDataItems(uri)
+                        processedUris.add(uri)
                     }
                 }
             }
+        }
+        // Delete processed items AFTER fully consuming the buffer
+        for (uri in processedUris) {
+            Wearable.getDataClient(this).deleteDataItems(uri, DataClient.FILTER_LITERAL)
         }
     }
 
@@ -63,6 +73,18 @@ class WearableDataListenerService : WearableListenerService() {
                         putExtra("session_id", json.optString("session_id"))
                         putExtra("sequence_count", json.optInt("sequence_count", 0))
                         putExtra("elapsed_s", json.optInt("elapsed_s", 0))
+                    })
+                }
+                "/fitguard/activity/rpe" -> {
+                    val rpeValue = json.optInt("rpe_value", -1)
+                    val sessionId = json.optString("session_id", "")
+                    Log.d(TAG, "RPE received: $rpeValue for session $sessionId")
+                    if (rpeValue >= 0) {
+                        RpeState.update(rpeValue)
+                    }
+                    sendBroadcast(Intent(ACTION_RPE_RECEIVED).apply {
+                        putExtra("session_id", sessionId)
+                        putExtra("rpe_value", rpeValue)
                     })
                 }
             }

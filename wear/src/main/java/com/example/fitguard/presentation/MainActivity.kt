@@ -639,8 +639,9 @@ class MainActivity : Activity() {
                         Log.d(TAG, "Received start command: activity=$activityType session=$sessionId rpeInterval=${rpeIntervalMinutes}min")
 
                         if (::sensorSequenceManager.isInitialized && !sensorSequenceManager.isRunning) {
-                            // Convert minutes to sequence count (~77s per sequence)
-                            val rpeIntervalSeqs = ((rpeIntervalMinutes * 60) / 77).coerceAtLeast(1)
+                            // Convert minutes to sequence count (~62s per sequence: 60s collection + 2s gap)
+                            val rpeIntervalSeqs = kotlin.math.ceil(rpeIntervalMinutes * 60.0 / 62.0).toInt().coerceAtLeast(1)
+                            Log.d(TAG, "RPE interval: ${rpeIntervalMinutes}min -> every $rpeIntervalSeqs sequences (~${rpeIntervalSeqs * 62}s)")
                             sensorSequenceManager.rpeIntervalSequences = rpeIntervalSeqs
                             lastRpeValue = -1
 
@@ -713,7 +714,8 @@ class MainActivity : Activity() {
                 intent ?: return
                 if (intent.action != RpePromptActivity.ACTION_RPE_RESPONSE) return
                 val rpeValue = intent.getIntExtra(RpePromptActivity.EXTRA_RPE_VALUE, -1)
-                Log.d(TAG, "RPE response received: $rpeValue")
+                val seqCount = if (::sensorSequenceManager.isInitialized) sensorSequenceManager.sequenceCount else -1
+                Log.d(TAG, "RPE response received: rpe=$rpeValue at sequence=$seqCount")
 
                 if (rpeValue >= 0) {
                     lastRpeValue = rpeValue
