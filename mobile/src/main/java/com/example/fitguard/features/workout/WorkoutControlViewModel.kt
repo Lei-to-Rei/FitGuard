@@ -209,13 +209,11 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
 
     private fun startTimer() {
         timerJob?.cancel()
-        val startOffset = _elapsedSeconds.value ?: 0
         timerJob = viewModelScope.launch {
-            var seconds = startOffset
             while (isActive) {
-                _elapsedSeconds.value = seconds
+                val elapsedMs = System.currentTimeMillis() - sessionStartTime
+                _elapsedSeconds.value = (elapsedMs / 1000).toInt()
                 delay(1000)
-                seconds++
             }
         }
     }
