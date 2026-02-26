@@ -1,11 +1,16 @@
 package com.example.fitguard.features.workout
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.widget.SeekBar
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import com.example.fitguard.R
 import com.example.fitguard.databinding.ActivityWorkoutControlBinding
 import com.google.android.gms.wearable.MessageClient
@@ -19,6 +24,15 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
 
     companion object {
         private const val TAG = "WorkoutHistoryActivity"
+    }
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        Log.d(TAG, "POST_NOTIFICATIONS permission granted=$granted")
+        // Start session regardless of permission result — data sync matters more than notification
+        val type = getSelectedActivityType()
+        viewModel.startSession(type)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -98,14 +112,25 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
         binding.btnStartStop.setOnClickListener {
             when (viewModel.state.value) {
                 WorkoutControlViewModel.SessionState.IDLE -> {
-                    val type = getSelectedActivityType()
-                    viewModel.startSession(type)
+                    startSessionWithPermissionCheck()
                 }
                 WorkoutControlViewModel.SessionState.ACTIVE -> {
                     viewModel.stopSession()
                 }
                 else -> {} // CONNECTING or STOPPING - ignore
             }
+        }
+    }
+
+    private fun startSessionWithPermissionCheck() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            val type = getSelectedActivityType()
+            viewModel.startSession(type)
         }
     }
 

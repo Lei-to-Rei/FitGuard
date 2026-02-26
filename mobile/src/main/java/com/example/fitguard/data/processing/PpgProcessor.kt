@@ -242,7 +242,7 @@ object PpgProcessor {
     }
 
     private fun welchPsd(data: DoubleArray, fs: Double): Pair<DoubleArray, DoubleArray> {
-        val segLen = minOf(data.size, 128).let { nextPowerOf2(it) }
+        val segLen = minOf(data.size, 128).let { n -> nextPowerOf2(n).let { if (it > data.size) it / 2 else it } }
         val overlap = segLen / 2
         val step = segLen - overlap
 

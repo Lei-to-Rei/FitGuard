@@ -639,10 +639,8 @@ class MainActivity : Activity() {
                         Log.d(TAG, "Received start command: activity=$activityType session=$sessionId rpeInterval=${rpeIntervalMinutes}min")
 
                         if (::sensorSequenceManager.isInitialized && !sensorSequenceManager.isRunning) {
-                            // Convert minutes to sequence count (~62s per sequence: 60s collection + 2s gap)
-                            val rpeIntervalSeqs = kotlin.math.ceil(rpeIntervalMinutes * 60.0 / 62.0).toInt().coerceAtLeast(1)
-                            Log.d(TAG, "RPE interval: ${rpeIntervalMinutes}min -> every $rpeIntervalSeqs sequences (~${rpeIntervalSeqs * 62}s)")
-                            sensorSequenceManager.rpeIntervalSequences = rpeIntervalSeqs
+                            Log.d(TAG, "RPE interval: every $rpeIntervalMinutes sequences")
+                            sensorSequenceManager.rpeIntervalSequences = rpeIntervalMinutes.coerceAtLeast(1)
                             lastRpeValue = -1
 
                             // Start foreground service to keep process alive

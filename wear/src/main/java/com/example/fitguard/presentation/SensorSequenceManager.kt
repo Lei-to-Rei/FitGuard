@@ -103,13 +103,21 @@ class SensorSequenceManager(
                 while (isActive) {
                     sequenceId = "${sessionId}_seq_${System.currentTimeMillis()}"
                     Log.d(TAG, "=== Starting sequence #${sequenceCount + 1}: $sequenceId ===")
-                    runSequence()
+                    runSequence()   // Only does 60s collection in continuous mode
                     sequenceCount++
-                    Log.d(TAG, "=== Sequence #$sequenceCount complete, sent data ===")
-                    onSequenceLoopComplete?.invoke(sequenceCount)
+                    Log.d(TAG, "=== Sequence #$sequenceCount collection complete, sending data ===")
+
+                    // RPE check BEFORE sending — defer via Handler.post so batch send isn't blocked
                     if (sequenceCount > 0 && sequenceCount % rpeIntervalSequences == 0) {
-                        onRpePromptNeeded?.invoke(sequenceCount)
+                        val count = sequenceCount
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            onRpePromptNeeded?.invoke(count)
+                        }
                     }
+
+                    setPhase(SequencePhase.SENDING)
+                    batchSendAllData()
+                    onSequenceLoopComplete?.invoke(sequenceCount)
                     delay(2000)
                     clearBuffers()
                 }
@@ -152,16 +160,17 @@ class SensorSequenceManager(
         // Stop continuous trackers
         healthTrackerManager.stopTracker(HealthTrackerType.PPG_CONTINUOUS)
         healthTrackerManager.stopTracker(HealthTrackerType.ACCELEROMETER_CONTINUOUS)
-        Log.d(TAG, "PPG + Accelerometer complete, sending data")
+        Log.d(TAG, "PPG + Accelerometer complete")
         healthTrackerManager.stopAllTrackers()
 
-        setPhase(SequencePhase.SENDING)
-        batchSendAllData()
-
         if (!isContinuousMode) {
+            // Single-sequence mode: send here
+            setPhase(SequencePhase.SENDING)
+            batchSendAllData()
             setPhase(SequencePhase.COMPLETE)
             onComplete?.invoke()
         }
+        // Continuous mode: caller handles sending
     }
 
     private fun setPhase(phase: SequencePhase) {

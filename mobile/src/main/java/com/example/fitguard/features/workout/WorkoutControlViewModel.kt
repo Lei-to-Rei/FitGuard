@@ -9,6 +9,8 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.example.fitguard.data.processing.RpeState
 import com.example.fitguard.data.processing.SequenceProcessor
+import com.example.fitguard.services.SessionForegroundService
+import com.google.android.gms.wearable.DataClient
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -32,6 +34,11 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
         private const val KEY_SEQUENCE_COUNT = "sequence_count"
         private const val KEY_RPE_INTERVAL = "rpe_interval"
         private const val KEY_LAST_RPE = "last_rpe"
+
+        /** Current active session ID, readable by WearableDataListenerService to filter stale batches. */
+        @Volatile
+        var activeSessionId: String? = null
+            internal set
     }
 
     private val prefs = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -97,9 +104,19 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
         _lastRpe.value = -1
         RpeState.reset()
         SequenceProcessor.clearBuffer()
+        activeSessionId = sessionId
+        SessionForegroundService.start(getApplication(), activityType)
 
         viewModelScope.launch {
             try {
+                // Delete stale DataClient items so old batches can't be re-delivered
+                Wearable.getDataClient(getApplication<Application>())
+                    .deleteDataItems(
+                        android.net.Uri.Builder().scheme("wear").path("/health_tracker_batch/").build(),
+                        DataClient.FILTER_PREFIX
+                    ).await()
+                Log.d(TAG, "Deleted stale /health_tracker_batch/ items")
+
                 val nodes = Wearable.getNodeClient(getApplication<Application>()).connectedNodes.await()
                 if (nodes.isEmpty()) {
                     _error.value = "No watch connected"
@@ -134,6 +151,9 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
 
         _state.value = SessionState.STOPPING
         cancelConnectTimeout()
+        SequenceProcessor.clearBuffer()
+        activeSessionId = null
+        SessionForegroundService.stop(getApplication())
 
         viewModelScope.launch {
             try {
@@ -177,6 +197,10 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
 
         cancelConnectTimeout()
         stopTimer()
+        SequenceProcessor.clearBuffer()
+        RpeState.reset()
+        activeSessionId = null
+        SessionForegroundService.stop(getApplication())
         _sequenceCount.value = sequenceCount
         _state.value = SessionState.IDLE
         clearSavedSession()
@@ -258,6 +282,8 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
         _elapsedSeconds.value = (elapsedMs / 1000).toInt()
 
         _state.value = SessionState.ACTIVE
+        activeSessionId = sessionId
+        SessionForegroundService.start(getApplication(), _activityType.value ?: "Walking")
         startTimer()
 
         Log.d(TAG, "Restored session $sessionId, elapsed=${_elapsedSeconds.value}s")
@@ -267,5 +293,7 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
         super.onCleared()
         cancelConnectTimeout()
         stopTimer()
+        // Do NOT clear activeSessionId here — session outlives the ViewModel.
+        // Only explicit stop/watchStopped should clear it.
     }
 }

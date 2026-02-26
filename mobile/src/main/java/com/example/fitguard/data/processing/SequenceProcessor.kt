@@ -63,6 +63,7 @@ class SequenceProcessor(private val context: Context) {
             currentActivityType = ""
             pendingWindows.clear()
             lastFlushedRpe = -1
+            SequenceBatchAccumulator.clearAll()
         }
     }
 

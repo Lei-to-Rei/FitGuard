@@ -20,6 +20,11 @@ class SequenceBatchAccumulator(
 
         // Static so state survives WearableListenerService recreation between batches
         private val sequences = mutableMapOf<String, SequenceState>()
+
+        fun clearAll() {
+            sequences.clear()
+            Log.d(TAG, "Cleared all accumulated sequences")
+        }
     }
 
     private data class SequenceState(

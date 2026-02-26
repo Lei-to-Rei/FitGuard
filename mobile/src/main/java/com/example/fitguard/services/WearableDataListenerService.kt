@@ -1,11 +1,13 @@
 package com.example.fitguard.services
 
+import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.example.fitguard.data.processing.AccelSample
 import com.example.fitguard.data.processing.PpgSample
 import com.example.fitguard.data.processing.RpeState
 import com.example.fitguard.data.processing.SequenceProcessor
+import com.example.fitguard.features.workout.WorkoutControlViewModel
 import android.net.Uri
 import com.google.android.gms.wearable.*
 import com.google.firebase.auth.FirebaseAuth
@@ -131,6 +133,26 @@ class WearableDataListenerService : WearableListenerService() {
             val receivedAt = System.currentTimeMillis()
 
             val activityType = metadata.optString("activity_type", "")
+            val batchSessionId = metadata.optString("session_id", "")
+
+            // Filter stale batches: check static first, fall back to SharedPreferences after process death
+            var activeSession = WorkoutControlViewModel.activeSessionId
+            if (activeSession == null) {
+                val prefs = getSharedPreferences("workout_session", Context.MODE_PRIVATE)
+                if (prefs.getBoolean("is_active", false)) {
+                    val savedId = prefs.getString("session_id", null)
+                    if (savedId != null) {
+                        WorkoutControlViewModel.activeSessionId = savedId
+                        activeSession = savedId
+                        Log.d(TAG, "Restored activeSessionId from prefs: $savedId")
+                    }
+                }
+            }
+            if (activeSession == null || (batchSessionId.isNotEmpty() && batchSessionId != activeSession)) {
+                Log.w(TAG, "Dropping stale batch $batchNumber/$totalBatches for $sequenceId " +
+                        "(batch session=$batchSessionId, active=$activeSession)")
+                return
+            }
 
             Log.d(TAG, "Received batch $batchNumber/$totalBatches (${dataArray.length()} points) for $sequenceId" +
                     if (activityType.isNotEmpty()) " activity=$activityType" else "")
