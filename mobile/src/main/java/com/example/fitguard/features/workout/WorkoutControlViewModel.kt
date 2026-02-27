@@ -18,6 +18,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.*
 
 class WorkoutControlViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -34,10 +36,16 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
         private const val KEY_SEQUENCE_COUNT = "sequence_count"
         private const val KEY_RPE_INTERVAL = "rpe_interval"
         private const val KEY_LAST_RPE = "last_rpe"
+        private const val KEY_SESSION_DIR = "session_dir"
 
         /** Current active session ID, readable by WearableDataListenerService to filter stale batches. */
         @Volatile
         var activeSessionId: String? = null
+            internal set
+
+        /** Current session subfolder name, readable by SequenceProcessor & WearableDataListenerService. */
+        @Volatile
+        var activeSessionDir: String? = null
             internal set
     }
 
@@ -91,6 +99,11 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
         Log.d(TAG, "RPE received: $rpeValue for session $sessionId")
     }
 
+    private fun buildSessionDirName(activityType: String, startTime: Long): String {
+        val sdf = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US)
+        return "${sdf.format(Date(startTime))}_$activityType"
+    }
+
     fun startSession(activityType: String) {
         if (_state.value != SessionState.IDLE) return
 
@@ -105,6 +118,14 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
         RpeState.reset()
         SequenceProcessor.clearBuffer()
         activeSessionId = sessionId
+        activeSessionDir = buildSessionDirName(activityType, sessionStartTime)
+        // Persist session dir immediately so WearableDataListenerService can recover it
+        prefs.edit()
+            .putString(KEY_SESSION_DIR, activeSessionDir)
+            .putString(KEY_SESSION_ID, sessionId)
+            .putString(KEY_ACTIVITY_TYPE, activityType)
+            .putLong(KEY_START_TIME, sessionStartTime)
+            .apply()
         SessionForegroundService.start(getApplication(), activityType)
 
         viewModelScope.launch {
@@ -153,6 +174,7 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
         cancelConnectTimeout()
         SequenceProcessor.clearBuffer()
         activeSessionId = null
+        activeSessionDir = null
         SessionForegroundService.stop(getApplication())
 
         viewModelScope.launch {
@@ -200,6 +222,7 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
         SequenceProcessor.clearBuffer()
         RpeState.reset()
         activeSessionId = null
+        activeSessionDir = null
         SessionForegroundService.stop(getApplication())
         _sequenceCount.value = sequenceCount
         _state.value = SessionState.IDLE
@@ -256,6 +279,7 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
             .putInt(KEY_SEQUENCE_COUNT, _sequenceCount.value ?: 0)
             .putInt(KEY_RPE_INTERVAL, _rpeIntervalMinutes.value ?: 10)
             .putInt(KEY_LAST_RPE, _lastRpe.value ?: -1)
+            .putString(KEY_SESSION_DIR, activeSessionDir ?: "")
             .apply()
     }
 
@@ -283,10 +307,14 @@ class WorkoutControlViewModel(application: Application) : AndroidViewModel(appli
 
         _state.value = SessionState.ACTIVE
         activeSessionId = sessionId
+        val savedDir = prefs.getString(KEY_SESSION_DIR, null)
+        activeSessionDir = if (!savedDir.isNullOrEmpty()) savedDir else buildSessionDirName(
+            _activityType.value ?: "Walking", sessionStartTime
+        )
         SessionForegroundService.start(getApplication(), _activityType.value ?: "Walking")
         startTimer()
 
-        Log.d(TAG, "Restored session $sessionId, elapsed=${_elapsedSeconds.value}s")
+        Log.d(TAG, "Restored session $sessionId, dir=$activeSessionDir, elapsed=${_elapsedSeconds.value}s")
     }
 
     override fun onCleared() {

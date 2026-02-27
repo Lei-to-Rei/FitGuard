@@ -145,9 +145,33 @@ class WearableDataListenerService : WearableListenerService() {
                         WorkoutControlViewModel.activeSessionId = savedId
                         activeSession = savedId
                         Log.d(TAG, "Restored activeSessionId from prefs: $savedId")
+                        val savedDir = prefs.getString("session_dir", null)
+                        if (!savedDir.isNullOrEmpty()) {
+                            WorkoutControlViewModel.activeSessionDir = savedDir
+                            Log.d(TAG, "Restored activeSessionDir from prefs: $savedDir")
+                        }
                     }
                 }
             }
+            // Independent recovery for activeSessionDir
+            if (WorkoutControlViewModel.activeSessionDir == null) {
+                val dirPrefs = getSharedPreferences("workout_session", Context.MODE_PRIVATE)
+                val savedDir = dirPrefs.getString("session_dir", null)
+                if (!savedDir.isNullOrEmpty()) {
+                    WorkoutControlViewModel.activeSessionDir = savedDir
+                    Log.d(TAG, "Recovered activeSessionDir from prefs: $savedDir")
+                } else {
+                    // Reconstruct from activity_type + start_time
+                    val at = dirPrefs.getString("activity_type", null)
+                    val st = dirPrefs.getLong("start_time", 0L)
+                    if (at != null && st > 0) {
+                        val dir = "${SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US).format(Date(st))}_$at"
+                        WorkoutControlViewModel.activeSessionDir = dir
+                        Log.d(TAG, "Reconstructed activeSessionDir: $dir")
+                    }
+                }
+            }
+
             if (activeSession == null || (batchSessionId.isNotEmpty() && batchSessionId != activeSession)) {
                 Log.w(TAG, "Dropping stale batch $batchNumber/$totalBatches for $sequenceId " +
                         "(batch session=$batchSessionId, active=$activeSession)")
@@ -213,7 +237,8 @@ class WearableDataListenerService : WearableListenerService() {
 
     private fun saveToFile(type: String, data: String) {
         try {
-            val dir = com.example.fitguard.data.processing.CsvWriter.getOutputDir(currentUserId)
+            val sessionDir = WorkoutControlViewModel.activeSessionDir ?: ""
+            val dir = com.example.fitguard.data.processing.CsvWriter.getOutputDir(currentUserId, sessionDir)
             File(dir, "${type}_${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())}.jsonl")
                 .appendText(data + "\n")
         } catch (e: Exception) {

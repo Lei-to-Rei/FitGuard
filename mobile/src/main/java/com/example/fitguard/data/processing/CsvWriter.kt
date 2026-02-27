@@ -25,19 +25,20 @@ object CsvWriter {
         "activity_label", "fatigue_level", "rpe_raw"
     ).joinToString(",")
 
-    fun getOutputDir(userId: String = ""): File {
+    fun getOutputDir(userId: String = "", sessionDir: String = ""): File {
         val base = File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
             DIR_NAME
         )
-        val dir = if (userId.isNotEmpty()) File(base, userId) else base
+        var dir = if (userId.isNotEmpty()) File(base, userId) else base
+        if (sessionDir.isNotEmpty()) dir = File(dir, sessionDir)
         dir.mkdirs()
         return dir
     }
 
-    fun writeFeatureVector(fv: FeatureVector, userId: String = "") {
+    fun writeFeatureVector(fv: FeatureVector, userId: String = "", sessionDir: String = "") {
         try {
-            val dir = getOutputDir(userId)
+            val dir = getOutputDir(userId, sessionDir)
             val file = File(dir, FILE_NAME)
             val needsHeader = !file.exists() || file.length() == 0L
 

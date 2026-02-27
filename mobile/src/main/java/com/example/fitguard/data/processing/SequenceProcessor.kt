@@ -3,6 +3,7 @@ package com.example.fitguard.data.processing
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.example.fitguard.features.workout.WorkoutControlViewModel
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,7 +35,7 @@ object RpeState {
 }
 
 class SequenceProcessor(private val context: Context) {
-    data class PendingWindow(val fv: FeatureVector, val userId: String)
+    data class PendingWindow(val fv: FeatureVector, val userId: String, val sessionDir: String)
 
     companion object {
         private const val TAG = "SequenceProcessor"
@@ -54,6 +55,7 @@ class SequenceProcessor(private val context: Context) {
         // Deferred-flush RPE state
         private val pendingWindows = mutableListOf<PendingWindow>()
         private var lastFlushedRpe: Int = -1
+        private var pendingRpe: Int? = null
 
         fun clearBuffer() {
             ppgBuffer.clear()
@@ -63,6 +65,7 @@ class SequenceProcessor(private val context: Context) {
             currentActivityType = ""
             pendingWindows.clear()
             lastFlushedRpe = -1
+            pendingRpe = null
             SequenceBatchAccumulator.clearAll()
         }
     }
@@ -118,6 +121,14 @@ class SequenceProcessor(private val context: Context) {
                 // Trim samples older than nextWindowStart (can't participate in future windows)
                 ppgBuffer.removeAll { it.timestamp < nextWindowStart }
                 accelBuffer.removeAll { it.timestamp < nextWindowStart }
+
+                // Flush with stored RPE that arrived before windows were ready (race condition)
+                val storedRpe = pendingRpe
+                if (storedRpe != null && pendingWindows.isNotEmpty()) {
+                    Log.d(TAG, "Flushing ${pendingWindows.size} windows with stored pendingRpe=$storedRpe")
+                    flushPendingWindows(storedRpe)
+                    pendingRpe = null
+                }
             }
         }
     }
@@ -178,55 +189,63 @@ class SequenceProcessor(private val context: Context) {
 
             // 4. Add to pending list — will be flushed when RPE arrives
             val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
-            pendingWindows.add(PendingWindow(featureVector, userId))
+            val sessionDir = WorkoutControlViewModel.activeSessionDir ?: ""
+            pendingWindows.add(PendingWindow(featureVector, userId, sessionDir))
         } catch (e: Exception) {
             Log.e(TAG, "Failed to process window ${data.sequenceId}: ${e.message}", e)
         }
     }
 
+    /**
+     * Flush all pendingWindows to CSV with the given RPE value.
+     * Must be called while holding bufferMutex.
+     */
+    private fun flushPendingWindows(rpe: Int) {
+        val n = pendingWindows.size
+        if (n == 0) return
+
+        if (rpe >= 0) {
+            for (i in pendingWindows.indices) {
+                val roundedRpe = if (lastFlushedRpe < 0) {
+                    rpe
+                } else {
+                    (lastFlushedRpe + (i + 1).toDouble() / n * (rpe - lastFlushedRpe)).toInt()
+                }
+                val fatigue = RpeState.fatigueLevelForRpe(roundedRpe)
+                val pw = pendingWindows[i]
+                val finalFv = pw.fv.copy(rpeRaw = roundedRpe, fatigueLevel = fatigue)
+                CsvWriter.writeFeatureVector(finalFv, pw.userId, pw.sessionDir)
+                broadcastResult(finalFv)
+            }
+            Log.d(TAG, "Flushed $n windows with RPE interpolation: " +
+                    "lastFlushed=$lastFlushedRpe -> new=$rpe")
+            lastFlushedRpe = rpe
+        } else {
+            val carryRpe = if (lastFlushedRpe >= 0) lastFlushedRpe else -1
+            val fatigue = RpeState.fatigueLevelForRpe(carryRpe)
+            for (pw in pendingWindows) {
+                val finalFv = pw.fv.copy(
+                    rpeRaw = carryRpe,
+                    fatigueLevel = fatigue
+                )
+                CsvWriter.writeFeatureVector(finalFv, pw.userId, pw.sessionDir)
+                broadcastResult(finalFv)
+            }
+            Log.d(TAG, "Flushed $n windows with carry-forward RPE=$carryRpe (skipped)")
+        }
+        pendingWindows.clear()
+    }
+
     fun onRpeReceived(rpe: Int) {
         scope.launch {
             bufferMutex.withLock {
-                val n = pendingWindows.size
-                if (n == 0) {
-                    Log.d(TAG, "onRpeReceived($rpe) but no pending windows")
-                    if (rpe >= 0) lastFlushedRpe = rpe
+                if (pendingWindows.isEmpty()) {
+                    Log.d(TAG, "onRpeReceived($rpe) but no pending windows, storing as pendingRpe")
+                    pendingRpe = rpe
                     return@withLock
                 }
-
-                if (rpe >= 0) {
-                    // Valid RPE answer — interpolate across pending windows
-                    for (i in pendingWindows.indices) {
-                        val roundedRpe = if (lastFlushedRpe < 0) {
-                            // First RPE of session: assign directly
-                            rpe
-                        } else {
-                            (lastFlushedRpe + (i + 1).toDouble() / n * (rpe - lastFlushedRpe)).toInt()
-                        }
-                        val fatigue = RpeState.fatigueLevelForRpe(roundedRpe)
-                        val pw = pendingWindows[i]
-                        val finalFv = pw.fv.copy(rpeRaw = roundedRpe, fatigueLevel = fatigue)
-                        CsvWriter.writeFeatureVector(finalFv, pw.userId)
-                        broadcastResult(finalFv)
-                    }
-                    Log.d(TAG, "Flushed $n windows with RPE interpolation: " +
-                            "lastFlushed=$lastFlushedRpe -> new=$rpe")
-                    lastFlushedRpe = rpe
-                } else {
-                    // Skipped RPE — carry forward last known value
-                    val carryRpe = if (lastFlushedRpe >= 0) lastFlushedRpe else -1
-                    val fatigue = RpeState.fatigueLevelForRpe(carryRpe)
-                    for (pw in pendingWindows) {
-                        val finalFv = pw.fv.copy(
-                            rpeRaw = carryRpe,
-                            fatigueLevel = fatigue
-                        )
-                        CsvWriter.writeFeatureVector(finalFv, pw.userId)
-                        broadcastResult(finalFv)
-                    }
-                    Log.d(TAG, "Flushed $n windows with carry-forward RPE=$carryRpe (skipped)")
-                }
-                pendingWindows.clear()
+                pendingRpe = null
+                flushPendingWindows(rpe)
             }
         }
     }
