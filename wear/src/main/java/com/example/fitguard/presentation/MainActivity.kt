@@ -2,7 +2,10 @@ package com.example.fitguard.presentation
 
 import android.Manifest
 import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
@@ -21,16 +24,26 @@ import androidx.core.content.ContextCompat
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import com.samsung.android.service.health.tracking.data.HealthTrackerType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import org.json.JSONObject
 
 class MainActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var buttonContainer: LinearLayout
     private lateinit var healthTrackerManager: HealthTrackerManager
     private lateinit var sensorSequenceManager: SensorSequenceManager
+    private lateinit var rpeNotificationHelper: RpeNotificationHelper
     private val activeTrackerButtons = mutableMapOf<HealthTrackerType, Button>()
     private val individualButtons = mutableListOf<Button>()
     private var sequenceButton: Button? = null
     private var sequenceStatusText: TextView? = null
+    private var activityCommandReceiver: BroadcastReceiver? = null
+    private var rpeResponseReceiver: BroadcastReceiver? = null
+    private var lastRpeValue: Int = -1
+    private var pendingStopAction: (() -> Unit)? = null
 
     companion object {
         private const val PERMISSION_REQUEST_CODE = 100
@@ -41,7 +54,6 @@ class MainActivity : Activity() {
         private val HEALTH_PERMISSIONS_API36 = arrayOf(
             "android.permission.health.READ_HEART_RATE",
             "android.permission.health.READ_OXYGEN_SATURATION",
-            "android.permission.health.READ_SKIN_TEMPERATURE",
             "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
         )
 
@@ -103,7 +115,11 @@ class MainActivity : Activity() {
         mainContainer.addView(scrollView)
         setContentView(mainContainer)
 
+        rpeNotificationHelper = RpeNotificationHelper(this)
+
         checkAndRequestPermissions()
+        registerActivityCommandReceiver()
+        registerRpeResponseReceiver()
     }
 
     private fun checkAndRequestPermissions() {
@@ -130,7 +146,6 @@ class MainActivity : Activity() {
                 ✓ Fitness & Wellness
                   • Heart Rate
                   • Blood Oxygen (SpO2)
-                  • Skin Temperature
                   • Background Health Data
 
                 ✓ Physical Activity
@@ -198,7 +213,6 @@ class MainActivity : Activity() {
         return when {
             permission.contains("health.READ_HEART_RATE") -> "• Heart Rate"
             permission.contains("health.READ_OXYGEN_SATURATION") -> "• Blood Oxygen"
-            permission.contains("health.READ_SKIN_TEMPERATURE") -> "• Skin Temperature"
             permission.contains("health.READ_HEALTH_DATA_IN_BACKGROUND") -> "• Background Health Data"
             permission == Manifest.permission.BODY_SENSORS -> "• Body Sensors"
             permission == Manifest.permission.BODY_SENSORS_BACKGROUND -> "• Background Body Sensors"
@@ -220,7 +234,6 @@ class MainActivity : Activity() {
                 📊 Fitness and Wellness
                   • Heart Rate monitoring
                   • SpO2 (Blood Oxygen)
-                  • Skin Temperature
 
                 🏃 Physical Activity
                   • Activity Recognition
@@ -341,6 +354,21 @@ class MainActivity : Activity() {
                 }
             }
         }
+
+        sensorSequenceManager.onSequenceLoopComplete = { seqCount ->
+            runOnUiThread {
+                sequenceStatusText?.text = "Continuous: ${sensorSequenceManager.activityType} | Seq #$seqCount"
+            }
+            sendMessageToPhone("/fitguard/activity/heartbeat", JSONObject().apply {
+                put("session_id", sensorSequenceManager.sessionId)
+                put("sequence_count", seqCount)
+                put("elapsed_s", seqCount * 77) // ~75s per sequence + 2s gap
+            })
+        }
+
+        sensorSequenceManager.onRpePromptNeeded = { _ ->
+            runOnUiThread { launchRpePrompt(isEndOfSession = false) }
+        }
     }
 
     private fun createTrackerButtons() {
@@ -368,29 +396,9 @@ class MainActivity : Activity() {
             }
         }
 
-        if (availableTrackers.contains(HealthTrackerType.HEART_RATE_CONTINUOUS)) {
-            addTrackerButton("Heart Rate", HealthTrackerType.HEART_RATE_CONTINUOUS, "BPM + IBI") {
-                healthTrackerManager.startHeartRateContinuous()
-            }
-        }
-
         if (availableTrackers.contains(HealthTrackerType.ACCELEROMETER_CONTINUOUS)) {
             addTrackerButton("Accel", HealthTrackerType.ACCELEROMETER_CONTINUOUS, "X/Y/Z axes") {
                 healthTrackerManager.startAccelerometerContinuous()
-            }
-        }
-
-        addSectionHeader("On-Demand Trackers")
-
-        if (availableTrackers.contains(HealthTrackerType.SPO2_ON_DEMAND)) {
-            addTrackerButton("SpO2", HealthTrackerType.SPO2_ON_DEMAND, "30 sec") {
-                healthTrackerManager.startSpO2OnDemand()
-            }
-        }
-
-        if (availableTrackers.contains(HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND)) {
-            addTrackerButton("Skin Temp", HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND, "Body temp") {
-                healthTrackerManager.startSkinTemperatureOnDemand()
             }
         }
 
@@ -398,7 +406,7 @@ class MainActivity : Activity() {
         addSectionHeader("Automated Sequence")
 
         sequenceStatusText = TextView(this).apply {
-            text = "5-min collection: all sensors"
+            text = "60s PPG+Accel"
             textSize = 9f
             setTextColor(Color.LTGRAY)
             setPadding(12, 2, 12, 6)
@@ -412,8 +420,25 @@ class MainActivity : Activity() {
             setPadding(12, 12, 12, 12)
             setOnClickListener {
                 if (sensorSequenceManager.isRunning) {
-                    sensorSequenceManager.cancelSequence()
-                    sequenceStatusText?.text = "Sequence cancelled"
+                    if (sensorSequenceManager.isContinuousMode) {
+                        val seqCount = sensorSequenceManager.sequenceCount
+                        val sid = sensorSequenceManager.sessionId
+                        sensorSequenceManager.cancelSequence()
+                        SessionForegroundService.stop(this@MainActivity)
+                        // Defer stop message until end-of-session RPE is collected
+                        pendingStopAction = {
+                            sendMessageToPhone("/fitguard/activity/stopped", JSONObject().apply {
+                                put("session_id", sid)
+                                put("reason", "watch_stop")
+                                put("sequence_count", seqCount)
+                            })
+                        }
+                        launchRpePrompt(isEndOfSession = true)
+                        sequenceStatusText?.text = "Session stopped locally"
+                    } else {
+                        sensorSequenceManager.cancelSequence()
+                        sequenceStatusText?.text = "Sequence cancelled"
+                    }
                     enableIndividualButtons(true)
                     setBackgroundColor(Color.parseColor("#1565C0"))
                     text = "▶ Start Sequence"
@@ -450,7 +475,22 @@ class MainActivity : Activity() {
             setPadding(12, 12, 12, 12)
             setOnClickListener {
                 if (sensorSequenceManager.isRunning) {
-                    sensorSequenceManager.cancelSequence()
+                    if (sensorSequenceManager.isContinuousMode) {
+                        val seqCount = sensorSequenceManager.sequenceCount
+                        val sid = sensorSequenceManager.sessionId
+                        sensorSequenceManager.cancelSequence()
+                        SessionForegroundService.stop(this@MainActivity)
+                        pendingStopAction = {
+                            sendMessageToPhone("/fitguard/activity/stopped", JSONObject().apply {
+                                put("session_id", sid)
+                                put("reason", "watch_stop")
+                                put("sequence_count", seqCount)
+                            })
+                        }
+                        launchRpePrompt(isEndOfSession = true)
+                    } else {
+                        sensorSequenceManager.cancelSequence()
+                    }
                     sequenceButton?.apply {
                         setBackgroundColor(Color.parseColor("#1565C0"))
                         text = "▶ Start Sequence"
@@ -552,9 +592,7 @@ class MainActivity : Activity() {
     private fun updateSequenceUI(phase: SensorSequenceManager.SequencePhase) {
         val phaseText = when (phase) {
             SensorSequenceManager.SequencePhase.IDLE -> "Ready"
-            SensorSequenceManager.SequencePhase.SKIN_TEMP -> "Skin Temp..."
-            SensorSequenceManager.SequencePhase.SPO2 -> "SpO2..."
-            SensorSequenceManager.SequencePhase.CONTINUOUS -> "PPG + HR..."
+            SensorSequenceManager.SequencePhase.CONTINUOUS -> "PPG + Accel..."
             SensorSequenceManager.SequencePhase.SENDING -> "Sending data..."
             SensorSequenceManager.SequencePhase.COMPLETE -> "Complete!"
             SensorSequenceManager.SequencePhase.CANCELLED -> "Cancelled"
@@ -573,27 +611,6 @@ class MainActivity : Activity() {
                     dataMap.putInt("red", data.red ?: 0)
                     dataMap.putLong("timestamp", data.timestamp)
                 }
-                is HealthTrackerManager.TrackerData.SpO2Data -> {
-                    dataMap.putString("type", "SpO2")
-                    dataMap.putInt("spo2", data.spO2)
-                    dataMap.putInt("heart_rate", data.heartRate)
-                    dataMap.putInt("status", data.status)
-                    dataMap.putLong("timestamp", data.timestamp)
-                }
-                is HealthTrackerManager.TrackerData.HeartRateData -> {
-                    dataMap.putString("type", "HeartRate")
-                    dataMap.putInt("heart_rate", data.heartRate)
-                    dataMap.putIntegerArrayList("ibi_list", ArrayList(data.ibiList))
-                    dataMap.putInt("status", data.status)
-                    dataMap.putLong("timestamp", data.timestamp)
-                }
-                is HealthTrackerManager.TrackerData.SkinTemperatureData -> {
-                    dataMap.putString("type", "SkinTemp")
-                    dataMap.putInt("status", data.status)
-                    data.objectTemperature?.let { dataMap.putFloat("object_temp", it) }
-                    data.ambientTemperature?.let { dataMap.putFloat("ambient_temp", it) }
-                    dataMap.putLong("timestamp", data.timestamp)
-                }
                 is HealthTrackerManager.TrackerData.AccelerometerData -> {
                     dataMap.putString("type", "Accelerometer")
                     dataMap.putInt("x", data.x ?: 0)
@@ -610,9 +627,161 @@ class MainActivity : Activity() {
             .addOnFailureListener { Log.e(TAG, "✗ Failed to send: ${it.message}") }
     }
 
+    private fun registerActivityCommandReceiver() {
+        activityCommandReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                intent ?: return
+                when (intent.action) {
+                    WearableMessageListenerService.ACTION_START_ACTIVITY -> {
+                        val activityType = intent.getStringExtra("activity_type") ?: ""
+                        val sessionId = intent.getStringExtra("session_id") ?: ""
+                        val rpeIntervalMinutes = intent.getIntExtra("rpe_interval_minutes", 10)
+                        Log.d(TAG, "Received start command: activity=$activityType session=$sessionId rpeInterval=${rpeIntervalMinutes}min")
+
+                        if (::sensorSequenceManager.isInitialized && !sensorSequenceManager.isRunning) {
+                            Log.d(TAG, "RPE interval: every $rpeIntervalMinutes sequences")
+                            sensorSequenceManager.rpeIntervalSequences = rpeIntervalMinutes.coerceAtLeast(1)
+                            lastRpeValue = -1
+
+                            // Start foreground service to keep process alive
+                            SessionForegroundService.start(this@MainActivity, activityType)
+
+                            runOnUiThread {
+                                enableIndividualButtons(false)
+                                sequenceButton?.apply {
+                                    setBackgroundColor(Color.RED)
+                                    text = "⏹ Stop Session"
+                                }
+                                sequenceStatusText?.text = "Continuous: $activityType"
+                                statusText.text = "Session started from phone"
+                            }
+                            sensorSequenceManager.startContinuousSession(sessionId, activityType)
+                            sendMessageToPhone("/fitguard/activity/ack", JSONObject().apply {
+                                put("session_id", sessionId)
+                                put("status", "started")
+                            })
+                        } else {
+                            sendMessageToPhone("/fitguard/activity/ack", JSONObject().apply {
+                                put("session_id", sessionId)
+                                put("status", "busy")
+                            })
+                        }
+                    }
+                    WearableMessageListenerService.ACTION_STOP_ACTIVITY -> {
+                        val sessionId = intent.getStringExtra("session_id") ?: ""
+                        Log.d(TAG, "Received stop command: session=$sessionId")
+
+                        if (::sensorSequenceManager.isInitialized && sensorSequenceManager.isRunning && sensorSequenceManager.isContinuousMode) {
+                            val seqCount = sensorSequenceManager.sequenceCount
+                            sensorSequenceManager.cancelSequence()
+                            SessionForegroundService.stop(this@MainActivity)
+                            runOnUiThread {
+                                enableIndividualButtons(true)
+                                sequenceButton?.apply {
+                                    setBackgroundColor(Color.parseColor("#1565C0"))
+                                    text = "▶ Start Sequence"
+                                }
+                                sequenceStatusText?.text = "Session stopped by phone"
+                                statusText.text = "Session stopped"
+                            }
+                            // Defer stop message until end-of-session RPE is collected
+                            pendingStopAction = {
+                                sendMessageToPhone("/fitguard/activity/stopped", JSONObject().apply {
+                                    put("session_id", sessionId)
+                                    put("reason", "phone_stop")
+                                    put("sequence_count", seqCount)
+                                })
+                            }
+                            runOnUiThread { launchRpePrompt(isEndOfSession = true) }
+                        }
+                    }
+                }
+            }
+        }
+
+        val filter = IntentFilter().apply {
+            addAction(WearableMessageListenerService.ACTION_START_ACTIVITY)
+            addAction(WearableMessageListenerService.ACTION_STOP_ACTIVITY)
+        }
+        registerReceiver(activityCommandReceiver, filter, RECEIVER_NOT_EXPORTED)
+    }
+
+    private fun registerRpeResponseReceiver() {
+        rpeResponseReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                intent ?: return
+                if (intent.action != RpePromptActivity.ACTION_RPE_RESPONSE) return
+                val rpeValue = intent.getIntExtra(RpePromptActivity.EXTRA_RPE_VALUE, -1)
+                val seqCount = if (::sensorSequenceManager.isInitialized) sensorSequenceManager.sequenceCount else -1
+                Log.d(TAG, "RPE response received: rpe=$rpeValue at sequence=$seqCount")
+
+                if (rpeValue >= 0) {
+                    lastRpeValue = rpeValue
+                }
+
+                // Send RPE to phone
+                if (::sensorSequenceManager.isInitialized) {
+                    sendMessageToPhone("/fitguard/activity/rpe", JSONObject().apply {
+                        put("session_id", sensorSequenceManager.sessionId)
+                        put("rpe_value", rpeValue)
+                        put("sequence_count", sensorSequenceManager.sequenceCount)
+                        put("timestamp", System.currentTimeMillis())
+                    })
+                }
+
+                // Execute pending stop action if this was an end-of-session prompt
+                pendingStopAction?.let { action ->
+                    pendingStopAction = null
+                    action()
+                }
+            }
+        }
+
+        val filter = IntentFilter(RpePromptActivity.ACTION_RPE_RESPONSE)
+        registerReceiver(rpeResponseReceiver, filter, RECEIVER_NOT_EXPORTED)
+    }
+
+    private fun launchRpePrompt(isEndOfSession: Boolean = false) {
+        val sessionId = if (::sensorSequenceManager.isInitialized) {
+            sensorSequenceManager.sessionId
+        } else ""
+        rpeNotificationHelper.showRpePrompt(lastRpeValue, isEndOfSession, sessionId)
+    }
+
+    private fun sendMessageToPhone(path: String, payload: JSONObject) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val nodes = Wearable.getNodeClient(this@MainActivity).connectedNodes.await()
+                val data = payload.toString().toByteArray(Charsets.UTF_8)
+                for (node in nodes) {
+                    Wearable.getMessageClient(this@MainActivity).sendMessage(node.id, path, data).await()
+                    Log.d(TAG, "Sent $path to ${node.displayName}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send message $path: ${e.message}", e)
+            }
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        activityCommandReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: Exception) {}
+        }
+        rpeResponseReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: Exception) {}
+        }
         if (::sensorSequenceManager.isInitialized && sensorSequenceManager.isRunning) {
+            if (sensorSequenceManager.isContinuousMode) {
+                val seqCount = sensorSequenceManager.sequenceCount
+                val sid = sensorSequenceManager.sessionId
+                SessionForegroundService.stop(this)
+                sendMessageToPhone("/fitguard/activity/stopped", JSONObject().apply {
+                    put("session_id", sid)
+                    put("reason", "watch_destroyed")
+                    put("sequence_count", seqCount)
+                })
+            }
             sensorSequenceManager.cancelSequence()
         }
         healthTrackerManager.disconnect()

@@ -1,8 +1,16 @@
 package com.example.fitguard.services
 
+import android.content.Context
+import android.content.Intent
 import android.util.Log
+import com.example.fitguard.data.processing.AccelSample
+import com.example.fitguard.data.processing.PpgSample
+import com.example.fitguard.data.processing.RpeState
+import com.example.fitguard.data.processing.SequenceProcessor
+import com.example.fitguard.features.workout.WorkoutControlViewModel
+import android.net.Uri
 import com.google.android.gms.wearable.*
-import org.json.JSONArray
+import com.google.firebase.auth.FirebaseAuth
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -11,18 +19,80 @@ import java.util.*
 class WearableDataListenerService : WearableListenerService() {
     companion object {
         private const val TAG = "WearableDataListener"
+        const val ACTION_ACTIVITY_ACK = "com.example.fitguard.ACTIVITY_ACK"
+        const val ACTION_ACTIVITY_STOPPED = "com.example.fitguard.ACTIVITY_STOPPED"
+        const val ACTION_ACTIVITY_HEARTBEAT = "com.example.fitguard.ACTIVITY_HEARTBEAT"
+        const val ACTION_RPE_RECEIVED = "com.example.fitguard.RPE_RECEIVED"
     }
 
+    private val sequenceProcessor by lazy { SequenceProcessor(this) }
+
     override fun onDataChanged(dataEvents: DataEventBuffer) {
+        Log.d(TAG, "onDataChanged: ${dataEvents.count} events")
+        val processedUris = mutableListOf<Uri>()
         dataEvents.forEach { event ->
             if (event.type == DataEvent.TYPE_CHANGED) {
-                val path = event.dataItem.uri.path
+                val uri = event.dataItem.uri
+                val path = uri.path
+                Log.d(TAG, "DataEvent: path=$path")
                 val dataMap = DataMapItem.fromDataItem(event.dataItem).dataMap
-                when (path) {
-                    "/health_tracker_data" -> processHealthData(dataMap.toBundle())
-                    "/health_tracker_batch" -> processBatchData(dataMap)
+                when {
+                    path == "/health_tracker_data" -> processHealthData(dataMap.toBundle())
+                    path?.startsWith("/health_tracker_batch/") == true -> {
+                        processBatchData(dataMap)
+                        processedUris.add(uri)
+                    }
                 }
             }
+        }
+        // Delete processed items AFTER fully consuming the buffer
+        for (uri in processedUris) {
+            Wearable.getDataClient(this).deleteDataItems(uri, DataClient.FILTER_LITERAL)
+        }
+    }
+
+    override fun onMessageReceived(messageEvent: MessageEvent) {
+        val path = messageEvent.path
+        Log.d(TAG, "Message received: $path")
+        try {
+            val json = JSONObject(String(messageEvent.data, Charsets.UTF_8))
+            when (path) {
+                "/fitguard/activity/ack" -> {
+                    sendBroadcast(Intent(ACTION_ACTIVITY_ACK).apply {
+                        putExtra("session_id", json.optString("session_id"))
+                        putExtra("status", json.optString("status"))
+                    })
+                }
+                "/fitguard/activity/stopped" -> {
+                    sendBroadcast(Intent(ACTION_ACTIVITY_STOPPED).apply {
+                        putExtra("session_id", json.optString("session_id"))
+                        putExtra("reason", json.optString("reason"))
+                        putExtra("sequence_count", json.optInt("sequence_count", 0))
+                    })
+                }
+                "/fitguard/activity/heartbeat" -> {
+                    sendBroadcast(Intent(ACTION_ACTIVITY_HEARTBEAT).apply {
+                        putExtra("session_id", json.optString("session_id"))
+                        putExtra("sequence_count", json.optInt("sequence_count", 0))
+                        putExtra("elapsed_s", json.optInt("elapsed_s", 0))
+                    })
+                }
+                "/fitguard/activity/rpe" -> {
+                    val rpeValue = json.optInt("rpe_value", -1)
+                    val sessionId = json.optString("session_id", "")
+                    Log.d(TAG, "RPE received: $rpeValue for session $sessionId")
+                    if (rpeValue >= 0) {
+                        RpeState.update(rpeValue)
+                    }
+                    sequenceProcessor.onRpeReceived(rpeValue)
+                    sendBroadcast(Intent(ACTION_RPE_RECEIVED).apply {
+                        putExtra("session_id", sessionId)
+                        putExtra("rpe_value", rpeValue)
+                    })
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to process message on $path: ${e.message}", e)
         }
     }
 
@@ -39,39 +109,6 @@ class WearableDataListenerService : WearableListenerService() {
                     put("green", bundle.getInt("green"))
                     put("ir", bundle.getInt("ir"))
                     put("red", bundle.getInt("red"))
-                }
-                "SpO2" -> {
-                    put("spo2", bundle.getInt("spo2"))
-                    put("hr", bundle.getInt("heart_rate"))
-                    put("status", bundle.getInt("status"))
-                }
-                "HeartRate" -> {
-                    put("hr", bundle.getInt("heart_rate"))
-                    put("ibi", bundle.getIntegerArrayList("ibi_list")?.toString())
-                    put("status", bundle.getInt("status"))
-                }
-                "ECG" -> {
-                    put("ppg_green", bundle.getInt("ppg_green"))
-                    put("sequence", bundle.getInt("sequence"))
-                    put("ecg_mv", bundle.getFloat("ecg_mv"))
-                    put("lead_off", bundle.getInt("lead_off"))
-                    put("max_mv", bundle.getFloat("max_threshold_mv"))
-                    put("min_mv", bundle.getFloat("min_threshold_mv"))
-                }
-                "SkinTemp" -> {
-                    put("status", bundle.getInt("status"))
-                    if (bundle.containsKey("object_temp")) put("obj", bundle.getFloat("object_temp"))
-                    if (bundle.containsKey("ambient_temp")) put("amb", bundle.getFloat("ambient_temp"))
-                }
-                "BIA" -> {
-                    put("bmr", bundle.getFloat("bmr"))
-                    put("fat_mass", bundle.getFloat("body_fat_mass"))
-                    put("fat_ratio", bundle.getFloat("body_fat_ratio"))
-                    put("ffm", bundle.getFloat("fat_free_mass"))
-                    put("muscle", bundle.getFloat("muscle_mass"))
-                }
-                "Sweat" -> {
-                    put("loss", bundle.getFloat("sweat_loss"))
                 }
             }
         }
@@ -95,7 +132,57 @@ class WearableDataListenerService : WearableListenerService() {
             val totalBatches = metadata.getInt("total_batches")
             val receivedAt = System.currentTimeMillis()
 
-            Log.d(TAG, "Received batch $batchNumber/$totalBatches (${dataArray.length()} points) for $sequenceId")
+            val activityType = metadata.optString("activity_type", "")
+            val batchSessionId = metadata.optString("session_id", "")
+
+            // Filter stale batches: check static first, fall back to SharedPreferences after process death
+            var activeSession = WorkoutControlViewModel.activeSessionId
+            if (activeSession == null) {
+                val prefs = getSharedPreferences("workout_session", Context.MODE_PRIVATE)
+                if (prefs.getBoolean("is_active", false)) {
+                    val savedId = prefs.getString("session_id", null)
+                    if (savedId != null) {
+                        WorkoutControlViewModel.activeSessionId = savedId
+                        activeSession = savedId
+                        Log.d(TAG, "Restored activeSessionId from prefs: $savedId")
+                        val savedDir = prefs.getString("session_dir", null)
+                        if (!savedDir.isNullOrEmpty()) {
+                            WorkoutControlViewModel.activeSessionDir = savedDir
+                            Log.d(TAG, "Restored activeSessionDir from prefs: $savedDir")
+                        }
+                    }
+                }
+            }
+            // Independent recovery for activeSessionDir
+            if (WorkoutControlViewModel.activeSessionDir == null) {
+                val dirPrefs = getSharedPreferences("workout_session", Context.MODE_PRIVATE)
+                val savedDir = dirPrefs.getString("session_dir", null)
+                if (!savedDir.isNullOrEmpty()) {
+                    WorkoutControlViewModel.activeSessionDir = savedDir
+                    Log.d(TAG, "Recovered activeSessionDir from prefs: $savedDir")
+                } else {
+                    // Reconstruct from activity_type + start_time
+                    val at = dirPrefs.getString("activity_type", null)
+                    val st = dirPrefs.getLong("start_time", 0L)
+                    if (at != null && st > 0) {
+                        val dir = "${SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US).format(Date(st))}_$at"
+                        WorkoutControlViewModel.activeSessionDir = dir
+                        Log.d(TAG, "Reconstructed activeSessionDir: $dir")
+                    }
+                }
+            }
+
+            if (activeSession == null || (batchSessionId.isNotEmpty() && batchSessionId != activeSession)) {
+                Log.w(TAG, "Dropping stale batch $batchNumber/$totalBatches for $sequenceId " +
+                        "(batch session=$batchSessionId, active=$activeSession)")
+                return
+            }
+
+            Log.d(TAG, "Received batch $batchNumber/$totalBatches (${dataArray.length()} points) for $sequenceId" +
+                    if (activityType.isNotEmpty()) " activity=$activityType" else "")
+
+            val ppgSamples = mutableListOf<PpgSample>()
+            val accelSamples = mutableListOf<AccelSample>()
 
             for (i in 0 until dataArray.length()) {
                 val entry = dataArray.getJSONObject(i)
@@ -106,7 +193,33 @@ class WearableDataListenerService : WearableListenerService() {
                 entry.put("received_at", receivedAt)
 
                 saveToFile(type, entry.toString())
+
+                when (type) {
+                    "PPG" -> ppgSamples.add(PpgSample(
+                        timestamp = entry.getLong("timestamp"),
+                        green = entry.optInt("green", 0),
+                        ir = entry.optInt("ir", 0),
+                        red = entry.optInt("red", 0)
+                    ))
+                    "Accelerometer" -> accelSamples.add(AccelSample(
+                        timestamp = entry.getLong("timestamp"),
+                        x = entry.optDouble("x", 0.0).toFloat(),
+                        y = entry.optDouble("y", 0.0).toFloat(),
+                        z = entry.optDouble("z", 0.0).toFloat()
+                    ))
+                }
             }
+
+            if (ppgSamples.isNotEmpty()) {
+                sequenceProcessor.accumulator.addPpgSamples(sequenceId, totalBatches, ppgSamples)
+            }
+            if (accelSamples.isNotEmpty()) {
+                sequenceProcessor.accumulator.addAccelSamples(sequenceId, totalBatches, accelSamples)
+            }
+            if (activityType.isNotEmpty()) {
+                sequenceProcessor.accumulator.setActivityType(sequenceId, activityType)
+            }
+            sequenceProcessor.accumulator.markBatchReceived(sequenceId, batchNumber, totalBatches)
 
             sendBroadcast(android.content.Intent("com.example.fitguard.BATCH_DATA").apply {
                 putExtra("sequence_id", sequenceId)
@@ -119,11 +232,13 @@ class WearableDataListenerService : WearableListenerService() {
         }
     }
 
+    private val currentUserId: String
+        get() = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
     private fun saveToFile(type: String, data: String) {
         try {
-            val dir = File(android.os.Environment.getExternalStoragePublicDirectory(
-                android.os.Environment.DIRECTORY_DOWNLOADS), "FitGuard_Data")
-            dir.mkdirs()
+            val sessionDir = WorkoutControlViewModel.activeSessionDir ?: ""
+            val dir = com.example.fitguard.data.processing.CsvWriter.getOutputDir(currentUserId, sessionDir)
             File(dir, "${type}_${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())}.jsonl")
                 .appendText(data + "\n")
         } catch (e: Exception) {
