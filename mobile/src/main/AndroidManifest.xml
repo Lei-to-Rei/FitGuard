@@ -35,12 +35,28 @@
         <activity
             android:name=".SplashActivity"
             android:exported="true"
-            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
+            android:theme="@style/Theme.FitGuard.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- ========================================== -->
+        <!-- ONBOARDING ACTIVITY -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".onboarding.OnboardingActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <!-- ========================================== -->
+        <!-- PROFILE SETUP ACTIVITY -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".onboarding.ProfileSetupActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
 
         <!-- ========================================== -->
         <!-- LOGIN ACTIVITY -->

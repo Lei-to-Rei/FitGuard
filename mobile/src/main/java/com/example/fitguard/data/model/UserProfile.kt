@@ -12,5 +12,12 @@ data class UserProfile(
     val proteinGoal: Float = 50f,
     val carbsGoal: Float = 300f,
     val fatGoal: Float = 65f,
-    val sodiumGoal: Float = 2300f
+    val sodiumGoal: Float = 2300f,
+    val gender: String = "",
+    val dateOfBirth: String = "",
+    val heightCm: Float = 0f,
+    val currentWeightKg: Float = 0f,
+    val targetWeightKg: Float = 0f,
+    val fitnessGoal: String = "",
+    val profileComplete: Boolean = false
 )

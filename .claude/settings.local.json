@@ -22,7 +22,11 @@
       "WebFetch(domain:developer.samsung.com)",
       "Bash(find:*)",
       "WebFetch(domain:composables.com)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "WebFetch(domain:www.figma.com)",
+      "Bash(xargs:*)",
+      "Bash(cat \"C:/Users/claud/Documents/SCHOOL FILES/4th Year/1st Sem/THESIS 1/FitGuard/drawables/envelope \\(1\\).svg\")",
+      "Bash(cd C:/Users/claud/AndroidStudioProjects/FitGuard && python convert_svgs.py)"
     ]
   }
 }

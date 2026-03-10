@@ -13,6 +13,7 @@ import com.example.fitguard.MainActivity
 import com.example.fitguard.R
 import com.example.fitguard.data.repository.AuthRepository
 import com.example.fitguard.databinding.ActivityLoginBinding
+import com.example.fitguard.onboarding.ProfileSetupActivity
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
 
@@ -56,7 +57,7 @@ class LoginActivity : AppCompatActivity() {
                 is AuthState.Success -> {
                     showLoading(false)
                     Toast.makeText(this, state.message, Toast.LENGTH_SHORT).show()
-                    navigateToMain()
+                    navigateAfterAuth()
                 }
                 is AuthState.VerificationRequired -> {
                     showLoading(false)
@@ -128,8 +129,15 @@ class LoginActivity : AppCompatActivity() {
         binding.btnGoogleSignIn.isEnabled = !isLoading
     }
 
-    private fun navigateToMain() {
-        startActivity(Intent(this, MainActivity::class.java))
+    private fun navigateAfterAuth() {
+        val prefs = getSharedPreferences("fitguard_prefs", MODE_PRIVATE)
+        val profileComplete = prefs.getBoolean("profile_complete", false)
+        val destination = if (profileComplete) {
+            MainActivity::class.java
+        } else {
+            ProfileSetupActivity::class.java
+        }
+        startActivity(Intent(this, destination))
         finish()
     }
 }

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    <!-- Shield body -->
+    <path
+        android:pathData="M60,10 L100,30 L100,60 C100,85 80,105 60,112 C40,105 20,85 20,60 L20,30 Z"
+        android:fillColor="@color/logo_dark_blue" />
+    <!-- Shield inner highlight -->
+    <path
+        android:pathData="M60,18 L92,34 L92,60 C92,80 76,98 60,104 C44,98 28,80 28,60 L28,34 Z"
+        android:fillColor="@color/logo_bright_blue" />
+    <!-- Runner silhouette -->
+    <path
+        android:pathData="M55,40 C55,36.7 57.7,34 61,34 C64.3,34 67,36.7 67,40 C67,43.3 64.3,46 61,46 C57.7,46 55,43.3 55,40 Z
+               M50,52 L56,48 L62,52 L68,48 L72,54 L66,60 L68,72 L62,72 L58,62 L54,72 L48,72 L52,60 L46,54 Z"
+        android:fillColor="@color/white" />
+</vector>

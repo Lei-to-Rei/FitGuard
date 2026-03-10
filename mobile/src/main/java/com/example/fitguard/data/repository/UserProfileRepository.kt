@@ -41,7 +41,14 @@ class UserProfileRepository(
                     proteinGoal = (doc.getDouble("proteinGoal") ?: 50.0).toFloat(),
                     carbsGoal = (doc.getDouble("carbsGoal") ?: 300.0).toFloat(),
                     fatGoal = (doc.getDouble("fatGoal") ?: 65.0).toFloat(),
-                    sodiumGoal = (doc.getDouble("sodiumGoal") ?: 2300.0).toFloat()
+                    sodiumGoal = (doc.getDouble("sodiumGoal") ?: 2300.0).toFloat(),
+                    gender = doc.getString("gender") ?: "",
+                    dateOfBirth = doc.getString("dateOfBirth") ?: "",
+                    heightCm = (doc.getDouble("heightCm") ?: 0.0).toFloat(),
+                    currentWeightKg = (doc.getDouble("currentWeightKg") ?: 0.0).toFloat(),
+                    targetWeightKg = (doc.getDouble("targetWeightKg") ?: 0.0).toFloat(),
+                    fitnessGoal = doc.getString("fitnessGoal") ?: "",
+                    profileComplete = doc.getBoolean("profileComplete") ?: false
                 )
                 dao.upsert(profile)
                 return profile
@@ -90,6 +97,13 @@ class UserProfileRepository(
         "proteinGoal" to proteinGoal,
         "carbsGoal" to carbsGoal,
         "fatGoal" to fatGoal,
-        "sodiumGoal" to sodiumGoal
+        "sodiumGoal" to sodiumGoal,
+        "gender" to gender,
+        "dateOfBirth" to dateOfBirth,
+        "heightCm" to heightCm,
+        "currentWeightKg" to currentWeightKg,
+        "targetWeightKg" to targetWeightKg,
+        "fitnessGoal" to fitnessGoal,
+        "profileComplete" to profileComplete
     )
 }
