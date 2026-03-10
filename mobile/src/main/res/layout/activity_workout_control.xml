@@ -208,7 +208,7 @@
                         android:layout_height="wrap_content"
                         android:text="00:00:00"
                         android:textSize="32sp"
-                        android:fontFamily="monospace"
+                        android:fontFamily="@font/inter"
                         android:textColor="@android:color/black"
                         android:gravity="center"
                         android:layout_marginBottom="8dp" />

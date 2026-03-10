@@ -8,5 +8,7 @@
         <item name="colorSecondary">@color/green_sage</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@color/green_gradient_end</item>
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="fontFamily">@font/inter</item>
     </style>
 </resources>
