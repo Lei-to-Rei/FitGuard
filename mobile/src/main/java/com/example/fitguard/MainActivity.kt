@@ -14,6 +14,7 @@ import com.example.fitguard.features.metrics.MetricsMonitoringActivity
 import com.example.fitguard.features.nutrition.NutritionTrackingActivity
 import com.example.fitguard.features.recovery.RecoveryProgressActivity
 import com.example.fitguard.features.sleep.SleepStressActivity
+import com.example.fitguard.features.profile.UserHomeActivity
 import com.example.fitguard.features.workout.WorkoutHistoryActivity
 import com.example.fitguard.ui.adapter.DashboardAdapter
 import com.example.fitguard.ui.model.DashboardItem
@@ -63,7 +64,7 @@ class MainActivity : AppCompatActivity() {
             DashboardItem(
                 title = "Sleep & Stress Monitoring",
                 description = "Monitor sleep quality & Stress levels",
-                icon = R.drawable.ic_moon_stars,
+                icon = R.drawable.ic_bed,
                 activityClass = SleepStressActivity::class.java
             ),
             DashboardItem(
@@ -75,7 +76,7 @@ class MainActivity : AppCompatActivity() {
             DashboardItem(
                 title = "Recovery Progress Tracking",
                 description = "Track how close you are to recovery",
-                icon = R.drawable.ic_patient,
+                icon = R.drawable.ic_dumbbell_ray,
                 activityClass = RecoveryProgressActivity::class.java
             )
         )
@@ -110,7 +111,7 @@ class MainActivity : AppCompatActivity() {
                     true
                 }
                 R.id.nav_profile -> {
-                    Toast.makeText(this, "Profile coming soon", Toast.LENGTH_SHORT).show()
+                    startActivity(Intent(this, UserHomeActivity::class.java))
                     true
                 }
                 else -> false

@@ -8,7 +8,7 @@
     <!-- FitGuard Green Palette -->
     <color name="green_gradient_start">#FFFFFF</color>
     <color name="green_gradient_end">#D8FCC5</color>
-    <color name="green_primary">#32AF51</color>
+    <color name="green_primary">#6EDB34</color>
     <color name="green_primary_dark">#2A9544</color>
     <color name="green_sage">#82C482</color>
 
@@ -24,7 +24,7 @@
     <color name="text_secondary">#666666</color>
     <color name="text_hint">#999999</color>
     <color name="border_light">#E0E0E0</color>
-    <color name="border_green">#32AF51</color>
+    <color name="border_green">#6EDB34</color>
 
     <!-- Goal Icons -->
     <color name="goal_red">#FF0000</color>

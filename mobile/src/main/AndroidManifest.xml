@@ -157,6 +157,47 @@
             android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- ========================================== -->
+        <!-- PROFILE: USER HOME -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.profile.UserHomeActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <!-- ========================================== -->
+        <!-- PROFILE: SETTINGS -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.profile.SettingsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <!-- ========================================== -->
+        <!-- PROFILE: CONNECTED DEVICES -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.profile.ConnectedDevicesActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <!-- ========================================== -->
+        <!-- PROFILE: PERSONAL BASELINE -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.profile.PersonalBaselineActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- ========================================== -->
+        <!-- PROFILE: SUPPORT & FEEDBACK -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.profile.SupportFeedbackActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
         <!-- Wearable Data Listener Service -->
         <service
             android:name=".services.WearableDataListenerService"
