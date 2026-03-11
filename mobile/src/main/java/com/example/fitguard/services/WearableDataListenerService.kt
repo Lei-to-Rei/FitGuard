@@ -23,6 +23,7 @@ class WearableDataListenerService : WearableListenerService() {
         const val ACTION_ACTIVITY_STOPPED = "com.example.fitguard.ACTIVITY_STOPPED"
         const val ACTION_ACTIVITY_HEARTBEAT = "com.example.fitguard.ACTIVITY_HEARTBEAT"
         const val ACTION_RPE_RECEIVED = "com.example.fitguard.RPE_RECEIVED"
+        const val ACTION_WATCH_BATTERY_RESPONSE = "com.example.fitguard.WATCH_BATTERY_RESPONSE"
     }
 
     private val sequenceProcessor by lazy { SequenceProcessor(this) }
@@ -55,6 +56,19 @@ class WearableDataListenerService : WearableListenerService() {
         val path = messageEvent.path
         Log.d(TAG, "Message received: $path")
         try {
+            // Battery response may have data; other messages always have JSON
+            if (path == "/fitguard/device/battery_response") {
+                val json = JSONObject(String(messageEvent.data, Charsets.UTF_8))
+                val percent = json.optInt("battery_percent", -1)
+                if (percent >= 0) {
+                    sendBroadcast(Intent(ACTION_WATCH_BATTERY_RESPONSE).apply {
+                        setPackage(packageName)
+                        putExtra("node_id", messageEvent.sourceNodeId)
+                        putExtra("battery_percent", percent)
+                    })
+                }
+                return
+            }
             val json = JSONObject(String(messageEvent.data, Charsets.UTF_8))
             when (path) {
                 "/fitguard/activity/ack" -> {
@@ -227,6 +241,9 @@ class WearableDataListenerService : WearableListenerService() {
                 putExtra("total_batches", totalBatches)
                 putExtra("points", dataArray.length())
             })
+
+            getSharedPreferences("device_sync", Context.MODE_PRIVATE)
+                .edit().putLong("last_sync_time", System.currentTimeMillis()).apply()
         } catch (e: Exception) {
             Log.e(TAG, "Batch processing failed: ${e.message}", e)
         }

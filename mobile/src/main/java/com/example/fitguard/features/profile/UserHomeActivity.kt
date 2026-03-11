@@ -25,6 +25,13 @@ class UserHomeActivity : AppCompatActivity() {
         setupBottomNavigation()
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::binding.isInitialized) {
+            binding.bottomNavigation.selectedItemId = R.id.nav_profile
+        }
+    }
+
     private fun setupUserInfo() {
         val user = AuthRepository.currentUser
         val displayName = user?.displayName ?: user?.email?.substringBefore("@") ?: "User"
@@ -75,11 +82,18 @@ class UserHomeActivity : AppCompatActivity() {
         binding.bottomNavigation.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_home -> {
+                    startActivity(Intent(this, com.example.fitguard.MainActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    })
+                    overridePendingTransition(0, 0)
                     finish()
                     true
                 }
                 R.id.nav_activity -> {
-                    startActivity(Intent(this, WorkoutHistoryActivity::class.java))
+                    startActivity(Intent(this, WorkoutHistoryActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    })
+                    overridePendingTransition(0, 0)
                     true
                 }
                 R.id.nav_stats -> {
@@ -87,7 +101,10 @@ class UserHomeActivity : AppCompatActivity() {
                     true
                 }
                 R.id.nav_health -> {
-                    startActivity(Intent(this, FatiguePredictionActivity::class.java))
+                    startActivity(Intent(this, FatiguePredictionActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    })
+                    overridePendingTransition(0, 0)
                     true
                 }
                 R.id.nav_profile -> true

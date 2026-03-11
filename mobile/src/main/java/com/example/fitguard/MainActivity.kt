@@ -41,6 +41,13 @@ class MainActivity : AppCompatActivity() {
         setupBottomNavigation()
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::binding.isInitialized) {
+            binding.bottomNavigation.selectedItemId = R.id.nav_home
+        }
+    }
+
     private fun setupHeader() {
         val user = AuthRepository.currentUser
         val userName = user?.displayName ?: user?.email?.substringBefore("@") ?: "User"
@@ -99,7 +106,10 @@ class MainActivity : AppCompatActivity() {
             when (item.itemId) {
                 R.id.nav_home -> true
                 R.id.nav_activity -> {
-                    startActivity(Intent(this, WorkoutHistoryActivity::class.java))
+                    startActivity(Intent(this, WorkoutHistoryActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    })
+                    overridePendingTransition(0, 0)
                     true
                 }
                 R.id.nav_stats -> {
@@ -107,11 +117,17 @@ class MainActivity : AppCompatActivity() {
                     true
                 }
                 R.id.nav_health -> {
-                    startActivity(Intent(this, FatiguePredictionActivity::class.java))
+                    startActivity(Intent(this, FatiguePredictionActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    })
+                    overridePendingTransition(0, 0)
                     true
                 }
                 R.id.nav_profile -> {
-                    startActivity(Intent(this, UserHomeActivity::class.java))
+                    startActivity(Intent(this, UserHomeActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    })
+                    overridePendingTransition(0, 0)
                     true
                 }
                 else -> false
