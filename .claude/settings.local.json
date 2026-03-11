@@ -46,7 +46,12 @@
       "Bash(cp \"$SRC/Inter-Bold.ttf\" \"$FONT_DIR/inter_bold.ttf\")",
       "Bash(cp \"$SRC/Inter-ExtraBold.ttf\" \"$FONT_DIR/inter_extra_bold.ttf\")",
       "Bash(cp \"$SRC/Inter-Black.ttf\" \"$FONT_DIR/inter_black.ttf\")",
-      "Read(//c/Users/claud/AndroidStudioProjects/FitGuard/**)"
+      "Read(//c/Users/claud/AndroidStudioProjects/FitGuard/**)",
+      "Read(//mnt/c/Users/claud/Documents/SCHOOL FILES/4th Year/1st Sem/**)",
+      "Read(//mnt/c/Users/claud/Documents/SCHOOL FILES/4th Year/**)",
+      "Read(//mnt/c/Users/claud/Documents/**)",
+      "Bash(cmd.exe /c \"dir \\\\\"C:\\\\Users\\\\claud\\\\Documents\\\\SCHOOL FILES\\\\4th Year\\\\1st Sem\\\\THESIS 1\\\\FitGuard\\\\UI\\\\\" /b\" 2>/dev/null)",
+      "Bash(powershell.exe -Command \"Get-ChildItem 'C:\\\\Users\\\\claud\\\\Documents\\\\SCHOOL FILES\\\\4th Year\\\\1st Sem\\\\THESIS 1\\\\FitGuard\\\\UI' | Select-Object Name\")"
     ]
   }
 }
