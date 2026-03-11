@@ -33,4 +33,12 @@
 
     <!-- Divider -->
     <color name="divider_gray">#CCCCCC</color>
+
+    <!-- Chart Colors -->
+    <color name="chart_green_fill">#1A6EDB34</color>
+    <color name="stat_box_bg">#E8F5E9</color>
+    <color name="chart_blue_systolic">#1565C0</color>
+    <color name="chart_red_diastolic">#E53935</color>
+    <color name="tooltip_bg">#333333</color>
+    <color name="highlight_yellow">#CCFFC928</color>
 </resources>

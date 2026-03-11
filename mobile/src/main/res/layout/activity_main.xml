@@ -313,9 +313,9 @@
 
                 </com.google.android.material.card.MaterialCardView>
 
-                <!-- Blood Pressure Card -->
+                <!-- Blood Oxygen Card -->
                 <com.google.android.material.card.MaterialCardView
-                    android:id="@+id/cardBloodPressure"
+                    android:id="@+id/cardBloodOxygen"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
@@ -347,7 +347,7 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Blood Pressure"
+                                android:text="Blood oxygen"
                                 android:textSize="13sp"
                                 android:textStyle="bold"
                                 android:textColor="@color/text_dark"
@@ -359,17 +359,194 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="mmHg"
+                            android:text="SpO2"
                             android:textSize="11sp"
                             android:textColor="@color/text_secondary"
                             android:fontFamily="@font/inter"
                             android:layout_marginTop="2dp" />
 
+                        <TextView
+                            android:id="@+id/tvBloodOxygenValue"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="98%"
+                            android:textSize="24sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_dark"
+                            android:fontFamily="@font/inter"
+                            android:layout_marginTop="4dp" />
+
+                        <FrameLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="8dp"
+                            android:layout_marginTop="8dp">
+
+                            <View
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:background="@drawable/bg_spo2_bar" />
+
+                            <View
+                                android:id="@+id/dotSpO2"
+                                android:layout_width="12dp"
+                                android:layout_height="12dp"
+                                android:layout_gravity="center_vertical"
+                                android:background="@drawable/bg_indicator_dot" />
+
+                        </FrameLayout>
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+            </LinearLayout>
+
+            <!-- ===== Stress + Sleep Row ===== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="16dp"
+                android:paddingStart="20dp"
+                android:paddingEnd="20dp">
+
+                <!-- Stress Level Card -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardStressLevel"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    app:cardCornerRadius="16dp"
+                    app:cardElevation="2dp"
+                    app:strokeWidth="0dp"
+                    app:cardBackgroundColor="@color/white">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Stress level"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_dark"
+                            android:fontFamily="@font/inter" />
+
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="bottom"
+                            android:layout_marginTop="8dp">
+
+                            <TextView
+                                android:id="@+id/tvStressValue"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="54"
+                                android:textSize="24sp"
+                                android:textStyle="bold"
+                                android:textColor="@color/text_dark"
+                                android:fontFamily="@font/inter" />
+
+                            <TextView
+                                android:id="@+id/tvStressLabel"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="  Moderate"
+                                android:textSize="13sp"
+                                android:textColor="@color/text_secondary"
+                                android:fontFamily="@font/inter"
+                                android:layout_marginBottom="3dp" />
+
+                        </LinearLayout>
+
+                        <FrameLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="8dp"
+                            android:layout_marginTop="10dp">
+
+                            <View
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:background="@drawable/bg_stress_bar" />
+
+                            <View
+                                android:id="@+id/dotStress"
+                                android:layout_width="12dp"
+                                android:layout_height="12dp"
+                                android:layout_gravity="center_vertical"
+                                android:background="@drawable/bg_indicator_dot" />
+
+                        </FrameLayout>
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Last Night's Sleep Card -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardSleep"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    app:cardCornerRadius="16dp"
+                    app:cardElevation="2dp"
+                    app:strokeWidth="0dp"
+                    app:cardBackgroundColor="@color/white">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical">
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:src="@drawable/ic_moon_stars"
+                                app:tint="#42A5F5"
+                                android:importantForAccessibility="no" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Last Night's Sleep"
+                                android:textSize="13sp"
+                                android:textStyle="bold"
+                                android:textColor="@color/text_dark"
+                                android:fontFamily="@font/inter"
+                                android:layout_marginStart="6dp" />
+
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/tvSleepDuration"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="7hr 42min"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_secondary"
+                            android:fontFamily="@font/inter"
+                            android:layout_marginTop="4dp" />
+
                         <ImageView
                             android:layout_width="match_parent"
-                            android:layout_height="40dp"
+                            android:layout_height="28dp"
                             android:layout_marginTop="8dp"
-                            android:src="@drawable/wave_blood_pressure"
+                            android:src="@drawable/wave_sleep"
                             android:scaleType="fitXY"
                             android:importantForAccessibility="no" />
 
@@ -378,94 +555,6 @@
                 </com.google.android.material.card.MaterialCardView>
 
             </LinearLayout>
-
-            <!-- ===== Last Night's Sleep Card ===== -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardSleep"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="20dp"
-                android:layout_marginEnd="20dp"
-                android:layout_marginTop="16dp"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="2dp"
-                app:strokeWidth="0dp"
-                app:cardBackgroundColor="#F0F0F0">
-
-                <androidx.constraintlayout.widget.ConstraintLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:padding="16dp">
-
-                    <!-- Sleep line graph (left area) -->
-                    <ImageView
-                        android:id="@+id/ivSleepGraph"
-                        android:layout_width="0dp"
-                        android:layout_height="60dp"
-                        android:src="@drawable/graph_sleep_line"
-                        android:scaleType="fitXY"
-                        android:importantForAccessibility="no"
-                        app:layout_constraintStart_toStartOf="parent"
-                        app:layout_constraintEnd_toStartOf="@id/ivMoon"
-                        app:layout_constraintTop_toTopOf="parent"
-                        android:layout_marginEnd="12dp" />
-
-                    <!-- Moon icon -->
-                    <ImageView
-                        android:id="@+id/ivMoon"
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:src="@drawable/ic_moon_stars"
-                        app:tint="#42A5F5"
-                        android:importantForAccessibility="no"
-                        app:layout_constraintEnd_toStartOf="@id/tvSleepTitle"
-                        app:layout_constraintTop_toTopOf="parent"
-                        android:layout_marginTop="8dp"
-                        android:layout_marginEnd="8dp" />
-
-                    <!-- Sleep title -->
-                    <TextView
-                        android:id="@+id/tvSleepTitle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Last Night's Sleep"
-                        android:textSize="14sp"
-                        android:textStyle="bold"
-                        android:textColor="@color/text_dark"
-                        android:fontFamily="@font/inter"
-                        app:layout_constraintEnd_toEndOf="parent"
-                        app:layout_constraintTop_toTopOf="parent"
-                        android:layout_marginTop="8dp" />
-
-                    <!-- Sleep duration -->
-                    <TextView
-                        android:id="@+id/tvSleepDuration"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="7hr 42min"
-                        android:textSize="13sp"
-                        android:textColor="@color/text_secondary"
-                        android:fontFamily="@font/inter"
-                        app:layout_constraintEnd_toEndOf="parent"
-                        app:layout_constraintTop_toBottomOf="@id/tvSleepTitle"
-                        android:layout_marginTop="4dp" />
-
-                    <!-- Sleep waveform (bottom) -->
-                    <ImageView
-                        android:id="@+id/ivSleepWave"
-                        android:layout_width="match_parent"
-                        android:layout_height="28dp"
-                        android:src="@drawable/wave_sleep"
-                        android:scaleType="fitXY"
-                        android:importantForAccessibility="no"
-                        app:layout_constraintStart_toStartOf="parent"
-                        app:layout_constraintEnd_toEndOf="parent"
-                        app:layout_constraintTop_toBottomOf="@id/ivSleepGraph"
-                        android:layout_marginTop="8dp" />
-
-                </androidx.constraintlayout.widget.ConstraintLayout>
-
-            </com.google.android.material.card.MaterialCardView>
 
             <!-- ===== Feature List ===== -->
             <androidx.recyclerview.widget.RecyclerView

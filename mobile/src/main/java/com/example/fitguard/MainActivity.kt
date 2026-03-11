@@ -39,6 +39,7 @@ class MainActivity : AppCompatActivity() {
         setupHeader()
         setupDashboard()
         setupBottomNavigation()
+        setupIndicatorDots()
     }
 
     override fun onResume() {
@@ -96,6 +97,24 @@ class MainActivity : AppCompatActivity() {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = dashboardAdapter
             isNestedScrollingEnabled = false
+        }
+    }
+
+    private fun setupIndicatorDots() {
+        // Position SpO2 dot: 98% on 70-100 range = (98-70)/(100-70) = 93.3%
+        binding.dotSpO2.post {
+            val parent = binding.dotSpO2.parent as android.view.View
+            val barWidth = parent.width - binding.dotSpO2.width
+            val spo2Fraction = (98f - 70f) / (100f - 70f)
+            binding.dotSpO2.translationX = barWidth * spo2Fraction
+        }
+
+        // Position stress dot: 54/100 = 54%
+        binding.dotStress.post {
+            val parent = binding.dotStress.parent as android.view.View
+            val barWidth = parent.width - binding.dotStress.width
+            val stressFraction = 54f / 100f
+            binding.dotStress.translationX = barWidth * stressFraction
         }
     }
 
