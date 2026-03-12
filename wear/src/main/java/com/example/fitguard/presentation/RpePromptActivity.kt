@@ -198,7 +198,7 @@ private fun RpeSliderScreen(
                 increaseIcon = { Icon(InlineSliderDefaults.Increase, "Increase") },
                 segmented = true,
                 colors = InlineSliderDefaults.colors(),
-                modifier = Modifier.padding(horizontal = 4.dp)
+                modifier = Modifier.padding(horizontal = 10.dp)
             )
 
             Spacer(modifier = Modifier.height(6.dp))
@@ -206,7 +206,7 @@ private fun RpeSliderScreen(
             // Confirm button
             CompactChip(
                 onClick = { onSubmit(rpeValue) },
-                label = { Text("Confirm", fontSize = 13.sp) },
+                label = { Text("Confirm", fontSize = 20.sp) },
                 colors = ChipDefaults.primaryChipColors()
             )
 
