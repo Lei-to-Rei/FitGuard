@@ -1,4 +1,4 @@
-package com.example.fitguard.features.workout
+package com.example.fitguard.features.activitytracking
 
 import android.app.Application
 import android.content.Context
@@ -21,12 +21,12 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 
-class WorkoutControlViewModel(application: Application) : AndroidViewModel(application) {
+class ActivityTrackingViewModel(application: Application) : AndroidViewModel(application) {
 
     enum class SessionState { IDLE, CONNECTING, ACTIVE, STOPPING }
 
     companion object {
-        private const val TAG = "WorkoutControlVM"
+        private const val TAG = "ActivityTrackingVM"
         private const val CONNECT_TIMEOUT_MS = 10_000L
         private const val PREFS_NAME = "workout_session"
         private const val KEY_SESSION_ID = "session_id"

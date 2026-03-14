@@ -17,7 +17,7 @@ class OnboardingActivity : AppCompatActivity() {
     private lateinit var btnNext: com.google.android.material.button.MaterialButton
 
     private val pages = listOf(
-        "Welcome to FitGuard" to "Track workouts, monitor recovery, and train safer every day",
+        "Welcome to FitGuard" to "Track activities, monitor recovery, and train safer every day",
         "AI Fatigue Prediction" to "Advanced machine learning predicts your fatigue levels in real-time",
         "Recovery Recommendation" to "Smart recovery suggestions based on your fatigue levels in real-time"
     )

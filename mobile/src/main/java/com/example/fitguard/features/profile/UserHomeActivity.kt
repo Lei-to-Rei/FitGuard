@@ -11,7 +11,7 @@ import com.example.fitguard.data.repository.AuthRepository
 import com.example.fitguard.databinding.ActivityUserHomeBinding
 import com.example.fitguard.R
 import com.example.fitguard.features.fatigue.FatiguePredictionActivity
-import com.example.fitguard.features.workout.WorkoutHistoryActivity
+import com.example.fitguard.features.activitytracking.ActivityTrackingActivity
 import java.util.Locale
 
 class UserHomeActivity : AppCompatActivity() {
@@ -138,7 +138,7 @@ class UserHomeActivity : AppCompatActivity() {
                     true
                 }
                 R.id.nav_activity -> {
-                    startActivity(Intent(this, WorkoutHistoryActivity::class.java).apply {
+                    startActivity(Intent(this, ActivityTrackingActivity::class.java).apply {
                         flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                     })
                     overridePendingTransition(0, 0)

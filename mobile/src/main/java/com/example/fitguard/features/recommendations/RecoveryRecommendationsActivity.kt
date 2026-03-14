@@ -16,7 +16,7 @@ class RecoveryRecommendationsActivity : BaseFeatureActivity<ActivityFeaturePlace
                 This feature will offer:
                 • Personalized recovery tips
                 • Rest day suggestions
-                • Active recovery workouts
+                • Active recovery activities
                 • Nutrition recommendations
                 • Sleep optimization advice
                 • Hydration reminders

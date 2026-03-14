@@ -1,4 +1,4 @@
-package com.example.fitguard.features.workout
+package com.example.fitguard.features.activitytracking
 
 import android.Manifest
 import android.content.Intent
@@ -15,7 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.example.fitguard.MainActivity
 import com.example.fitguard.R
-import com.example.fitguard.databinding.ActivityWorkoutControlBinding
+import com.example.fitguard.databinding.ActivityActivityTrackingBinding
 import com.example.fitguard.features.fatigue.FatiguePredictionActivity
 import com.example.fitguard.features.profile.UserHomeActivity
 import com.google.android.gms.wearable.MessageClient
@@ -23,12 +23,12 @@ import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Wearable
 import org.json.JSONObject
 
-class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListener {
-    private lateinit var binding: ActivityWorkoutControlBinding
-    private val viewModel: WorkoutControlViewModel by viewModels()
+class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListener {
+    private lateinit var binding: ActivityActivityTrackingBinding
+    private val viewModel: ActivityTrackingViewModel by viewModels()
 
     companion object {
-        private const val TAG = "WorkoutHistoryActivity"
+        private const val TAG = "ActivityTrackingActivity"
     }
 
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -42,7 +42,7 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityWorkoutControlBinding.inflate(layoutInflater)
+        binding = ActivityActivityTrackingBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
         setupActivityTypeSelection()
@@ -118,10 +118,10 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
     private fun setupStartStopButton() {
         binding.btnStartStop.setOnClickListener {
             when (viewModel.state.value) {
-                WorkoutControlViewModel.SessionState.IDLE -> {
+                ActivityTrackingViewModel.SessionState.IDLE -> {
                     startSessionWithPermissionCheck()
                 }
-                WorkoutControlViewModel.SessionState.ACTIVE -> {
+                ActivityTrackingViewModel.SessionState.ACTIVE -> {
                     viewModel.stopSession()
                 }
                 else -> {} // CONNECTING or STOPPING - ignore
@@ -167,7 +167,7 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
     private fun observeViewModel() {
         viewModel.state.observe(this) { state ->
             when (state) {
-                WorkoutControlViewModel.SessionState.IDLE -> {
+                ActivityTrackingViewModel.SessionState.IDLE -> {
                     binding.btnStartStop.text = "Start Session"
                     binding.btnStartStop.isEnabled = true
                     binding.btnStartStop.setBackgroundColor(getColor(R.color.blue_primary))
@@ -176,14 +176,14 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
                     setRadioGroupEnabled(true)
                     binding.seekRpeInterval.isEnabled = true
                 }
-                WorkoutControlViewModel.SessionState.CONNECTING -> {
+                ActivityTrackingViewModel.SessionState.CONNECTING -> {
                     binding.btnStartStop.text = "Connecting..."
                     binding.btnStartStop.isEnabled = false
                     binding.tvSessionStatus.text = "Connecting to watch..."
                     setRadioGroupEnabled(false)
                     binding.seekRpeInterval.isEnabled = false
                 }
-                WorkoutControlViewModel.SessionState.ACTIVE -> {
+                ActivityTrackingViewModel.SessionState.ACTIVE -> {
                     binding.btnStartStop.text = "Stop Session"
                     binding.btnStartStop.isEnabled = true
                     binding.btnStartStop.setBackgroundColor(getColor(R.color.red_stop))
@@ -191,7 +191,7 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
                     setRadioGroupEnabled(false)
                     binding.seekRpeInterval.isEnabled = false
                 }
-                WorkoutControlViewModel.SessionState.STOPPING -> {
+                ActivityTrackingViewModel.SessionState.STOPPING -> {
                     binding.btnStartStop.text = "Stopping..."
                     binding.btnStartStop.isEnabled = false
                     binding.tvSessionStatus.text = "Stopping session..."

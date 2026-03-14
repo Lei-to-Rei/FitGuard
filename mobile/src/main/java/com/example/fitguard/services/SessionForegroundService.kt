@@ -13,7 +13,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.example.fitguard.features.workout.WorkoutHistoryActivity
+import com.example.fitguard.features.activitytracking.ActivityTrackingActivity
 
 class SessionForegroundService : Service() {
 
@@ -43,7 +43,7 @@ class SessionForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val activityType = intent?.getStringExtra(EXTRA_ACTIVITY_TYPE) ?: "Workout"
+        val activityType = intent?.getStringExtra(EXTRA_ACTIVITY_TYPE) ?: "Activity"
         val notification = buildNotification(activityType)
 
         if (Build.VERSION.SDK_INT >= 34) {
@@ -60,17 +60,17 @@ class SessionForegroundService : Service() {
     private fun createChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Workout Data Sync",
+            "Activity Data Sync",
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Keeps workout data sync alive in background"
+            description = "Keeps activity data sync alive in background"
             setShowBadge(false)
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
     private fun buildNotification(activityType: String): Notification {
-        val openIntent = Intent(this, WorkoutHistoryActivity::class.java).apply {
+        val openIntent = Intent(this, ActivityTrackingActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
         val pendingIntent = PendingIntent.getActivity(

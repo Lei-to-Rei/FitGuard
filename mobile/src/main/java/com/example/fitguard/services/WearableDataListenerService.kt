@@ -7,7 +7,7 @@ import com.example.fitguard.data.processing.AccelSample
 import com.example.fitguard.data.processing.PpgSample
 import com.example.fitguard.data.processing.RpeState
 import com.example.fitguard.data.processing.SequenceProcessor
-import com.example.fitguard.features.workout.WorkoutControlViewModel
+import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
 import android.net.Uri
 import com.google.android.gms.wearable.*
 import com.google.firebase.auth.FirebaseAuth
@@ -150,29 +150,29 @@ class WearableDataListenerService : WearableListenerService() {
             val batchSessionId = metadata.optString("session_id", "")
 
             // Filter stale batches: check static first, fall back to SharedPreferences after process death
-            var activeSession = WorkoutControlViewModel.activeSessionId
+            var activeSession = ActivityTrackingViewModel.activeSessionId
             if (activeSession == null) {
                 val prefs = getSharedPreferences("workout_session", Context.MODE_PRIVATE)
                 if (prefs.getBoolean("is_active", false)) {
                     val savedId = prefs.getString("session_id", null)
                     if (savedId != null) {
-                        WorkoutControlViewModel.activeSessionId = savedId
+                        ActivityTrackingViewModel.activeSessionId = savedId
                         activeSession = savedId
                         Log.d(TAG, "Restored activeSessionId from prefs: $savedId")
                         val savedDir = prefs.getString("session_dir", null)
                         if (!savedDir.isNullOrEmpty()) {
-                            WorkoutControlViewModel.activeSessionDir = savedDir
+                            ActivityTrackingViewModel.activeSessionDir = savedDir
                             Log.d(TAG, "Restored activeSessionDir from prefs: $savedDir")
                         }
                     }
                 }
             }
             // Independent recovery for activeSessionDir
-            if (WorkoutControlViewModel.activeSessionDir == null) {
+            if (ActivityTrackingViewModel.activeSessionDir == null) {
                 val dirPrefs = getSharedPreferences("workout_session", Context.MODE_PRIVATE)
                 val savedDir = dirPrefs.getString("session_dir", null)
                 if (!savedDir.isNullOrEmpty()) {
-                    WorkoutControlViewModel.activeSessionDir = savedDir
+                    ActivityTrackingViewModel.activeSessionDir = savedDir
                     Log.d(TAG, "Recovered activeSessionDir from prefs: $savedDir")
                 } else {
                     // Reconstruct from activity_type + start_time
@@ -180,7 +180,7 @@ class WearableDataListenerService : WearableListenerService() {
                     val st = dirPrefs.getLong("start_time", 0L)
                     if (at != null && st > 0) {
                         val dir = "${SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US).format(Date(st))}_$at"
-                        WorkoutControlViewModel.activeSessionDir = dir
+                        ActivityTrackingViewModel.activeSessionDir = dir
                         Log.d(TAG, "Reconstructed activeSessionDir: $dir")
                     }
                 }
@@ -254,7 +254,7 @@ class WearableDataListenerService : WearableListenerService() {
 
     private fun saveToFile(type: String, data: String) {
         try {
-            val sessionDir = WorkoutControlViewModel.activeSessionDir ?: ""
+            val sessionDir = ActivityTrackingViewModel.activeSessionDir ?: ""
             val dir = com.example.fitguard.data.processing.CsvWriter.getOutputDir(currentUserId, sessionDir)
             File(dir, "${type}_${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())}.jsonl")
                 .appendText(data + "\n")
