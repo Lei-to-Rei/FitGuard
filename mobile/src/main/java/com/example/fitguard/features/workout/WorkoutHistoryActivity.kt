@@ -1,18 +1,23 @@
 package com.example.fitguard.features.workout
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.widget.SeekBar
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.example.fitguard.MainActivity
 import com.example.fitguard.R
 import com.example.fitguard.databinding.ActivityWorkoutControlBinding
+import com.example.fitguard.features.fatigue.FatiguePredictionActivity
+import com.example.fitguard.features.profile.UserHomeActivity
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Wearable
@@ -40,18 +45,20 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
         binding = ActivityWorkoutControlBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setSupportActionBar(binding.toolbar)
-        supportActionBar?.apply {
-            title = "Workout Control"
-            setDisplayHomeAsUpEnabled(true)
-        }
-
         setupActivityTypeSelection()
         setupStartStopButton()
         setupRpeIntervalSlider()
+        setupBottomNavigation()
         observeViewModel()
 
         Wearable.getMessageClient(this).addListener(this)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::binding.isInitialized) {
+            binding.bottomNavigation.selectedItemId = R.id.nav_activity
+        }
     }
 
     override fun onMessageReceived(event: MessageEvent) {
@@ -246,10 +253,45 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
         binding.etCustomActivity.isEnabled = enabled
     }
 
+    private fun setupBottomNavigation() {
+        binding.bottomNavigation.selectedItemId = R.id.nav_activity
+
+        binding.bottomNavigation.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_home -> {
+                    startActivity(Intent(this, MainActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    })
+                    overridePendingTransition(0, 0)
+                    finish()
+                    true
+                }
+                R.id.nav_activity -> true
+                R.id.nav_stats -> {
+                    Toast.makeText(this, "Stats coming soon", Toast.LENGTH_SHORT).show()
+                    true
+                }
+                R.id.nav_health -> {
+                    startActivity(Intent(this, FatiguePredictionActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    })
+                    overridePendingTransition(0, 0)
+                    true
+                }
+                R.id.nav_profile -> {
+                    startActivity(Intent(this, UserHomeActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    })
+                    overridePendingTransition(0, 0)
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
     override fun onDestroy() {
         Wearable.getMessageClient(this).removeListener(this)
         super.onDestroy()
     }
-
-    override fun onSupportNavigateUp() = true.also { onBackPressed() }
 }

@@ -2,6 +2,7 @@ package com.example.fitguard.data.processing
 
 import android.os.Environment
 import android.util.Log
+import com.example.fitguard.data.model.UserProfile
 import com.google.firebase.firestore.FirebaseFirestore
 import java.io.File
 import java.util.*
@@ -12,7 +13,7 @@ object CsvWriter {
     private const val FILE_NAME = "features.csv"
 
     private val HEADER = listOf(
-        "timestamp", "timestamp_end", "sequence_id",
+        "user_id", "timestamp", "timestamp_end", "sequence_id",
         "mean_hr_bpm", "hr_std_bpm", "hr_min_bpm", "hr_max_bpm", "hr_range_bpm",
         "hr_slope_bpm_per_s", "nn_quality_ratio",
         "sdnn_ms", "rmssd_ms", "pnn50_pct", "mean_nn_ms", "cv_nn",
@@ -43,6 +44,7 @@ object CsvWriter {
             val needsHeader = !file.exists() || file.length() == 0L
 
             val row = listOf(
+                userId,
                 fv.timestamp.toString(),
                 fv.timestampEnd.toString(),
                 fv.sequenceId,
@@ -146,6 +148,50 @@ object CsvWriter {
         "fatigueLevel" to fatigueLevel,
         "rpeRaw" to rpeRaw
     )
+
+    fun writeProfileCsv(profile: UserProfile) {
+        try {
+            val dir = getOutputDir(profile.uid)
+            val file = File(dir, "profile.csv")
+
+            val heightM = profile.heightCm / 100.0
+            val bmi = if (heightM > 0) profile.currentWeightKg / (heightM * heightM) else 0.0
+
+            val header = listOf(
+                "uid", "displayName", "email", "gender", "dateOfBirth",
+                "heightCm", "currentWeightKg", "targetWeightKg",
+                "fitnessGoal", "fitnessLevel", "restingHeartRateBpm", "bmi"
+            ).joinToString(",")
+
+            val row = listOf(
+                csvEscape(profile.uid),
+                csvEscape(profile.displayName),
+                csvEscape(profile.email),
+                csvEscape(profile.gender),
+                csvEscape(profile.dateOfBirth),
+                fmt(profile.heightCm.toDouble()),
+                fmt(profile.currentWeightKg.toDouble()),
+                fmt(profile.targetWeightKg.toDouble()),
+                csvEscape(profile.fitnessGoal),
+                csvEscape(profile.fitnessLevel),
+                profile.restingHeartRateBpm.toString(),
+                fmt(bmi)
+            ).joinToString(",")
+
+            file.writeText("$header\n$row\n")
+            Log.d(TAG, "Profile CSV written to ${file.absolutePath}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to write profile CSV: ${e.message}", e)
+        }
+    }
+
+    private fun csvEscape(value: String): String {
+        return if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
+            "\"${value.replace("\"", "\"\"")}\""
+        } else {
+            value
+        }
+    }
 
     private fun fmt(value: Double): String = String.format(Locale.US, "%.4f", value)
 }

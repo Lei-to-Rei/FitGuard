@@ -2,8 +2,7 @@ package com.example.fitguard
 
 import android.content.Intent
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.fitguard.auth.LoginActivity
@@ -14,8 +13,8 @@ import com.example.fitguard.features.fatigue.FatiguePredictionActivity
 import com.example.fitguard.features.metrics.MetricsMonitoringActivity
 import com.example.fitguard.features.nutrition.NutritionTrackingActivity
 import com.example.fitguard.features.recovery.RecoveryProgressActivity
-import com.example.fitguard.features.recommendations.RecoveryRecommendationsActivity
 import com.example.fitguard.features.sleep.SleepStressActivity
+import com.example.fitguard.features.profile.UserHomeActivity
 import com.example.fitguard.features.workout.WorkoutHistoryActivity
 import com.example.fitguard.ui.adapter.DashboardAdapter
 import com.example.fitguard.ui.model.DashboardItem
@@ -37,15 +36,20 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setupToolbar()
+        setupHeader()
         setupDashboard()
+        setupBottomNavigation()
+        setupIndicatorDots()
     }
 
-    private fun setupToolbar() {
-        setSupportActionBar(binding.toolbar)
-        supportActionBar?.title = "FitGuard"
+    override fun onResume() {
+        super.onResume()
+        if (::binding.isInitialized) {
+            binding.bottomNavigation.selectedItemId = R.id.nav_home
+        }
+    }
 
-        // Display user name
+    private fun setupHeader() {
         val user = AuthRepository.currentUser
         val userName = user?.displayName ?: user?.email?.substringBefore("@") ?: "User"
         binding.tvWelcome.text = "Welcome, $userName!"
@@ -55,51 +59,33 @@ class MainActivity : AppCompatActivity() {
         val dashboardItems = listOf(
             DashboardItem(
                 title = "Metrics Monitoring",
-                description = "View PPG, skin temperature, and vital signs",
-                icon = R.drawable.ic_metrics,
+                description = "Heart rate, SpO2, and vital signs tracking",
+                icon = R.drawable.ic_health_podcast,
                 activityClass = MetricsMonitoringActivity::class.java
             ),
             DashboardItem(
-                title = "GPS-Based Activity Tracking",
-                description = "Track your runs, walks, and outdoor activities",
-                icon = R.drawable.ic_activity,
-                activityClass = ActivityTrackingActivity::class.java
-            ),
-            DashboardItem(
-                title = "Workout History & Insights",
-                description = "Review past workouts and performance trends",
-                icon = R.drawable.ic_workout,
+                title = "Workout History",
+                description = "Past workouts and trends",
+                icon = R.drawable.ic_dumbbell_ray,
                 activityClass = WorkoutHistoryActivity::class.java
             ),
             DashboardItem(
-                title = "Sleep & Stress Tracking",
-                description = "Monitor your sleep quality and stress levels",
-                icon = R.drawable.ic_sleep,
+                title = "Sleep & Stress Monitoring",
+                description = "Monitor sleep quality & Stress levels",
+                icon = R.drawable.ic_bed,
                 activityClass = SleepStressActivity::class.java
             ),
             DashboardItem(
-                title = "Nutrition Tracking",
-                description = "Log meals and track your daily nutrition",
-                icon = R.drawable.ic_nutrition,
+                title = "Nutrition Monitoring",
+                description = "Log and Track your nutrition",
+                icon = R.drawable.ic_salad,
                 activityClass = NutritionTrackingActivity::class.java
             ),
             DashboardItem(
                 title = "Recovery Progress Tracking",
-                description = "Monitor recovery metrics and readiness",
-                icon = R.drawable.ic_recovery,
+                description = "Track how close you are to recovery",
+                icon = R.drawable.ic_dumbbell_ray,
                 activityClass = RecoveryProgressActivity::class.java
-            ),
-            DashboardItem(
-                title = "Fatigue Prediction (CNN–LSTM)",
-                description = "AI-powered fatigue analysis and predictions",
-                icon = R.drawable.ic_fatigue,
-                activityClass = FatiguePredictionActivity::class.java
-            ),
-            DashboardItem(
-                title = "Recovery Recommendations",
-                description = "Personalized recovery tips and guidance",
-                icon = R.drawable.ic_recommendations,
-                activityClass = RecoveryRecommendationsActivity::class.java
             )
         )
 
@@ -110,23 +96,61 @@ class MainActivity : AppCompatActivity() {
         binding.rvDashboard.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = dashboardAdapter
+            isNestedScrollingEnabled = false
         }
     }
 
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.main_menu, menu)
-        return true
+    private fun setupIndicatorDots() {
+        // Position SpO2 dot: 98% on 70-100 range = (98-70)/(100-70) = 93.3%
+        binding.dotSpO2.post {
+            val parent = binding.dotSpO2.parent as android.view.View
+            val barWidth = parent.width - binding.dotSpO2.width
+            val spo2Fraction = (98f - 70f) / (100f - 70f)
+            binding.dotSpO2.translationX = barWidth * spo2Fraction
+        }
+
+        // Position stress dot: 54/100 = 54%
+        binding.dotStress.post {
+            val parent = binding.dotStress.parent as android.view.View
+            val barWidth = parent.width - binding.dotStress.width
+            val stressFraction = 54f / 100f
+            binding.dotStress.translationX = barWidth * stressFraction
+        }
     }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_logout -> {
-                AuthRepository.signOut()
-                startActivity(Intent(this, LoginActivity::class.java))
-                finish()
-                true
+    private fun setupBottomNavigation() {
+        binding.bottomNavigation.selectedItemId = R.id.nav_home
+
+        binding.bottomNavigation.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_home -> true
+                R.id.nav_activity -> {
+                    startActivity(Intent(this, WorkoutHistoryActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    })
+                    overridePendingTransition(0, 0)
+                    true
+                }
+                R.id.nav_stats -> {
+                    Toast.makeText(this, "Stats coming soon", Toast.LENGTH_SHORT).show()
+                    true
+                }
+                R.id.nav_health -> {
+                    startActivity(Intent(this, FatiguePredictionActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    })
+                    overridePendingTransition(0, 0)
+                    true
+                }
+                R.id.nav_profile -> {
+                    startActivity(Intent(this, UserHomeActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    })
+                    overridePendingTransition(0, 0)
+                    true
+                }
+                else -> false
             }
-            else -> super.onOptionsItemSelected(item)
         }
     }
 }
