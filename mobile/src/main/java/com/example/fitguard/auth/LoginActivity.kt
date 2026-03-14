@@ -9,13 +9,21 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.example.fitguard.MainActivity
 import com.example.fitguard.R
+import com.example.fitguard.data.db.AppDatabase
 import com.example.fitguard.data.repository.AuthRepository
+import com.example.fitguard.data.repository.UserProfileRepository
 import com.example.fitguard.databinding.ActivityLoginBinding
 import com.example.fitguard.onboarding.ProfileSetupActivity
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class LoginActivity : AppCompatActivity() {
     private lateinit var binding: ActivityLoginBinding
@@ -130,14 +138,32 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun navigateAfterAuth() {
-        val prefs = getSharedPreferences("fitguard_prefs", MODE_PRIVATE)
-        val profileComplete = prefs.getBoolean("profile_complete", false)
-        val destination = if (profileComplete) {
-            MainActivity::class.java
-        } else {
-            ProfileSetupActivity::class.java
+        showLoading(true)
+        lifecycleScope.launch {
+            val firebaseUser = FirebaseAuth.getInstance().currentUser
+            val profileComplete = if (firebaseUser != null) {
+                withContext(Dispatchers.IO) {
+                    val dao = AppDatabase.getInstance(this@LoginActivity).userProfileDao()
+                    val repo = UserProfileRepository(dao, FirebaseFirestore.getInstance())
+                    val profile = repo.loadOrCreateProfile(firebaseUser)
+                    // Sync SharedPreferences with DB
+                    getSharedPreferences("fitguard_prefs", MODE_PRIVATE)
+                        .edit()
+                        .putBoolean("profile_complete", profile.profileComplete)
+                        .apply()
+                    profile.profileComplete
+                }
+            } else {
+                false
+            }
+            showLoading(false)
+            val destination = if (profileComplete) {
+                MainActivity::class.java
+            } else {
+                ProfileSetupActivity::class.java
+            }
+            startActivity(Intent(this@LoginActivity, destination))
+            finish()
         }
-        startActivity(Intent(this, destination))
-        finish()
     }
 }

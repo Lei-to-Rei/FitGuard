@@ -101,12 +101,15 @@
 
                         </LinearLayout>
 
-                        <!-- Edit Icon -->
+                        <!-- Save Icon -->
                         <ImageView
+                            android:id="@+id/btnSave"
                             android:layout_width="32dp"
                             android:layout_height="32dp"
                             android:src="@drawable/ic_floppy_disk_pen"
                             app:tint="@color/green_primary"
+                            android:clickable="true"
+                            android:focusable="true"
                             android:importantForAccessibility="no" />
 
                     </LinearLayout>

@@ -19,5 +19,7 @@ data class UserProfile(
     val currentWeightKg: Float = 0f,
     val targetWeightKg: Float = 0f,
     val fitnessGoal: String = "",
+    val fitnessLevel: String = "",
+    val restingHeartRateBpm: Int = 0,
     val profileComplete: Boolean = false
 )

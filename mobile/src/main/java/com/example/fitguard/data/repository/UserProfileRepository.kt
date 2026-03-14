@@ -48,6 +48,8 @@ class UserProfileRepository(
                     currentWeightKg = (doc.getDouble("currentWeightKg") ?: 0.0).toFloat(),
                     targetWeightKg = (doc.getDouble("targetWeightKg") ?: 0.0).toFloat(),
                     fitnessGoal = doc.getString("fitnessGoal") ?: "",
+                    fitnessLevel = doc.getString("fitnessLevel") ?: "",
+                    restingHeartRateBpm = (doc.getLong("restingHeartRateBpm") ?: 0).toInt(),
                     profileComplete = doc.getBoolean("profileComplete") ?: false
                 )
                 dao.upsert(profile)
@@ -104,6 +106,8 @@ class UserProfileRepository(
         "currentWeightKg" to currentWeightKg,
         "targetWeightKg" to targetWeightKg,
         "fitnessGoal" to fitnessGoal,
+        "fitnessLevel" to fitnessLevel,
+        "restingHeartRateBpm" to restingHeartRateBpm,
         "profileComplete" to profileComplete
     )
 }

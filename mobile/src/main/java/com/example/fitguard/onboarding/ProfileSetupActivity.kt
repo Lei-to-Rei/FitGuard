@@ -13,6 +13,7 @@ import com.example.fitguard.MainActivity
 import com.example.fitguard.R
 import com.example.fitguard.data.db.AppDatabase
 import com.example.fitguard.data.model.UserProfile
+import com.example.fitguard.data.processing.CsvWriter
 import com.example.fitguard.data.repository.UserProfileRepository
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.textfield.TextInputEditText
@@ -36,6 +37,7 @@ class ProfileSetupActivity : AppCompatActivity() {
     private var currentWeightKg = 0f
     private var targetWeightKg = 0f
     private var fitnessGoal = ""
+    private var fitnessLevel = ""
     private var heightUnitCm = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,6 +60,7 @@ class ProfileSetupActivity : AppCompatActivity() {
             3 -> setupHeightStep(inflater)
             4 -> setupWeightStep(inflater)
             5 -> setupGoalStep(inflater)
+            6 -> setupFitnessLevelStep(inflater)
             else -> return
         }
 
@@ -245,6 +248,52 @@ class ProfileSetupActivity : AppCompatActivity() {
                 Toast.makeText(this, "Please select a goal", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            showStep(6)
+        }
+
+        return view
+    }
+
+    private fun setupFitnessLevelStep(inflater: LayoutInflater): View {
+        val view = inflater.inflate(R.layout.step_fitness_level, stepContainer, false)
+
+        val cardSedentary = view.findViewById<FrameLayout>(R.id.cardSedentary)
+        val cardLightlyActive = view.findViewById<FrameLayout>(R.id.cardLightlyActive)
+        val cardModeratelyActive = view.findViewById<FrameLayout>(R.id.cardModeratelyActive)
+        val cardActive = view.findViewById<FrameLayout>(R.id.cardActive)
+        val cardVeryActive = view.findViewById<FrameLayout>(R.id.cardVeryActive)
+
+        val cards = listOf(
+            cardSedentary to "Sedentary",
+            cardLightlyActive to "Lightly Active",
+            cardModeratelyActive to "Moderately Active",
+            cardActive to "Active",
+            cardVeryActive to "Very Active"
+        )
+
+        fun selectLevel(selected: String) {
+            fitnessLevel = selected
+            cards.forEach { (card, level) ->
+                card.setBackgroundResource(
+                    if (level == selected) R.drawable.bg_card_selected else R.drawable.bg_card_unselected
+                )
+            }
+        }
+
+        if (fitnessLevel.isNotEmpty()) selectLevel(fitnessLevel)
+
+        cardSedentary.setOnClickListener { selectLevel("Sedentary") }
+        cardLightlyActive.setOnClickListener { selectLevel("Lightly Active") }
+        cardModeratelyActive.setOnClickListener { selectLevel("Moderately Active") }
+        cardActive.setOnClickListener { selectLevel("Active") }
+        cardVeryActive.setOnClickListener { selectLevel("Very Active") }
+
+        view.findViewById<ImageButton>(R.id.btnBack).setOnClickListener { showStep(5) }
+        view.findViewById<ImageButton>(R.id.fabNext).setOnClickListener {
+            if (fitnessLevel.isEmpty()) {
+                Toast.makeText(this, "Please select your fitness level", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
             saveProfileAndFinish()
         }
 
@@ -269,10 +318,12 @@ class ProfileSetupActivity : AppCompatActivity() {
                 currentWeightKg = currentWeightKg,
                 targetWeightKg = targetWeightKg,
                 fitnessGoal = fitnessGoal,
+                fitnessLevel = fitnessLevel,
                 profileComplete = true
             )
 
             repo.saveGoals(profile)
+            CsvWriter.writeProfileCsv(profile)
 
             // Mark profile complete in SharedPreferences
             getSharedPreferences("fitguard_prefs", MODE_PRIVATE)
