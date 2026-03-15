@@ -10,7 +10,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class ActivityHistoryAdapter : RecyclerView.Adapter<ActivityHistoryAdapter.HistoryViewHolder>() {
+class ActivityHistoryAdapter(
+    private val onItemClick: (ActivityHistoryItem) -> Unit = {}
+) : RecyclerView.Adapter<ActivityHistoryAdapter.HistoryViewHolder>() {
 
     private var items: List<ActivityHistoryItem> = emptyList()
 
@@ -51,8 +53,27 @@ class ActivityHistoryAdapter : RecyclerView.Adapter<ActivityHistoryAdapter.Histo
             binding.ivActivityIcon.setImageResource(iconRes)
 
             binding.tvTimeValue.text = formatDuration(item.durationMillis)
-            binding.tvDistanceValue.text = "--"
-            binding.tvPaceValue.text = "--"
+
+            if (item.totalDistanceMeters > 0f) {
+                val km = item.totalDistanceMeters / 1000.0
+                binding.tvDistanceValue.text = if (km < 1.0) {
+                    String.format(Locale.US, "%.0f m", item.totalDistanceMeters)
+                } else {
+                    String.format(Locale.US, "%.2f km", km)
+                }
+            } else {
+                binding.tvDistanceValue.text = "--"
+            }
+
+            if (item.avgPaceMinPerKm > 0 && item.avgPaceMinPerKm <= 99) {
+                val minutes = item.avgPaceMinPerKm.toInt()
+                val seconds = ((item.avgPaceMinPerKm - minutes) * 60).toInt()
+                binding.tvPaceValue.text = String.format(Locale.US, "%d:%02d", minutes, seconds)
+            } else {
+                binding.tvPaceValue.text = "--"
+            }
+
+            itemView.setOnClickListener { onItemClick(item) }
         }
 
         private fun formatDuration(millis: Long): String {

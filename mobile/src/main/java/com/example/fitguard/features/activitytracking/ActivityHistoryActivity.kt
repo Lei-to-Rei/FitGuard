@@ -1,10 +1,12 @@
 package com.example.fitguard.features.activitytracking
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.fitguard.data.repository.AuthRepository
 import com.example.fitguard.databinding.ActivityActivityHistoryBinding
 
 class ActivityHistoryActivity : AppCompatActivity() {
@@ -20,7 +22,15 @@ class ActivityHistoryActivity : AppCompatActivity() {
 
         binding.btnBack.setOnClickListener { finish() }
 
-        adapter = ActivityHistoryAdapter()
+        val userId = AuthRepository.currentUser?.uid ?: ""
+        adapter = ActivityHistoryAdapter { item ->
+            startActivity(Intent(this, ActivityDetailActivity::class.java).apply {
+                putExtra("session_dir", item.sessionDirName)
+                putExtra("user_id", userId)
+                putExtra("activity_type", item.activityType)
+                putExtra("start_time", item.startTimeMillis)
+            })
+        }
         binding.rvHistory.layoutManager = LinearLayoutManager(this)
         binding.rvHistory.adapter = adapter
 

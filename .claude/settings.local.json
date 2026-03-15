@@ -53,7 +53,9 @@
       "Bash(cmd.exe /c \"dir \\\\\"C:\\\\Users\\\\claud\\\\Documents\\\\SCHOOL FILES\\\\4th Year\\\\1st Sem\\\\THESIS 1\\\\FitGuard\\\\UI\\\\\" /b\" 2>/dev/null)",
       "Bash(powershell.exe -Command \"Get-ChildItem 'C:\\\\Users\\\\claud\\\\Documents\\\\SCHOOL FILES\\\\4th Year\\\\1st Sem\\\\THESIS 1\\\\FitGuard\\\\UI' | Select-Object Name\")",
       "Bash(grep -l \"BottomNavigationView\" C:\\\\Users\\\\claud\\\\AndroidStudioProjects\\\\FitGuard\\\\mobile\\\\src\\\\main\\\\res\\\\layout\\\\*.xml)",
-      "Bash(ls -la /c/Users/claud/AndroidStudioProjects/FitGuard/mobile/src/main/res/drawable*/)"
+      "Bash(ls -la /c/Users/claud/AndroidStudioProjects/FitGuard/mobile/src/main/res/drawable*/)",
+      "Bash(grep:*)",
+      "Bash(ls:*)"
     ]
   }
 }

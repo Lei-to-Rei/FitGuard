@@ -162,6 +162,14 @@
             android:screenOrientation="portrait" />
 
         <!-- ========================================== -->
+        <!-- ACTIVITY DETAIL -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.activitytracking.ActivityDetailActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <!-- ========================================== -->
         <!-- PROFILE: USER HOME -->
         <!-- ========================================== -->
         <activity

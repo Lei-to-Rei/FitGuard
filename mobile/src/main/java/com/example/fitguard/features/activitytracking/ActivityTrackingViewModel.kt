@@ -13,8 +13,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
+import com.example.fitguard.data.processing.CsvWriter
 import com.example.fitguard.data.processing.RpeState
 import com.example.fitguard.data.processing.SequenceProcessor
+import com.google.firebase.auth.FirebaseAuth
 import com.example.fitguard.services.SessionForegroundService
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -23,6 +25,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.wearable.DataClient
 import com.google.android.gms.wearable.Wearable
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -234,11 +237,27 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         }
     }
 
+    private fun saveRouteData() {
+        val dir = activeSessionDir ?: return
+        val points = routePointsList.toList()
+        if (points.isEmpty()) return
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+        val distance = totalDistanceMeters
+        val pace = _paceMinPerKm.value ?: 0.0
+        val duration = if (sessionStartTime > 0) System.currentTimeMillis() - sessionStartTime else 0L
+
+        viewModelScope.launch(Dispatchers.IO) {
+            CsvWriter.writeRouteCsv(points, userId, dir)
+            CsvWriter.writeRouteSummary(distance, pace, duration, points.size, userId, dir)
+        }
+    }
+
     fun stopSession() {
         if (_state.value != SessionState.ACTIVE) return
 
         _state.value = SessionState.STOPPING
         cancelConnectTimeout()
+        saveRouteData()
         stopLocationTracking()
         SequenceProcessor.clearBuffer()
         activeSessionId = null
@@ -287,6 +306,7 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         if (stoppedSessionId != sessionId) return
 
         cancelConnectTimeout()
+        saveRouteData()
         stopTimer()
         stopLocationTracking()
         SequenceProcessor.clearBuffer()

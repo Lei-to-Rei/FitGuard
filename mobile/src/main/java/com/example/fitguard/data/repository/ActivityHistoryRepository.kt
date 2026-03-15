@@ -36,16 +36,39 @@ object ActivityHistoryRepository {
             val startTimeMillis = DIR_DATE_FORMAT.parse(datePart)?.time ?: return null
 
             val durationMillis = parseDurationFromCsv(File(dir, "features.csv"))
+            val (distance, pace) = parseRouteSummary(dir)
 
             ActivityHistoryItem(
                 activityType = activityType,
                 startTimeMillis = startTimeMillis,
                 durationMillis = durationMillis,
-                sessionDirName = name
+                sessionDirName = name,
+                totalDistanceMeters = distance,
+                avgPaceMinPerKm = pace
             )
         } catch (e: Exception) {
             Log.w(TAG, "Failed to parse session dir ${dir.name}: ${e.message}")
             null
+        }
+    }
+
+    private fun parseRouteSummary(dir: File): Pair<Float, Double> {
+        return try {
+            val file = File(dir, "route_summary.csv")
+            if (!file.exists()) return Pair(0f, 0.0)
+            val lines = file.readLines()
+            if (lines.size < 2) return Pair(0f, 0.0)
+            val cols = lines[0].split(",")
+            val distIdx = cols.indexOf("total_distance_m")
+            val paceIdx = cols.indexOf("avg_pace_min_per_km")
+            if (distIdx < 0 || paceIdx < 0) return Pair(0f, 0.0)
+            val parts = lines[1].split(",")
+            val dist = parts.getOrNull(distIdx)?.toFloatOrNull() ?: 0f
+            val pace = parts.getOrNull(paceIdx)?.toDoubleOrNull() ?: 0.0
+            Pair(dist, pace)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse route summary: ${e.message}")
+            Pair(0f, 0.0)
         }
     }
 
