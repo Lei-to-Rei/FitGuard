@@ -1,8 +1,14 @@
 package com.example.fitguard.features.activitytracking
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Application
 import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Location
+import android.os.Looper
 import android.util.Log
+import androidx.core.app.ActivityCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -10,6 +16,11 @@ import androidx.lifecycle.viewModelScope
 import com.example.fitguard.data.processing.RpeState
 import com.example.fitguard.data.processing.SequenceProcessor
 import com.example.fitguard.services.SessionForegroundService
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import com.google.android.gms.wearable.DataClient
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.Job
@@ -20,6 +31,8 @@ import kotlinx.coroutines.tasks.await
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
+
+data class LocationPoint(val lat: Double, val lng: Double, val timeMs: Long)
 
 class ActivityTrackingViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -72,6 +85,49 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
     private val _lastRpe = MutableLiveData(-1)
     val lastRpe: LiveData<Int> = _lastRpe
 
+    // Location tracking
+    private val _routePoints = MutableLiveData<List<LocationPoint>>(emptyList())
+    val routePoints: LiveData<List<LocationPoint>> = _routePoints
+
+    private val _distanceMeters = MutableLiveData(0f)
+    val distanceMeters: LiveData<Float> = _distanceMeters
+
+    private val _paceMinPerKm = MutableLiveData(0.0)
+    val paceMinPerKm: LiveData<Double> = _paceMinPerKm
+
+    // Current location (for initial map centering before session starts)
+    private val _currentLocation = MutableLiveData<LocationPoint?>()
+    val currentLocation: LiveData<LocationPoint?> = _currentLocation
+
+    private val routePointsList = mutableListOf<LocationPoint>()
+    private var totalDistanceMeters = 0f
+    private var isTrackingLocation = false
+    private val fusedLocationClient = LocationServices.getFusedLocationProviderClient(application)
+
+    private val locationCallback = object : LocationCallback() {
+        override fun onLocationResult(result: LocationResult) {
+            val loc = result.lastLocation ?: return
+            val point = LocationPoint(loc.latitude, loc.longitude, System.currentTimeMillis())
+
+            if (routePointsList.isNotEmpty()) {
+                val last = routePointsList.last()
+                val results = FloatArray(1)
+                Location.distanceBetween(last.lat, last.lng, point.lat, point.lng, results)
+                totalDistanceMeters += results[0]
+                _distanceMeters.value = totalDistanceMeters
+
+                val elapsedMinutes = (point.timeMs - sessionStartTime) / 60000.0
+                val distanceKm = totalDistanceMeters / 1000.0
+                if (distanceKm > 0.01) {
+                    _paceMinPerKm.value = elapsedMinutes / distanceKm
+                }
+            }
+
+            routePointsList.add(point)
+            _routePoints.value = routePointsList.toList()
+        }
+    }
+
     private var sessionId: String = ""
     private var sessionStartTime: Long = 0L
     private var timerJob: Job? = null
@@ -119,6 +175,14 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         SequenceProcessor.clearBuffer()
         activeSessionId = sessionId
         activeSessionDir = buildSessionDirName(activityType, sessionStartTime)
+
+        // Clear previous route data
+        routePointsList.clear()
+        totalDistanceMeters = 0f
+        _routePoints.value = emptyList()
+        _distanceMeters.value = 0f
+        _paceMinPerKm.value = 0.0
+
         // Persist session dir immediately so WearableDataListenerService can recover it
         prefs.edit()
             .putString(KEY_SESSION_DIR, activeSessionDir)
@@ -126,7 +190,10 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
             .putString(KEY_ACTIVITY_TYPE, activityType)
             .putLong(KEY_START_TIME, sessionStartTime)
             .apply()
-        SessionForegroundService.start(getApplication(), activityType)
+        val hasLocationPerm = ActivityCompat.checkSelfPermission(
+            getApplication(), Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        SessionForegroundService.start(getApplication(), activityType, withLocation = hasLocationPerm)
 
         viewModelScope.launch {
             try {
@@ -172,6 +239,7 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
 
         _state.value = SessionState.STOPPING
         cancelConnectTimeout()
+        stopLocationTracking()
         SequenceProcessor.clearBuffer()
         activeSessionId = null
         activeSessionDir = null
@@ -207,6 +275,7 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
             _state.value = SessionState.ACTIVE
             _error.value = null
             startTimer()
+            startLocationTracking()
             saveSession()
         } else {
             _error.value = "Watch busy, try again later"
@@ -219,6 +288,7 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
 
         cancelConnectTimeout()
         stopTimer()
+        stopLocationTracking()
         SequenceProcessor.clearBuffer()
         RpeState.reset()
         activeSessionId = null
@@ -314,13 +384,71 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         SessionForegroundService.start(getApplication(), _activityType.value ?: "Walking")
         startTimer()
 
+        startLocationTracking()
         Log.d(TAG, "Restored session $sessionId, dir=$activeSessionDir, elapsed=${_elapsedSeconds.value}s")
+    }
+
+    @SuppressLint("MissingPermission")
+    fun startLocationTracking() {
+        if (isTrackingLocation) return
+        if (ActivityCompat.checkSelfPermission(
+                getApplication(), Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) return
+
+        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000)
+            .setMinUpdateDistanceMeters(2f)
+            .setMinUpdateIntervalMillis(2000)
+            .build()
+
+        fusedLocationClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
+        isTrackingLocation = true
+        Log.d(TAG, "Location tracking started")
+    }
+
+    fun stopLocationTracking() {
+        if (!isTrackingLocation) return
+        fusedLocationClient.removeLocationUpdates(locationCallback)
+        isTrackingLocation = false
+        Log.d(TAG, "Location tracking stopped")
+    }
+
+    @SuppressLint("MissingPermission")
+    fun fetchCurrentLocation() {
+        if (ActivityCompat.checkSelfPermission(
+                getApplication(), Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) return
+
+        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+            if (location != null) {
+                _currentLocation.value = LocationPoint(location.latitude, location.longitude, System.currentTimeMillis())
+            } else {
+                requestSingleLocationUpdate()
+            }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun requestSingleLocationUpdate() {
+        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000)
+            .setMaxUpdates(1)
+            .build()
+
+        fusedLocationClient.requestLocationUpdates(request, object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                val loc = result.lastLocation ?: return
+                _currentLocation.value = LocationPoint(loc.latitude, loc.longitude, System.currentTimeMillis())
+                fusedLocationClient.removeLocationUpdates(this)
+            }
+        }, Looper.getMainLooper())
     }
 
     override fun onCleared() {
         super.onCleared()
         cancelConnectTimeout()
         stopTimer()
+        stopLocationTracking()
         // Do NOT clear activeSessionId here — session outlives the ViewModel.
         // Only explicit stop/watchStopped should clear it.
     }

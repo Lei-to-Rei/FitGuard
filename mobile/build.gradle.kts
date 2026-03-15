@@ -78,6 +78,12 @@ dependencies {
     // Google Play Services Wearable
     implementation("com.google.android.gms:play-services-wearable:19.0.0")
 
+    // Location tracking
+    implementation("com.google.android.gms:play-services-location:21.0.1")
+
+    // OpenStreetMap (osmdroid) - free map display
+    implementation("org.osmdroid:osmdroid-android:6.1.18")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
