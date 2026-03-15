@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.fitguard.auth.LoginActivity
 import com.example.fitguard.data.repository.AuthRepository
 import com.example.fitguard.databinding.ActivityMainBinding
+import com.example.fitguard.features.activitytracking.ActivityHistoryActivity
 import com.example.fitguard.features.activitytracking.ActivityTrackingActivity
 import com.example.fitguard.features.fatigue.FatiguePredictionActivity
 import com.example.fitguard.features.metrics.MetricsMonitoringActivity
@@ -63,10 +64,10 @@ class MainActivity : AppCompatActivity() {
                 activityClass = MetricsMonitoringActivity::class.java
             ),
             DashboardItem(
-                title = "Activity Tracking",
-                description = "Track and manage your activities",
+                title = "Workout History",
+                description = "Past Workout and trends",
                 icon = R.drawable.ic_dumbbell_ray,
-                activityClass = ActivityTrackingActivity::class.java
+                activityClass = ActivityHistoryActivity::class.java
             ),
             DashboardItem(
                 title = "Sleep & Stress Monitoring",

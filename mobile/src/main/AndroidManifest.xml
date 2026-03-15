@@ -149,6 +149,14 @@
             android:windowSoftInputMode="adjustResize" />
 
         <!-- ========================================== -->
+        <!-- ACTIVITY HISTORY -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.activitytracking.ActivityHistoryActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <!-- ========================================== -->
         <!-- PROFILE: USER HOME -->
         <!-- ========================================== -->
         <activity
