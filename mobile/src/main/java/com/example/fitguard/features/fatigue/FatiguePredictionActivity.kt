@@ -2,7 +2,6 @@ package com.example.fitguard.features.fatigue
 
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.fitguard.MainActivity
 import com.example.fitguard.R
@@ -19,7 +18,6 @@ class FatiguePredictionActivity : AppCompatActivity() {
         binding = ActivityFatiguePredictionBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setupFeature()
         setupBottomNavigation()
     }
 
@@ -28,19 +26,6 @@ class FatiguePredictionActivity : AppCompatActivity() {
         if (::binding.isInitialized) {
             binding.bottomNavigation.selectedItemId = R.id.nav_health
         }
-    }
-
-    private fun setupFeature() {
-        binding.tvFeatureTitle.text = "Fatigue Prediction (CNN\u2013LSTM)"
-        binding.tvFeatureDescription.text = """
-            This AI-powered feature will:
-            • Predict fatigue levels
-            • Analyze workout patterns
-            • Use CNN-LSTM neural networks
-            • Provide early warnings
-            • Suggest optimal training times
-            • Prevent overtraining
-        """.trimIndent()
     }
 
     private fun setupBottomNavigation() {
@@ -64,7 +49,7 @@ class FatiguePredictionActivity : AppCompatActivity() {
                     true
                 }
                 R.id.nav_stats -> {
-                    Toast.makeText(this, "Stats coming soon", Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(this, "Stats coming soon", android.widget.Toast.LENGTH_SHORT).show()
                     true
                 }
                 R.id.nav_health -> true
