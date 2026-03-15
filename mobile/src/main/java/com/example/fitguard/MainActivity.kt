@@ -2,7 +2,6 @@ package com.example.fitguard
 
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.fitguard.auth.LoginActivity
@@ -129,10 +128,6 @@ class MainActivity : AppCompatActivity() {
                         flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                     })
                     overridePendingTransition(0, 0)
-                    true
-                }
-                R.id.nav_stats -> {
-                    Toast.makeText(this, "Stats coming soon", Toast.LENGTH_SHORT).show()
                     true
                 }
                 R.id.nav_health -> {

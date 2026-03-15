@@ -8,11 +8,7 @@
         android:id="@+id/nav_activity"
         android:icon="@drawable/ic_gps_navigation"
         android:title="Activity" />
-    <item
-        android:id="@+id/nav_stats"
-        android:icon="@drawable/ic_chart_simple"
-        android:title="Stats" />
-    <item
+<item
         android:id="@+id/nav_health"
         android:icon="@drawable/ic_health_podcast"
         android:title="Health" />

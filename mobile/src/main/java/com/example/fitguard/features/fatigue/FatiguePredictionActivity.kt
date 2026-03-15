@@ -48,10 +48,6 @@ class FatiguePredictionActivity : AppCompatActivity() {
                     overridePendingTransition(0, 0)
                     true
                 }
-                R.id.nav_stats -> {
-                    android.widget.Toast.makeText(this, "Stats coming soon", android.widget.Toast.LENGTH_SHORT).show()
-                    true
-                }
                 R.id.nav_health -> true
                 R.id.nav_profile -> {
                     startActivity(Intent(this, UserHomeActivity::class.java).apply {

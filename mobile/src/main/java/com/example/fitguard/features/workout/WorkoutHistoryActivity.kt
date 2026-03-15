@@ -267,10 +267,6 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
                     true
                 }
                 R.id.nav_activity -> true
-                R.id.nav_stats -> {
-                    Toast.makeText(this, "Stats coming soon", Toast.LENGTH_SHORT).show()
-                    true
-                }
                 R.id.nav_health -> {
                     startActivity(Intent(this, FatiguePredictionActivity::class.java).apply {
                         flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
