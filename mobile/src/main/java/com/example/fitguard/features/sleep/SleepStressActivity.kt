@@ -1,26 +1,20 @@
 package com.example.fitguard.features.sleep
 
-import com.example.fitguard.databinding.ActivityFeaturePlaceholderBinding
-import com.example.fitguard.ui.base.BaseFeatureActivity
+import android.os.Bundle
+import androidx.appcompat.app.AppCompatActivity
+import com.example.fitguard.databinding.ActivitySleepStressBinding
 
-class SleepStressActivity : BaseFeatureActivity<ActivityFeaturePlaceholderBinding>() {
+class SleepStressActivity : AppCompatActivity() {
 
-    override fun getViewBinding() = ActivityFeaturePlaceholderBinding.inflate(layoutInflater)
+    private lateinit var binding: ActivitySleepStressBinding
 
-    override fun getFeatureTitle() = "Sleep & Stress"
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivitySleepStressBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
-    override fun setupFeature() {
-        binding.apply {
-            tvFeatureTitle.text = "Sleep & Stress Tracking"
-            tvFeatureDescription.text = """
-                This feature will track:
-                • Sleep duration and quality
-                • Sleep stages (deep, light, REM)
-                • Sleep schedule consistency
-                • Stress level monitoring
-                • HRV-based stress analysis
-                • Sleep recommendations
-            """.trimIndent()
+        binding.btnBack.setOnClickListener {
+            onBackPressedDispatcher.onBackPressed()
         }
     }
 }
