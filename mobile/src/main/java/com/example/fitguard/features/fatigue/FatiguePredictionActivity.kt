@@ -8,7 +8,7 @@ import com.example.fitguard.MainActivity
 import com.example.fitguard.R
 import com.example.fitguard.databinding.ActivityFatiguePredictionBinding
 import com.example.fitguard.features.profile.UserHomeActivity
-import com.example.fitguard.features.workout.WorkoutHistoryActivity
+import com.example.fitguard.features.activitytracking.ActivityTrackingActivity
 
 class FatiguePredictionActivity : AppCompatActivity() {
 
@@ -35,7 +35,7 @@ class FatiguePredictionActivity : AppCompatActivity() {
         binding.tvFeatureDescription.text = """
             This AI-powered feature will:
             • Predict fatigue levels
-            • Analyze workout patterns
+            • Analyze activity patterns
             • Use CNN-LSTM neural networks
             • Provide early warnings
             • Suggest optimal training times
@@ -57,7 +57,7 @@ class FatiguePredictionActivity : AppCompatActivity() {
                     true
                 }
                 R.id.nav_activity -> {
-                    startActivity(Intent(this, WorkoutHistoryActivity::class.java).apply {
+                    startActivity(Intent(this, ActivityTrackingActivity::class.java).apply {
                         flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                     })
                     overridePendingTransition(0, 0)

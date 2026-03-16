@@ -1,55 +1,97 @@
-package com.example.fitguard.features.workout
+package com.example.fitguard.features.activitytracking
 
 import android.Manifest
 import android.content.Intent
+import android.content.IntentSender
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.widget.SeekBar
 import android.widget.Toast
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.example.fitguard.MainActivity
 import com.example.fitguard.R
-import com.example.fitguard.databinding.ActivityWorkoutControlBinding
+import com.example.fitguard.databinding.ActivityActivityTrackingBinding
 import com.example.fitguard.features.fatigue.FatiguePredictionActivity
 import com.example.fitguard.features.profile.UserHomeActivity
+import com.google.android.gms.common.api.ResolvableApiException
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.LocationSettingsRequest
+import com.google.android.gms.location.Priority
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Wearable
 import org.json.JSONObject
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.overlay.Polyline
+import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 
-class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListener {
-    private lateinit var binding: ActivityWorkoutControlBinding
-    private val viewModel: WorkoutControlViewModel by viewModels()
+class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListener {
+    private lateinit var binding: ActivityActivityTrackingBinding
+    private val viewModel: ActivityTrackingViewModel by viewModels()
+    private var routePolyline: Polyline? = null
+    private lateinit var myLocationOverlay: MyLocationNewOverlay
 
     companion object {
-        private const val TAG = "WorkoutHistoryActivity"
+        private const val TAG = "ActivityTrackingActivity"
     }
+
+    private val mapLocationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions.any { it.value }) {
+            checkLocationSettings()
+        }
+    }
+
+    private val locationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ ->
+        // Proceed regardless — location is optional for route tracking
+        checkNotificationAndStart()
+        // Also check GPS settings so map can center on user
+        if (hasLocationPermission()) {
+            checkLocationSettings()
+        }
+    }
+
+    private val locationSettingsLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { _ -> /* GPS enabled — overlay will pick up location automatically */ }
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         Log.d(TAG, "POST_NOTIFICATIONS permission granted=$granted")
-        // Start session regardless of permission result — data sync matters more than notification
         val type = getSelectedActivityType()
         viewModel.startSession(type)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityWorkoutControlBinding.inflate(layoutInflater)
+        Configuration.getInstance().userAgentValue = packageName
+        binding = ActivityActivityTrackingBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        setupMap()
+        requestMapLocationPermission()
         setupActivityTypeSelection()
         setupStartStopButton()
         setupRpeIntervalSlider()
         setupBottomNavigation()
         observeViewModel()
+        observeRoute()
 
         Wearable.getMessageClient(this).addListener(this)
     }
@@ -58,6 +100,40 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
         super.onResume()
         if (::binding.isInitialized) {
             binding.bottomNavigation.selectedItemId = R.id.nav_activity
+            binding.mapView.onResume()
+        }
+        if (::myLocationOverlay.isInitialized) {
+            myLocationOverlay.enableMyLocation()
+        }
+    }
+
+    private fun checkLocationSettings() {
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000).build()
+        val settingsRequest = LocationSettingsRequest.Builder()
+            .addLocationRequest(locationRequest)
+            .build()
+
+        LocationServices.getSettingsClient(this)
+            .checkLocationSettings(settingsRequest)
+            .addOnFailureListener { exception ->
+                if (exception is ResolvableApiException) {
+                    try {
+                        val intentSenderRequest = IntentSenderRequest.Builder(exception.resolution.intentSender).build()
+                        locationSettingsLauncher.launch(intentSenderRequest)
+                    } catch (sendEx: IntentSender.SendIntentException) {
+                        Log.e(TAG, "Error showing GPS enable dialog", sendEx)
+                    }
+                }
+            }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (::myLocationOverlay.isInitialized) {
+            myLocationOverlay.disableMyLocation()
+        }
+        if (::binding.isInitialized) {
+            binding.mapView.onPause()
         }
     }
 
@@ -118,10 +194,10 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
     private fun setupStartStopButton() {
         binding.btnStartStop.setOnClickListener {
             when (viewModel.state.value) {
-                WorkoutControlViewModel.SessionState.IDLE -> {
+                ActivityTrackingViewModel.SessionState.IDLE -> {
                     startSessionWithPermissionCheck()
                 }
-                WorkoutControlViewModel.SessionState.ACTIVE -> {
+                ActivityTrackingViewModel.SessionState.ACTIVE -> {
                     viewModel.stopSession()
                 }
                 else -> {} // CONNECTING or STOPPING - ignore
@@ -130,6 +206,22 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
     }
 
     private fun startSessionWithPermissionCheck() {
+        // Check location permission first (optional but enables route tracking)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+            return
+        }
+        checkNotificationAndStart()
+    }
+
+    private fun checkNotificationAndStart() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
             != PackageManager.PERMISSION_GRANTED
@@ -167,7 +259,7 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
     private fun observeViewModel() {
         viewModel.state.observe(this) { state ->
             when (state) {
-                WorkoutControlViewModel.SessionState.IDLE -> {
+                ActivityTrackingViewModel.SessionState.IDLE -> {
                     binding.btnStartStop.text = "Start Session"
                     binding.btnStartStop.isEnabled = true
                     binding.btnStartStop.setBackgroundColor(getColor(R.color.blue_primary))
@@ -175,23 +267,29 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
                     binding.rgActivityType.isEnabled = true
                     setRadioGroupEnabled(true)
                     binding.seekRpeInterval.isEnabled = true
+                    if (::myLocationOverlay.isInitialized) {
+                        myLocationOverlay.enableFollowLocation()
+                    }
                 }
-                WorkoutControlViewModel.SessionState.CONNECTING -> {
+                ActivityTrackingViewModel.SessionState.CONNECTING -> {
                     binding.btnStartStop.text = "Connecting..."
                     binding.btnStartStop.isEnabled = false
                     binding.tvSessionStatus.text = "Connecting to watch..."
                     setRadioGroupEnabled(false)
                     binding.seekRpeInterval.isEnabled = false
                 }
-                WorkoutControlViewModel.SessionState.ACTIVE -> {
+                ActivityTrackingViewModel.SessionState.ACTIVE -> {
                     binding.btnStartStop.text = "Stop Session"
                     binding.btnStartStop.isEnabled = true
                     binding.btnStartStop.setBackgroundColor(getColor(R.color.red_stop))
                     binding.tvSessionStatus.text = "Active - ${viewModel.activityType.value}"
                     setRadioGroupEnabled(false)
                     binding.seekRpeInterval.isEnabled = false
+                    if (::myLocationOverlay.isInitialized) {
+                        myLocationOverlay.disableFollowLocation()
+                    }
                 }
-                WorkoutControlViewModel.SessionState.STOPPING -> {
+                ActivityTrackingViewModel.SessionState.STOPPING -> {
                     binding.btnStartStop.text = "Stopping..."
                     binding.btnStartStop.isEnabled = false
                     binding.tvSessionStatus.text = "Stopping session..."
@@ -222,7 +320,7 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
         }
 
         viewModel.lastRpe.observe(this) { rpe ->
-            binding.tvLastRpe.text = if (rpe >= 0) "Last RPE: $rpe" else "Last RPE: --"
+            binding.tvLastRpe.text = if (rpe >= 0) "RPE: $rpe" else "RPE: --"
         }
 
         viewModel.rpeIntervalMinutes.observe(this) { minutes ->
@@ -251,6 +349,84 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
             binding.rgActivityType.getChildAt(i).isEnabled = enabled
         }
         binding.etCustomActivity.isEnabled = enabled
+    }
+
+    private fun hasLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun setupMap() {
+        binding.mapView.apply {
+            setTileSource(TileSourceFactory.MAPNIK)
+            setMultiTouchControls(true)
+            controller.setZoom(16.0)
+        }
+
+        val locationProvider = GpsMyLocationProvider(this)
+        myLocationOverlay = MyLocationNewOverlay(locationProvider, binding.mapView)
+        myLocationOverlay.enableMyLocation()
+        myLocationOverlay.enableFollowLocation()
+        binding.mapView.overlays.add(myLocationOverlay)
+    }
+
+    private fun requestMapLocationPermission() {
+        if (hasLocationPermission()) {
+            checkLocationSettings()
+        } else {
+            mapLocationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
+
+    private fun observeRoute() {
+        viewModel.routePoints.observe(this) { points ->
+            if (points.isEmpty()) {
+                routePolyline?.let {
+                    binding.mapView.overlays.remove(it)
+                    routePolyline = null
+                }
+                binding.mapView.invalidate()
+                return@observe
+            }
+
+            val geoPoints = points.map { GeoPoint(it.lat, it.lng) }
+
+            routePolyline?.let { binding.mapView.overlays.remove(it) }
+
+            routePolyline = Polyline().apply {
+                setPoints(geoPoints)
+                outlinePaint.color = Color.parseColor("#1565C0")
+                outlinePaint.strokeWidth = 10f
+                outlinePaint.isAntiAlias = true
+            }
+            binding.mapView.overlays.add(routePolyline)
+            binding.mapView.controller.animateTo(geoPoints.last())
+            binding.mapView.invalidate()
+        }
+
+        viewModel.distanceMeters.observe(this) { meters ->
+            val km = meters / 1000.0
+            binding.tvDistance.text = if (km < 1.0) {
+                String.format("%.0f m", meters)
+            } else {
+                String.format("%.2f km", km)
+            }
+        }
+
+        viewModel.paceMinPerKm.observe(this) { pace ->
+            if (pace <= 0 || pace > 99) {
+                binding.tvPace.text = "--:--"
+            } else {
+                val minutes = pace.toInt()
+                val seconds = ((pace - minutes) * 60).toInt()
+                binding.tvPace.text = String.format("%d:%02d", minutes, seconds)
+            }
+        }
     }
 
     private fun setupBottomNavigation() {
@@ -292,6 +468,10 @@ class WorkoutHistoryActivity : AppCompatActivity(), MessageClient.OnMessageRecei
 
     override fun onDestroy() {
         Wearable.getMessageClient(this).removeListener(this)
+        if (::myLocationOverlay.isInitialized) {
+            myLocationOverlay.disableMyLocation()
+        }
+        binding.mapView.onDetach()
         super.onDestroy()
     }
 }

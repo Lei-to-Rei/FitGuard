@@ -3,7 +3,7 @@ package com.example.fitguard.data.processing
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import com.example.fitguard.features.workout.WorkoutControlViewModel
+import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -189,7 +189,7 @@ class SequenceProcessor(private val context: Context) {
 
             // 4. Add to pending list — will be flushed when RPE arrives
             val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
-            val sessionDir = WorkoutControlViewModel.activeSessionDir ?: ""
+            val sessionDir = ActivityTrackingViewModel.activeSessionDir ?: ""
             pendingWindows.add(PendingWindow(featureVector, userId, sessionDir))
         } catch (e: Exception) {
             Log.e(TAG, "Failed to process window ${data.sequenceId}: ${e.message}", e)

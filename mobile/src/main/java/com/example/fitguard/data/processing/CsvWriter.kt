@@ -1,8 +1,10 @@
 package com.example.fitguard.data.processing
 
+import android.location.Location
 import android.os.Environment
 import android.util.Log
 import com.example.fitguard.data.model.UserProfile
+import com.example.fitguard.features.activitytracking.LocationPoint
 import com.google.firebase.firestore.FirebaseFirestore
 import java.io.File
 import java.util.*
@@ -11,6 +13,8 @@ object CsvWriter {
     private const val TAG = "CsvWriter"
     private const val DIR_NAME = "FitGuard_Data"
     private const val FILE_NAME = "features.csv"
+    private const val ROUTE_FILE_NAME = "route.csv"
+    private const val ROUTE_SUMMARY_FILE_NAME = "route_summary.csv"
 
     private val HEADER = listOf(
         "user_id", "timestamp", "timestamp_end", "sequence_id",
@@ -148,6 +152,52 @@ object CsvWriter {
         "fatigueLevel" to fatigueLevel,
         "rpeRaw" to rpeRaw
     )
+
+    fun writeRouteCsv(points: List<LocationPoint>, userId: String = "", sessionDir: String = "") {
+        try {
+            val dir = getOutputDir(userId, sessionDir)
+            val file = File(dir, ROUTE_FILE_NAME)
+            val header = "latitude,longitude,timestamp_ms,cumulative_distance_m"
+
+            val sb = StringBuilder()
+            sb.appendLine(header)
+            var cumDist = 0.0
+            for (i in points.indices) {
+                val p = points[i]
+                if (i > 0) {
+                    val prev = points[i - 1]
+                    val results = FloatArray(1)
+                    Location.distanceBetween(prev.lat, prev.lng, p.lat, p.lng, results)
+                    cumDist += results[0]
+                }
+                sb.appendLine("${fmt(p.lat)},${fmt(p.lng)},${p.timeMs},${fmt(cumDist)}")
+            }
+            file.writeText(sb.toString())
+            Log.d(TAG, "Route CSV written to ${file.absolutePath} (${points.size} points)")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to write route CSV: ${e.message}", e)
+        }
+    }
+
+    fun writeRouteSummary(
+        totalDistanceM: Float,
+        avgPaceMinPerKm: Double,
+        durationMs: Long,
+        pointCount: Int,
+        userId: String = "",
+        sessionDir: String = ""
+    ) {
+        try {
+            val dir = getOutputDir(userId, sessionDir)
+            val file = File(dir, ROUTE_SUMMARY_FILE_NAME)
+            val header = "total_distance_m,avg_pace_min_per_km,duration_ms,point_count"
+            val row = "${fmt(totalDistanceM.toDouble())},${fmt(avgPaceMinPerKm)},${durationMs},${pointCount}"
+            file.writeText("$header\n$row\n")
+            Log.d(TAG, "Route summary written to ${file.absolutePath}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to write route summary: ${e.message}", e)
+        }
+    }
 
     fun writeProfileCsv(profile: UserProfile) {
         try {

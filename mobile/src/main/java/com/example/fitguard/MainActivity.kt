@@ -8,14 +8,14 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.fitguard.auth.LoginActivity
 import com.example.fitguard.data.repository.AuthRepository
 import com.example.fitguard.databinding.ActivityMainBinding
-import com.example.fitguard.features.activity.ActivityTrackingActivity
+import com.example.fitguard.features.activitytracking.ActivityHistoryActivity
+import com.example.fitguard.features.activitytracking.ActivityTrackingActivity
 import com.example.fitguard.features.fatigue.FatiguePredictionActivity
 import com.example.fitguard.features.metrics.MetricsMonitoringActivity
 import com.example.fitguard.features.nutrition.NutritionTrackingActivity
 import com.example.fitguard.features.recovery.RecoveryProgressActivity
 import com.example.fitguard.features.sleep.SleepStressActivity
 import com.example.fitguard.features.profile.UserHomeActivity
-import com.example.fitguard.features.workout.WorkoutHistoryActivity
 import com.example.fitguard.ui.adapter.DashboardAdapter
 import com.example.fitguard.ui.model.DashboardItem
 
@@ -65,9 +65,9 @@ class MainActivity : AppCompatActivity() {
             ),
             DashboardItem(
                 title = "Workout History",
-                description = "Past workouts and trends",
+                description = "Past Workout and trends",
                 icon = R.drawable.ic_dumbbell_ray,
-                activityClass = WorkoutHistoryActivity::class.java
+                activityClass = ActivityHistoryActivity::class.java
             ),
             DashboardItem(
                 title = "Sleep & Stress Monitoring",
@@ -125,7 +125,7 @@ class MainActivity : AppCompatActivity() {
             when (item.itemId) {
                 R.id.nav_home -> true
                 R.id.nav_activity -> {
-                    startActivity(Intent(this, WorkoutHistoryActivity::class.java).apply {
+                    startActivity(Intent(this, ActivityTrackingActivity::class.java).apply {
                         flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                     })
                     overridePendingTransition(0, 0)

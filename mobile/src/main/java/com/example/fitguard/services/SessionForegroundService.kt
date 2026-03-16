@@ -13,7 +13,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.example.fitguard.features.workout.WorkoutHistoryActivity
+import com.example.fitguard.features.activitytracking.ActivityTrackingActivity
 
 class SessionForegroundService : Service() {
 
@@ -22,10 +22,12 @@ class SessionForegroundService : Service() {
         private const val CHANNEL_ID = "mobile_workout_session"
         private const val NOTIFICATION_ID = 2001
         private const val EXTRA_ACTIVITY_TYPE = "activity_type"
+        private const val EXTRA_WITH_LOCATION = "with_location"
 
-        fun start(context: Context, activityType: String) {
+        fun start(context: Context, activityType: String, withLocation: Boolean = false) {
             val intent = Intent(context, SessionForegroundService::class.java).apply {
                 putExtra(EXTRA_ACTIVITY_TYPE, activityType)
+                putExtra(EXTRA_WITH_LOCATION, withLocation)
             }
             context.startForegroundService(intent)
         }
@@ -43,11 +45,16 @@ class SessionForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val activityType = intent?.getStringExtra(EXTRA_ACTIVITY_TYPE) ?: "Workout"
+        val activityType = intent?.getStringExtra(EXTRA_ACTIVITY_TYPE) ?: "Activity"
+        val withLocation = intent?.getBooleanExtra(EXTRA_WITH_LOCATION, false) == true
         val notification = buildNotification(activityType)
 
         if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            var serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            if (withLocation) {
+                serviceType = serviceType or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            }
+            startForeground(NOTIFICATION_ID, notification, serviceType)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
@@ -60,17 +67,17 @@ class SessionForegroundService : Service() {
     private fun createChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Workout Data Sync",
+            "Activity Data Sync",
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Keeps workout data sync alive in background"
+            description = "Keeps activity data sync alive in background"
             setShowBadge(false)
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
     private fun buildNotification(activityType: String): Notification {
-        val openIntent = Intent(this, WorkoutHistoryActivity::class.java).apply {
+        val openIntent = Intent(this, ActivityTrackingActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
         val pendingIntent = PendingIntent.getActivity(

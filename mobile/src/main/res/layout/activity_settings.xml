@@ -67,7 +67,7 @@
                 android:paddingTop="14dp"
                 android:paddingBottom="14dp" />
 
-            <!-- Workout Reminders -->
+            <!-- Activity Reminders -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -87,7 +87,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Workout Reminders"
+                        android:text="Activity Reminders"
                         android:textSize="15sp"
                         android:textStyle="bold"
                         android:textColor="@color/text_dark"
@@ -105,7 +105,7 @@
                 </LinearLayout>
 
                 <com.google.android.material.switchmaterial.SwitchMaterial
-                    android:id="@+id/switchWorkout"
+                    android:id="@+id/switchActivity"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     app:trackTint="@color/text_hint"
@@ -484,7 +484,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Download your workout history"
+                        android:text="Download your activity history"
                         android:textSize="13sp"
                         android:textColor="@color/text_secondary"
                         android:fontFamily="@font/inter"

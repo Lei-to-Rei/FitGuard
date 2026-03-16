@@ -21,8 +21,8 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun setupToggles() {
-        binding.switchWorkout.setOnCheckedChangeListener { _, isChecked ->
-            Toast.makeText(this, "Workout reminders ${if (isChecked) "enabled" else "disabled"}", Toast.LENGTH_SHORT).show()
+        binding.switchActivity.setOnCheckedChangeListener { _, isChecked ->
+            Toast.makeText(this, "Activity reminders ${if (isChecked) "enabled" else "disabled"}", Toast.LENGTH_SHORT).show()
         }
         binding.switchGoals.setOnCheckedChangeListener { _, isChecked ->
             Toast.makeText(this, "Goal achievements ${if (isChecked) "enabled" else "disabled"}", Toast.LENGTH_SHORT).show()
