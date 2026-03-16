@@ -55,7 +55,8 @@
       "Bash(grep -l \"BottomNavigationView\" C:\\\\Users\\\\claud\\\\AndroidStudioProjects\\\\FitGuard\\\\mobile\\\\src\\\\main\\\\res\\\\layout\\\\*.xml)",
       "Bash(ls -la /c/Users/claud/AndroidStudioProjects/FitGuard/mobile/src/main/res/drawable*/)",
       "Bash(grep:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(git log:*)"
     ]
   }
 }

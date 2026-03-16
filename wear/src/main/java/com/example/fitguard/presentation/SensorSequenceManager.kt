@@ -27,6 +27,7 @@ class SensorSequenceManager(
 
     private val ppgBuffer = CopyOnWriteArrayList<HealthTrackerManager.TrackerData.PPGData>()
     private val accelerometerBuffer = CopyOnWriteArrayList<HealthTrackerManager.TrackerData.AccelerometerData>()
+    @Volatile private var firstDataTimestamp: Long = 0L
 
     var onPhaseChanged: ((SequencePhase) -> Unit)? = null
     var onProgress: ((elapsedSeconds: Int, totalSeconds: Int) -> Unit)? = null
@@ -55,6 +56,10 @@ class SensorSequenceManager(
             currentPhase != SequencePhase.CANCELLED
 
     private val bufferingCallback: (HealthTrackerManager.TrackerData) -> Unit = { data ->
+        if (firstDataTimestamp == 0L) {
+            firstDataTimestamp = System.currentTimeMillis()
+            Log.d(TAG, "First sensor data arrived, starting 60s countdown")
+        }
         when (data) {
             is HealthTrackerManager.TrackerData.PPGData -> ppgBuffer.add(data)
             is HealthTrackerManager.TrackerData.AccelerometerData -> accelerometerBuffer.add(data)
@@ -136,7 +141,6 @@ class SensorSequenceManager(
     }
 
     private suspend fun runSequence() {
-        val startTime = System.currentTimeMillis()
         val totalSeconds = CONTINUOUS_DURATION_SECONDS
 
         // PPG + Accelerometer for 60s
@@ -149,7 +153,13 @@ class SensorSequenceManager(
         val accelStarted = healthTrackerManager.startAccelerometerContinuous()
         if (!accelStarted) Log.w(TAG, "Failed to start Accelerometer, continuing")
 
-        // Run for 60s with progress updates
+        // Wait for first data sample (sensor startup latency)
+        while (firstDataTimestamp == 0L) {
+            delay(50)
+        }
+
+        // Count 60s from first actual data arrival
+        val startTime = firstDataTimestamp
         while (true) {
             val elapsed = ((System.currentTimeMillis() - startTime) / 1000).toInt()
             if (elapsed >= CONTINUOUS_DURATION_SECONDS) break
@@ -192,6 +202,7 @@ class SensorSequenceManager(
     private fun clearBuffers() {
         ppgBuffer.clear()
         accelerometerBuffer.clear()
+        firstDataTimestamp = 0L
     }
 
     private suspend fun batchSendAllData() {
