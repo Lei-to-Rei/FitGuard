@@ -160,7 +160,7 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
 
     private fun buildSessionDirName(activityType: String, startTime: Long): String {
         val sdf = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US)
-        return "${sdf.format(Date(startTime))}_$activityType"
+        return "${sdf.format(Date(startTime))}_${activityType.replace(' ', '_')}"
     }
 
     fun startSession(activityType: String) {

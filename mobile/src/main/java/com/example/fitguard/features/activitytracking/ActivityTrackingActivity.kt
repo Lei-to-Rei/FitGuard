@@ -181,6 +181,8 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
             binding.tilCustomActivity.visibility = if (isOther) View.VISIBLE else View.GONE
 
             val type = when (checkedId) {
+                R.id.rbTreadmill -> "Treadmill"
+                R.id.rbStationary -> "Stationary Bike"
                 R.id.rbWalking -> "Walking"
                 R.id.rbRunning -> "Running"
                 R.id.rbCycling -> "Cycling"
@@ -235,6 +237,8 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
 
     private fun getSelectedActivityType(): String {
         return when (binding.rgActivityType.checkedRadioButtonId) {
+            R.id.rbTreadmill -> "Treadmill"
+            R.id.rbStationary -> "Stationary Bike"
             R.id.rbWalking -> "Walking"
             R.id.rbRunning -> "Running"
             R.id.rbCycling -> "Cycling"
@@ -330,6 +334,8 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
 
         viewModel.activityType.observe(this) { type ->
             val radioId = when (type) {
+                "Treadmill" -> R.id.rbTreadmill
+                "Stationary Bike" -> R.id.rbStationary
                 "Walking" -> R.id.rbWalking
                 "Running" -> R.id.rbRunning
                 "Cycling" -> R.id.rbCycling

@@ -95,7 +95,12 @@
                         android:textSize="24sp"
                         android:fontFamily="@font/inter"
                         android:textStyle="bold"
-                        android:textColor="@android:color/black" />
+                        android:textColor="@android:color/black"
+                        android:maxLines="1"
+                        android:singleLine="true"
+                        android:autoSizeTextType="uniform"
+                        android:autoSizeMinTextSize="12sp"
+                        android:autoSizeMaxTextSize="24sp" />
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -208,38 +213,119 @@
                         android:layout_height="wrap_content"
                         android:orientation="vertical">
 
-                        <RadioButton
-                            android:id="@+id/rbWalking"
-                            android:layout_width="match_parent"
+                        <TextView
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Walking"
+                            android:text="Indoor Activity"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:textColor="@android:color/darker_gray" />
+
+                        <RadioButton
+                            android:id="@+id/rbTreadmill"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:button="@null"
+                            android:drawableStart="@drawable/ic_treadmill"
+                            android:drawableTint="@color/color_activity_type_icon"
+                            android:drawablePadding="8dp"
+                            android:text="Treadmill"
                             android:textSize="14sp"
-                            android:checked="true"
-                            android:paddingStart="8dp" />
+                            android:textColor="@color/color_activity_type_text"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="6dp"
+                            android:layout_marginBottom="4dp"
+                            />
+
+                        <RadioButton
+                            android:id="@+id/rbStationary"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:button="@null"
+                            android:drawableStart="@drawable/ic_stationary_bike"
+                            android:drawableTint="@color/color_activity_type_icon"
+                            android:drawablePadding="8dp"
+                            android:text="Stationary Bike"
+                            android:textSize="14sp"
+                            android:textColor="@color/color_activity_type_text"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="6dp"
+                            android:layout_marginBottom="4dp"
+                            />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Outdoor Activity"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:textColor="@android:color/darker_gray"
+                            android:layout_marginTop="8dp" />
 
                         <RadioButton
                             android:id="@+id/rbRunning"
-                            android:layout_width="match_parent"
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
+                            android:button="@null"
+                            android:drawableStart="@drawable/ic_user_fast_running"
+                            android:drawableTint="@color/color_activity_type_icon"
+                            android:drawablePadding="8dp"
                             android:text="Running"
                             android:textSize="14sp"
-                            android:paddingStart="8dp" />
+                            android:textColor="@color/color_activity_type_text"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="6dp"
+                            android:layout_marginBottom="4dp"
+                            />
+
+                        <RadioButton
+                            android:id="@+id/rbWalking"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:button="@null"
+                            android:drawableStart="@drawable/ic_activity"
+                            android:drawableTint="@color/color_activity_type_icon"
+                            android:drawablePadding="8dp"
+                            android:text="Walking"
+                            android:textSize="14sp"
+                            android:textColor="@color/color_activity_type_text"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="6dp"
+                            android:layout_marginBottom="4dp"
+                            android:checked="true"
+                            />
 
                         <RadioButton
                             android:id="@+id/rbCycling"
-                            android:layout_width="match_parent"
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
+                            android:button="@null"
+                            android:drawableStart="@drawable/ic_bike"
+                            android:drawableTint="@color/color_activity_type_icon"
+                            android:drawablePadding="8dp"
                             android:text="Cycling"
                             android:textSize="14sp"
-                            android:paddingStart="8dp" />
+                            android:textColor="@color/color_activity_type_text"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="6dp"
+                            android:layout_marginBottom="4dp"
+                            />
 
                         <RadioButton
                             android:id="@+id/rbOther"
-                            android:layout_width="match_parent"
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
+                            android:button="@null"
+                            android:drawableStart="@drawable/ic_workout"
+                            android:drawableTint="@color/color_activity_type_icon"
+                            android:drawablePadding="8dp"
                             android:text="Other"
                             android:textSize="14sp"
-                            android:paddingStart="8dp" />
+                            android:textColor="@color/color_activity_type_text"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="6dp"
+                            android:layout_marginBottom="4dp"
+                            />
                     </RadioGroup>
 
                     <com.google.android.material.textfield.TextInputLayout
