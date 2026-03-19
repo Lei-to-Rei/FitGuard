@@ -1,5 +1,6 @@
 package com.example.fitguard.services
 
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.util.Log
@@ -100,6 +101,11 @@ class WearableDataListenerService : WearableListenerService() {
                         RpeState.update(rpeValue)
                     }
                     sequenceProcessor.onRpeReceived(rpeValue)
+
+                    // Cancel phone RPE notification/activity (watch answered first)
+                    val nm = getSystemService(NotificationManager::class.java)
+                    nm.cancel(RpeNotificationHelper.NOTIFICATION_ID)
+
                     sendBroadcast(Intent(ACTION_RPE_RECEIVED).apply {
                         setPackage(packageName)
                         putExtra("session_id", sessionId)
