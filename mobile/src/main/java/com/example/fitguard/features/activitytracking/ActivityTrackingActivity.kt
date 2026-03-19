@@ -1,7 +1,10 @@
 package com.example.fitguard.features.activitytracking
 
 import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -42,6 +45,7 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
     private val viewModel: ActivityTrackingViewModel by viewModels()
     private var routePolyline: Polyline? = null
     private lateinit var myLocationOverlay: MyLocationNewOverlay
+    private var phoneRpeReceiver: BroadcastReceiver? = null
 
     companion object {
         private const val TAG = "ActivityTrackingActivity"
@@ -94,6 +98,7 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
         observeRoute()
 
         Wearable.getMessageClient(this).addListener(this)
+        registerPhoneRpeReceiver()
     }
 
     override fun onResume() {
@@ -468,8 +473,26 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
         }
     }
 
+    private fun registerPhoneRpeReceiver() {
+        phoneRpeReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                intent ?: return
+                if (intent.action == RpePromptActivity.ACTION_PHONE_RPE_RESPONSE) {
+                    val sessionId = intent.getStringExtra("session_id") ?: ""
+                    val rpeValue = intent.getIntExtra("rpe_value", -1)
+                    viewModel.onPhoneRpeAnswered(sessionId, rpeValue)
+                }
+            }
+        }
+        val filter = IntentFilter(RpePromptActivity.ACTION_PHONE_RPE_RESPONSE)
+        registerReceiver(phoneRpeReceiver, filter, RECEIVER_NOT_EXPORTED)
+    }
+
     override fun onDestroy() {
         Wearable.getMessageClient(this).removeListener(this)
+        phoneRpeReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: Exception) {}
+        }
         if (::myLocationOverlay.isInitialized) {
             myLocationOverlay.disableMyLocation()
         }

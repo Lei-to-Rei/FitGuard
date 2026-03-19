@@ -1,7 +1,10 @@
 package com.example.fitguard.presentation
 
 import android.app.NotificationManager
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -49,6 +52,7 @@ class RpePromptActivity : ComponentActivity() {
 
     companion object {
         const val ACTION_RPE_RESPONSE = "com.example.fitguard.wear.RPE_RESPONSE"
+        const val ACTION_RPE_DISMISS = "com.example.fitguard.wear.RPE_DISMISS"
         const val EXTRA_RPE_VALUE = "rpe_value"
         const val EXTRA_LAST_RPE = "last_rpe"
         const val EXTRA_SESSION_ID = "session_id"
@@ -58,6 +62,17 @@ class RpePromptActivity : ComponentActivity() {
 
     private val autoDismissHandler = Handler(Looper.getMainLooper())
     private var autoDismissRunnable: Runnable? = null
+
+    private val rpeDismissReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_RPE_DISMISS) {
+                autoDismissRunnable?.let { autoDismissHandler.removeCallbacks(it) }
+                val nm = getSystemService(NotificationManager::class.java)
+                nm.cancel(RpeNotificationHelper.NOTIFICATION_ID)
+                finish()
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,6 +85,8 @@ class RpePromptActivity : ComponentActivity() {
         // Haptic buzz
         val vibrator = getSystemService(Vibrator::class.java)
         vibrator?.vibrate(VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE))
+
+        registerReceiver(rpeDismissReceiver, IntentFilter(ACTION_RPE_DISMISS), RECEIVER_NOT_EXPORTED)
 
         val lastRpe = intent.getIntExtra(EXTRA_LAST_RPE, -1)
         val isEndOfSession = intent.getBooleanExtra(EXTRA_IS_END_OF_SESSION, false)
@@ -107,6 +124,7 @@ class RpePromptActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         autoDismissRunnable?.let { autoDismissHandler.removeCallbacks(it) }
+        try { unregisterReceiver(rpeDismissReceiver) } catch (_: Exception) {}
     }
 }
 

@@ -51,6 +51,16 @@ class WearableMessageListenerService : WearableListenerService() {
                         putExtra("session_id", sessionId)
                     })
                 }
+                "/fitguard/activity/rpe_dismiss" -> {
+                    val rpeValue = json.optInt("rpe_value", -1)
+                    val sessionId = json.optString("session_id", "")
+                    Log.d(TAG, "RPE dismiss from phone: rpe=$rpeValue session=$sessionId")
+                    sendBroadcast(Intent(RpePromptActivity.ACTION_RPE_DISMISS).apply {
+                        setPackage(packageName)
+                        putExtra(RpePromptActivity.EXTRA_RPE_VALUE, rpeValue)
+                        putExtra(RpePromptActivity.EXTRA_SESSION_ID, sessionId)
+                    })
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to process message: ${e.message}", e)

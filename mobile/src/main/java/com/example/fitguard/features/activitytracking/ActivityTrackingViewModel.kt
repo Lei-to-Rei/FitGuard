@@ -158,6 +158,14 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         Log.d(TAG, "RPE received: $rpeValue for session $sessionId")
     }
 
+    fun onPhoneRpeAnswered(sessionId: String, rpeValue: Int) {
+        if (sessionId != this.sessionId) return
+        _lastRpe.value = rpeValue
+        // RpeState and SequenceProcessor already updated by RpePromptActivity
+        saveSession()
+        Log.d(TAG, "Phone RPE answered: $rpeValue for session $sessionId")
+    }
+
     private fun buildSessionDirName(activityType: String, startTime: Long): String {
         val sdf = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US)
         return "${sdf.format(Date(startTime))}_${activityType.replace(' ', '_')}"

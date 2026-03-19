@@ -8,6 +8,7 @@ import com.example.fitguard.data.processing.PpgSample
 import com.example.fitguard.data.processing.RpeState
 import com.example.fitguard.data.processing.SequenceProcessor
 import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
+import com.example.fitguard.features.activitytracking.RpeNotificationHelper
 import android.net.Uri
 import com.google.android.gms.wearable.*
 import com.google.firebase.auth.FirebaseAuth
@@ -100,9 +101,25 @@ class WearableDataListenerService : WearableListenerService() {
                     }
                     sequenceProcessor.onRpeReceived(rpeValue)
                     sendBroadcast(Intent(ACTION_RPE_RECEIVED).apply {
+                        setPackage(packageName)
                         putExtra("session_id", sessionId)
                         putExtra("rpe_value", rpeValue)
                     })
+                }
+                "/fitguard/activity/rpe_prompt" -> {
+                    val sessionId = json.optString("session_id", "")
+                    val lastRpe = json.optInt("last_rpe", -1)
+                    val isEndOfSession = json.optBoolean("is_end_of_session", false)
+                    Log.d(TAG, "RPE prompt from watch: session=$sessionId isEnd=$isEndOfSession")
+
+                    // Validate session matches active session
+                    val activeSession = ActivityTrackingViewModel.activeSessionId
+                    if (activeSession != null && sessionId.isNotEmpty() && sessionId != activeSession) {
+                        Log.w(TAG, "Ignoring RPE prompt for stale session $sessionId (active=$activeSession)")
+                        return
+                    }
+
+                    RpeNotificationHelper(this).showRpePrompt(lastRpe, isEndOfSession, sessionId)
                 }
             }
         } catch (e: Exception) {
