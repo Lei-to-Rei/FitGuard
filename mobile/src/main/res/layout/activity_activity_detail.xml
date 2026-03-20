@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#F5F5F5">
+    android:background="@color/white">
 
     <!-- Header bar -->
     <LinearLayout
@@ -13,15 +14,18 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:padding="16dp"
-        android:background="@android:color/white"
-        android:elevation="4dp">
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="36dp"
+        android:paddingBottom="16dp"
+        android:background="@color/white">
 
         <ImageView
             android:id="@+id/btnBack"
             android:layout_width="28dp"
             android:layout_height="28dp"
             android:src="@drawable/ic_arrow_small_left"
+            app:tint="@color/text_dark"
             android:contentDescription="Back"
             android:clickable="true"
             android:focusable="true" />
@@ -37,7 +41,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Activity Details"
-                android:textSize="18sp"
+                android:textSize="20sp"
                 android:textStyle="bold"
                 android:fontFamily="@font/inter"
                 android:textColor="@color/text_dark" />
@@ -71,7 +75,6 @@
 
             <!-- Activity Summary Card -->
             <com.google.android.material.card.MaterialCardView
-                xmlns:app="http://schemas.android.com/apk/res-auto"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_margin="16dp"
@@ -293,7 +296,6 @@
 
             <!-- Splits Section -->
             <com.google.android.material.card.MaterialCardView
-                xmlns:app="http://schemas.android.com/apk/res-auto"
                 android:id="@+id/cardSplits"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -337,7 +339,6 @@
 
             <!-- Heart Rate Section -->
             <com.google.android.material.card.MaterialCardView
-                xmlns:app="http://schemas.android.com/apk/res-auto"
                 android:id="@+id/cardHeartRate"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -374,7 +375,6 @@
 
             <!-- Fatigue Index Section -->
             <com.google.android.material.card.MaterialCardView
-                xmlns:app="http://schemas.android.com/apk/res-auto"
                 android:id="@+id/cardFatigue"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

@@ -49,7 +49,7 @@ class ActivityHistoryAdapter(
                 "stationary bike" -> R.drawable.ic_stationary_bike
                 "running" -> R.drawable.ic_user_fast_running
                 "walking" -> R.drawable.ic_activity
-                "cycling" -> R.drawable.ic_stationary_bike
+                "cycling" -> R.drawable.ic_bike
                 else -> R.drawable.ic_workout
             }
             binding.ivActivityIcon.setImageResource(iconRes)

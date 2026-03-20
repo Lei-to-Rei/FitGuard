@@ -1,6 +1,7 @@
 package com.example.fitguard.features.activitytracking
 
 import android.graphics.Color
+import android.view.MotionEvent
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
@@ -69,7 +70,7 @@ class ActivityDetailActivity : AppCompatActivity() {
             "stationary bike" -> R.drawable.ic_stationary_bike
             "running" -> R.drawable.ic_user_fast_running
             "walking" -> R.drawable.ic_activity
-            "cycling" -> R.drawable.ic_stationary_bike
+            "cycling" -> R.drawable.ic_bike
             else -> R.drawable.ic_workout
         }
         binding.ivActivityIcon.setImageResource(iconRes)
@@ -80,6 +81,14 @@ class ActivityDetailActivity : AppCompatActivity() {
             setTileSource(TileSourceFactory.MAPNIK)
             setMultiTouchControls(true)
             controller.setZoom(16.0)
+        }
+
+        binding.mapView.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> v.parent.requestDisallowInterceptTouchEvent(true)
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.parent.requestDisallowInterceptTouchEvent(false)
+            }
+            false
         }
     }
 
