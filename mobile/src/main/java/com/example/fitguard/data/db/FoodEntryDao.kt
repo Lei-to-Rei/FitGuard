@@ -44,4 +44,7 @@ interface FoodEntryDao {
 
     @Query("SELECT * FROM food_entries WHERE firestoreId = :firestoreId LIMIT 1")
     suspend fun getByFirestoreId(firestoreId: String): FoodEntry?
+
+    @Query("SELECT * FROM food_entries WHERE mealType = :mealType AND userId = :userId GROUP BY name ORDER BY createdAt DESC LIMIT 10")
+    suspend fun getDistinctFoodsByMealType(mealType: String, userId: String): List<FoodEntry>
 }

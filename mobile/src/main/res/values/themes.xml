@@ -14,6 +14,12 @@
 
     <style name="Theme.FitGuard" parent="Base.Theme.FitGuard" />
 
+    <!-- Bottom sheet dialog theme -->
+    <style name="Theme.FitGuard.BottomSheet" parent="ThemeOverlay.Material3.BottomSheetDialog">
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="fontFamily">@font/inter</item>
+    </style>
+
     <!-- Splash theme -->
     <style name="Theme.FitGuard.Splash" parent="Theme.Material3.Light.NoActionBar">
         <item name="android:windowBackground">@drawable/bg_gradient_green</item>
