@@ -241,6 +241,12 @@
             android:exported="false"
             android:foregroundServiceType="dataSync|location" />
 
+        <!-- Sleep Monitor Foreground Service -->
+        <service
+            android:name=".features.sleep.SleepMonitorService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
     </application>
 
 </manifest>

@@ -163,6 +163,11 @@ class WearableDataListenerService : WearableListenerService() {
                     put("object_temp", bundle.getFloat("object_temp"))
                     put("ambient_temp", bundle.getFloat("ambient_temp"))
                 }
+                "Accelerometer" -> {
+                    put("x", bundle.getInt("x"))
+                    put("y", bundle.getInt("y"))
+                    put("z", bundle.getInt("z"))
+                }
             }
         }
 
@@ -171,6 +176,7 @@ class WearableDataListenerService : WearableListenerService() {
             "SpO2" -> "SpO2=${json.optInt("spo2")}% HR=${json.optInt("heart_rate")} status=${json.optInt("status")}"
             "HeartRate" -> "HR=${json.optInt("heart_rate")} BPM IBI=${json.optString("ibi_list")} status=${json.optInt("status")}"
             "SkinTemp" -> "SkinTemp obj=${json.optDouble("object_temp")}°C amb=${json.optDouble("ambient_temp")}°C status=${json.optInt("status")}"
+            "Accelerometer" -> "Accel x=${json.optInt("x")} y=${json.optInt("y")} z=${json.optInt("z")}"
             else -> type
         }
         Log.d(TAG, "Health data received: $logMsg")

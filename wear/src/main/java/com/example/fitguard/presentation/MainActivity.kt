@@ -34,6 +34,7 @@ class MainActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var buttonContainer: LinearLayout
     private lateinit var healthTrackerManager: HealthTrackerManager
+    private lateinit var passiveTrackerManager: PassiveHealthTrackerManager
     private lateinit var sensorSequenceManager: SensorSequenceManager
     private lateinit var rpeNotificationHelper: RpeNotificationHelper
     private val activeTrackerButtons = mutableMapOf<HealthTrackerType, Button>()
@@ -315,6 +316,15 @@ class MainActivity : Activity() {
                     statusText.text = "✓ Connected to Health Service"
                     createTrackerButtons()
                 }
+                // Initialize passive tracker manager with its own service connection
+                passiveTrackerManager = PassiveHealthTrackerManager(
+                    context = this,
+                    onDataCallback = { data -> sendDataToPhone(data) }
+                )
+                passiveTrackerManager.initialize(
+                    onSuccess = { Log.d(TAG, "Passive tracker manager connected") },
+                    onError = { e -> Log.e(TAG, "Passive tracker manager failed: ${e.errorCode}") }
+                )
             },
             onError = { error ->
                 runOnUiThread {
@@ -398,35 +408,38 @@ class MainActivity : Activity() {
         addSectionHeader("Continuous Trackers")
 
         if (availableTrackers.contains(HealthTrackerType.PPG_CONTINUOUS)) {
-            addTrackerButton("PPG", HealthTrackerType.PPG_CONTINUOUS, "3 LEDs @ 100Hz") {
-                healthTrackerManager.startPPGContinuous()
-            }
+            addTrackerButton("PPG", HealthTrackerType.PPG_CONTINUOUS, "3 LEDs @ 100Hz",
+                start = { healthTrackerManager.startPPGContinuous() }
+            )
         }
 
         if (availableTrackers.contains(HealthTrackerType.ACCELEROMETER_CONTINUOUS)) {
-            addTrackerButton("Accel", HealthTrackerType.ACCELEROMETER_CONTINUOUS, "X/Y/Z axes") {
-                healthTrackerManager.startAccelerometerContinuous()
-            }
+            addTrackerButton("Accel", HealthTrackerType.ACCELEROMETER_CONTINUOUS, "X/Y/Z axes",
+                start = { healthTrackerManager.startAccelerometerContinuous() }
+            )
         }
 
         if (availableTrackers.contains(HealthTrackerType.HEART_RATE_CONTINUOUS)) {
-            addTrackerButton("HR", HealthTrackerType.HEART_RATE_CONTINUOUS, "BPM + IBI") {
-                healthTrackerManager.startHeartRateContinuous()
-            }
+            addTrackerButton("HR", HealthTrackerType.HEART_RATE_CONTINUOUS, "BPM + IBI",
+                start = { passiveTrackerManager.startHeartRateContinuous() },
+                stop = { passiveTrackerManager.stopTracker(HealthTrackerType.HEART_RATE_CONTINUOUS) }
+            )
         }
 
         addSectionHeader("On-Demand Trackers")
 
         if (availableTrackers.contains(HealthTrackerType.SPO2_ON_DEMAND)) {
-            addTrackerButton("SpO2", HealthTrackerType.SPO2_ON_DEMAND, "Blood oxygen %") {
-                healthTrackerManager.startSpO2OnDemand()
-            }
+            addTrackerButton("SpO2", HealthTrackerType.SPO2_ON_DEMAND, "Blood oxygen %",
+                start = { passiveTrackerManager.startSpO2OnDemand() },
+                stop = { passiveTrackerManager.stopTracker(HealthTrackerType.SPO2_ON_DEMAND) }
+            )
         }
 
         if (availableTrackers.contains(HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND)) {
-            addTrackerButton("Skin Temp", HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND, "Object + Ambient") {
-                healthTrackerManager.startSkinTemperatureOnDemand()
-            }
+            addTrackerButton("Skin Temp", HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND, "Object + Ambient",
+                start = { passiveTrackerManager.startSkinTemperatureOnDemand() },
+                stop = { passiveTrackerManager.stopTracker(HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND) }
+            )
         }
 
         // Automated Sequence section
@@ -553,7 +566,8 @@ class MainActivity : Activity() {
         name: String,
         type: HealthTrackerType,
         desc: String,
-        start: () -> Boolean
+        start: () -> Boolean,
+        stop: () -> Unit = { healthTrackerManager.stopTracker(type) }
     ) {
         val button = Button(this).apply {
             text = "▶ $name"
@@ -565,7 +579,7 @@ class MainActivity : Activity() {
                 if (sensorSequenceManager.isRunning) return@setOnClickListener
 
                 if (activeTrackerButtons.containsKey(type)) {
-                    healthTrackerManager.stopTracker(type)
+                    stop()
                     activeTrackerButtons.remove(type)
                     setBackgroundColor(Color.DKGRAY)
                     text = "▶ $name"
@@ -762,30 +776,33 @@ class MainActivity : Activity() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 intent ?: return
                 val trackerType = intent.getStringExtra("tracker_type") ?: return
+                if (!::passiveTrackerManager.isInitialized) {
+                    Log.w(TAG, "Passive tracker manager not ready, ignoring $trackerType")
+                    return
+                }
                 when (intent.action) {
                     WearableMessageListenerService.ACTION_START_TRACKER -> {
-                        if (::sensorSequenceManager.isInitialized && sensorSequenceManager.isRunning) {
-                            Log.d(TAG, "Ignoring tracker start — sequence is running")
-                            return
-                        }
-                        healthTrackerManager.restoreDefaultCallback()
                         val started = when (trackerType) {
-                            "HeartRate" -> healthTrackerManager.startHeartRateContinuous()
-                            "SpO2" -> healthTrackerManager.startSpO2OnDemand()
-                            "SkinTemp" -> healthTrackerManager.startSkinTemperatureOnDemand()
+                            "HeartRate" -> passiveTrackerManager.startHeartRateContinuous()
+                            "SpO2" -> passiveTrackerManager.startSpO2OnDemand()
+                            "SkinTemp" -> passiveTrackerManager.startSkinTemperatureOnDemand()
+                            "PPG" -> passiveTrackerManager.startPPGContinuous()
+                            "Accelerometer" -> passiveTrackerManager.startAccelerometerContinuous()
                             else -> false
                         }
-                        Log.d(TAG, "Tracker start $trackerType: ${if (started) "OK" else "FAILED"}")
+                        Log.d(TAG, "Passive tracker start $trackerType: ${if (started) "OK" else "FAILED"}")
                     }
                     WearableMessageListenerService.ACTION_STOP_TRACKER -> {
                         val htType = when (trackerType) {
                             "HeartRate" -> HealthTrackerType.HEART_RATE_CONTINUOUS
                             "SpO2" -> HealthTrackerType.SPO2_ON_DEMAND
                             "SkinTemp" -> HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND
+                            "PPG" -> HealthTrackerType.PPG_CONTINUOUS
+                            "Accelerometer" -> HealthTrackerType.ACCELEROMETER_CONTINUOUS
                             else -> return
                         }
-                        healthTrackerManager.stopTracker(htType)
-                        Log.d(TAG, "Tracker stopped: $trackerType")
+                        passiveTrackerManager.stopTracker(htType)
+                        Log.d(TAG, "Passive tracker stopped: $trackerType")
                     }
                 }
             }
@@ -914,6 +931,9 @@ class MainActivity : Activity() {
                 })
             }
             sensorSequenceManager.cancelSequence()
+        }
+        if (::passiveTrackerManager.isInitialized) {
+            passiveTrackerManager.disconnect()
         }
         healthTrackerManager.disconnect()
     }

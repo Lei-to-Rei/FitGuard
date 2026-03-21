@@ -69,50 +69,80 @@
                     android:orientation="vertical"
                     android:padding="16dp">
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Sleep Monitoring"
-                        android:textSize="16sp"
-                        android:textStyle="bold"
-                        android:textColor="@color/text_dark"
-                        android:fontFamily="@font/inter" />
-
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:layout_marginTop="4dp">
+                        android:gravity="center_vertical">
 
                         <TextView
-                            android:id="@+id/tvSleepDuration"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:text="7hr 42min"
-                            android:textSize="28sp"
+                            android:text="Sleep Monitoring"
+                            android:textSize="16sp"
                             android:textStyle="bold"
-                            android:textColor="@color/blue_primary"
+                            android:textColor="@color/text_dark"
                             android:fontFamily="@font/inter" />
 
-                        <TextView
-                            android:id="@+id/tvSleepQuality"
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchSleepMonitor"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Quality: Good"
-                            android:textSize="14sp"
-                            android:textStyle="bold"
-                            android:textColor="@color/blue_primary"
-                            android:fontFamily="@font/inter" />
+                            app:trackTint="#6EDB34"
+                            app:thumbTint="@color/white"
+                            android:checked="true" />
 
                     </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvSleepQuality"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Quality: Good"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:textColor="#6EDB34"
+                        android:fontFamily="@font/inter"
+                        android:layout_marginTop="4dp" />
+
+                    <TextView
+                        android:id="@+id/tvSleepDuration"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Sleep Duration: 7hr 42min"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_secondary"
+                        android:fontFamily="@font/inter"
+                        android:layout_marginTop="2dp" />
 
                     <com.example.fitguard.ui.chart.SleepChartView
                         android:id="@+id/chartSleep"
                         android:layout_width="match_parent"
                         android:layout_height="200dp"
                         android:layout_marginTop="12dp" />
+
+                    <TextView
+                        android:id="@+id/tvSleepStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_secondary"
+                        android:fontFamily="@font/inter"
+                        android:visibility="gone"
+                        android:gravity="center" />
+
+                    <TextView
+                        android:id="@+id/tvSpO2Warning"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textSize="12sp"
+                        android:textColor="#F44336"
+                        android:fontFamily="@font/inter"
+                        android:visibility="gone"
+                        android:gravity="center" />
 
                 </LinearLayout>
 
@@ -135,66 +165,50 @@
                     android:orientation="vertical"
                     android:padding="16dp">
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Stress Monitoring"
-                        android:textSize="16sp"
-                        android:textStyle="bold"
-                        android:textColor="@color/text_dark"
-                        android:fontFamily="@font/inter" />
-
-                    <com.example.fitguard.ui.chart.StressChartView
-                        android:id="@+id/chartStress"
-                        android:layout_width="match_parent"
-                        android:layout_height="180dp"
-                        android:layout_marginTop="12dp" />
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:background="@color/border_light"
-                        android:layout_marginTop="16dp"
-                        android:layout_marginBottom="12dp" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Today's Stress Level"
-                        android:textSize="16sp"
-                        android:textStyle="bold"
-                        android:textColor="@color/text_dark"
-                        android:fontFamily="@font/inter" />
-
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:layout_marginTop="4dp">
+                        android:gravity="center_vertical">
 
                         <TextView
-                            android:id="@+id/tvStressValue"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
+                            android:text="Stress Monitoring"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_dark"
+                            android:fontFamily="@font/inter" />
+
+                        <TextView
+                            android:id="@+id/tvStressValue"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
                             android:text="52"
                             android:textSize="28sp"
                             android:textStyle="bold"
                             android:textColor="@color/goal_yellow"
                             android:fontFamily="@font/inter" />
 
-                        <TextView
-                            android:id="@+id/tvStressStatus"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Status: Average"
-                            android:textSize="14sp"
-                            android:textStyle="bold"
-                            android:textColor="@color/goal_yellow"
-                            android:fontFamily="@font/inter" />
-
                     </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvStressStatus"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Status: Average"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/goal_yellow"
+                        android:fontFamily="@font/inter"
+                        android:layout_marginTop="4dp" />
+
+                    <com.example.fitguard.ui.chart.StressChartView
+                        android:id="@+id/chartStress"
+                        android:layout_width="match_parent"
+                        android:layout_height="180dp"
+                        android:layout_marginTop="12dp" />
 
                     <com.example.fitguard.ui.chart.StressGaugeView
                         android:id="@+id/gaugeStress"

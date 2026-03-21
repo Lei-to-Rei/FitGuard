@@ -10,10 +10,11 @@ import com.samsung.android.service.health.tracking.data.HealthTrackerType
 import com.samsung.android.service.health.tracking.data.ValueKey
 
 /**
- * Health Tracker Manager for Samsung Watch 7
- * Samsung Health Sensor API 1.4.1 - All Available Trackers
+ * Health Tracker Manager for Samsung Watch 7 — Activity Tracking (Sequence Pipeline)
+ * Samsung Health Sensor API 1.4.1
  *
- * Working Trackers: PPG, Heart Rate, SpO2, ECG, BIA, Sweat Loss
+ * Only PPG + Accelerometer. HR, SpO2, SkinTemp are in PassiveHealthTrackerManager.
+ * TrackerData sealed class kept here as shared data types for both managers.
  */
 class HealthTrackerManager(
     private val context: Context,
@@ -184,121 +185,6 @@ class HealthTrackerManager(
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start Accelerometer Continuous: ${e.message}", e)
-            false
-        }
-    }
-
-    /**
-     * Start SpO2 On-Demand tracker
-     */
-    fun startSpO2OnDemand(): Boolean {
-        return try {
-            val tracker = healthTrackingService?.getHealthTracker(HealthTrackerType.SPO2_ON_DEMAND)
-
-            tracker?.setEventListener(object : HealthTracker.TrackerEventListener {
-                override fun onDataReceived(dataPoints: MutableList<DataPoint>) {
-                    dataPoints.forEach { dp ->
-                        val data = TrackerData.SpO2Data(
-                            spO2 = dp.getValue(ValueKey.SpO2Set.SPO2) ?: 0,
-                            heartRate = dp.getValue(ValueKey.SpO2Set.HEART_RATE) ?: 0,
-                            status = dp.getValue(ValueKey.SpO2Set.STATUS) ?: 0,
-                            timestamp = dp.timestamp
-                        )
-                        onDataCallback(data)
-                    }
-                }
-
-                override fun onFlushCompleted() {
-                    Log.d(TAG, "SpO2 On-Demand flush completed")
-                }
-
-                override fun onError(error: HealthTracker.TrackerError) {
-                    Log.e(TAG, "SpO2 On-Demand error: ${error.name}")
-                }
-            })
-
-            activeTrackers[HealthTrackerType.SPO2_ON_DEMAND] = tracker!!
-            Log.d(TAG, "Started SpO2 On-Demand tracker")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start SpO2 On-Demand: ${e.message}", e)
-            false
-        }
-    }
-
-    /**
-     * Start Heart Rate Continuous tracker
-     */
-    fun startHeartRateContinuous(): Boolean {
-        return try {
-            val tracker = healthTrackingService?.getHealthTracker(HealthTrackerType.HEART_RATE_CONTINUOUS)
-
-            tracker?.setEventListener(object : HealthTracker.TrackerEventListener {
-                override fun onDataReceived(dataPoints: MutableList<DataPoint>) {
-                    dataPoints.forEach { dp ->
-                        val data = TrackerData.HeartRateData(
-                            heartRate = dp.getValue(ValueKey.HeartRateSet.HEART_RATE) ?: 0,
-                            ibiList = dp.getValue(ValueKey.HeartRateSet.IBI_LIST) ?: emptyList(),
-                            ibiStatusList = dp.getValue(ValueKey.HeartRateSet.IBI_STATUS_LIST) ?: emptyList(),
-                            status = dp.getValue(ValueKey.HeartRateSet.HEART_RATE_STATUS) ?: 0,
-                            timestamp = dp.timestamp
-                        )
-                        onDataCallback(data)
-                    }
-                }
-
-                override fun onFlushCompleted() {
-                    Log.d(TAG, "Heart Rate Continuous flush completed")
-                }
-
-                override fun onError(error: HealthTracker.TrackerError) {
-                    Log.e(TAG, "Heart Rate Continuous error: ${error.name}")
-                }
-            })
-
-            activeTrackers[HealthTrackerType.HEART_RATE_CONTINUOUS] = tracker!!
-            Log.d(TAG, "Started Heart Rate Continuous tracker")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start Heart Rate Continuous: ${e.message}", e)
-            false
-        }
-    }
-
-    /**
-     * Start Skin Temperature On-Demand tracker
-     */
-    fun startSkinTemperatureOnDemand(): Boolean {
-        return try {
-            val tracker = healthTrackingService?.getHealthTracker(HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND)
-
-            tracker?.setEventListener(object : HealthTracker.TrackerEventListener {
-                override fun onDataReceived(dataPoints: MutableList<DataPoint>) {
-                    dataPoints.forEach { dp ->
-                        val data = TrackerData.SkinTemperatureData(
-                            status = dp.getValue(ValueKey.SkinTemperatureSet.STATUS) ?: 0,
-                            objectTemperature = dp.getValue(ValueKey.SkinTemperatureSet.OBJECT_TEMPERATURE),
-                            ambientTemperature = dp.getValue(ValueKey.SkinTemperatureSet.AMBIENT_TEMPERATURE),
-                            timestamp = dp.timestamp
-                        )
-                        onDataCallback(data)
-                    }
-                }
-
-                override fun onFlushCompleted() {
-                    Log.d(TAG, "Skin Temperature On-Demand flush completed")
-                }
-
-                override fun onError(error: HealthTracker.TrackerError) {
-                    Log.e(TAG, "Skin Temperature On-Demand error: ${error.name}")
-                }
-            })
-
-            activeTrackers[HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND] = tracker!!
-            Log.d(TAG, "Started Skin Temperature On-Demand tracker")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start Skin Temperature On-Demand: ${e.message}", e)
             false
         }
     }
