@@ -12,7 +12,6 @@ import com.example.fitguard.features.activitytracking.ActivityTrackingActivity
 import com.example.fitguard.features.fatigue.FatiguePredictionActivity
 import com.example.fitguard.features.metrics.MetricsMonitoringActivity
 import com.example.fitguard.features.nutrition.NutritionTrackingActivity
-import com.example.fitguard.features.recovery.RecoveryProgressActivity
 import com.example.fitguard.features.sleep.SleepStressActivity
 import com.example.fitguard.features.profile.UserHomeActivity
 import com.example.fitguard.ui.adapter.DashboardAdapter
@@ -79,12 +78,6 @@ class MainActivity : AppCompatActivity() {
                 description = "Log and Track your nutrition",
                 icon = R.drawable.ic_salad,
                 activityClass = NutritionTrackingActivity::class.java
-            ),
-            DashboardItem(
-                title = "Recovery Progress Tracking",
-                description = "Track how close you are to recovery",
-                icon = R.drawable.ic_dumbbell_ray,
-                activityClass = RecoveryProgressActivity::class.java
             )
         )
 

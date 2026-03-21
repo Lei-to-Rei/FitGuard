@@ -42,6 +42,7 @@ class MainActivity : Activity() {
     private var sequenceStatusText: TextView? = null
     private var activityCommandReceiver: BroadcastReceiver? = null
     private var rpeResponseReceiver: BroadcastReceiver? = null
+    private var rpeDismissReceiver: BroadcastReceiver? = null
     private var lastRpeValue: Int = -1
     private var pendingStopAction: (() -> Unit)? = null
 
@@ -120,6 +121,7 @@ class MainActivity : Activity() {
         checkAndRequestPermissions()
         registerActivityCommandReceiver()
         registerRpeResponseReceiver()
+        registerRpeDismissReceiver()
     }
 
     private fun checkAndRequestPermissions() {
@@ -746,6 +748,13 @@ class MainActivity : Activity() {
             sensorSequenceManager.sessionId
         } else ""
         rpeNotificationHelper.showRpePrompt(lastRpeValue, isEndOfSession, sessionId)
+
+        // Also send prompt to phone so user can answer from either device
+        sendMessageToPhone("/fitguard/activity/rpe_prompt", JSONObject().apply {
+            put("session_id", sessionId)
+            put("last_rpe", lastRpeValue)
+            put("is_end_of_session", isEndOfSession)
+        })
     }
 
     private fun sendMessageToPhone(path: String, payload: JSONObject) {
@@ -763,12 +772,41 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun registerRpeDismissReceiver() {
+        rpeDismissReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                intent ?: return
+                if (intent.action != RpePromptActivity.ACTION_RPE_DISMISS) return
+                val rpeValue = intent.getIntExtra(RpePromptActivity.EXTRA_RPE_VALUE, -1)
+                Log.d(TAG, "RPE dismiss from phone: rpe=$rpeValue")
+
+                if (rpeValue >= 0) {
+                    lastRpeValue = rpeValue
+                }
+
+                // Execute pending stop action (phone already processed RPE)
+                pendingStopAction?.let { action ->
+                    pendingStopAction = null
+                    action()
+                }
+
+                // Do NOT send /fitguard/activity/rpe — phone already processed it
+            }
+        }
+
+        val filter = IntentFilter(RpePromptActivity.ACTION_RPE_DISMISS)
+        registerReceiver(rpeDismissReceiver, filter, RECEIVER_NOT_EXPORTED)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         activityCommandReceiver?.let {
             try { unregisterReceiver(it) } catch (_: Exception) {}
         }
         rpeResponseReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: Exception) {}
+        }
+        rpeDismissReceiver?.let {
             try { unregisterReceiver(it) } catch (_: Exception) {}
         }
         if (::sensorSequenceManager.isInitialized && sensorSequenceManager.isRunning) {

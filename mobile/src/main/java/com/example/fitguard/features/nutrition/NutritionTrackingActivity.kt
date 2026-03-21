@@ -1,107 +1,152 @@
 package com.example.fitguard.features.nutrition
 
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
-import android.widget.ArrayAdapter
-import android.widget.CheckBox
+import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.RadioGroup
-import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.viewModels
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.core.content.ContextCompat
 import com.example.fitguard.R
 import com.example.fitguard.data.model.DailyNutritionSummary
 import com.example.fitguard.data.model.FoodEntry
 import com.example.fitguard.data.model.MealType
 import com.example.fitguard.data.model.NutritionGoals
+import com.example.fitguard.data.model.WaterIntakeEntry
 import com.example.fitguard.databinding.ActivityNutritionTrackingBinding
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.textfield.TextInputEditText
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class NutritionTrackingActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityNutritionTrackingBinding
     private val viewModel: NutritionTrackingViewModel by viewModels()
 
-    private lateinit var breakfastAdapter: FoodEntryAdapter
-    private lateinit var lunchAdapter: FoodEntryAdapter
-    private lateinit var dinnerAdapter: FoodEntryAdapter
-    private lateinit var snackAdapter: FoodEntryAdapter
-
-    private var savedFoodsList: List<FoodEntry> = emptyList()
+    private var currentEntries: List<FoodEntry> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityNutritionTrackingBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setupToolbar()
-        setupRecyclerViews()
-        setupAddButtons()
-        setupExportButton()
+        setupHeader()
+        setupMealCards()
+        setupAddMealButton()
+        setupWaterGlasses()
         observeData()
     }
 
-    private fun setupToolbar() {
-        setSupportActionBar(binding.toolbar)
-        supportActionBar?.apply {
-            setDisplayHomeAsUpEnabled(true)
-            setDisplayShowHomeEnabled(true)
-        }
+    private fun setupHeader() {
+        binding.btnBack.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
+        val dateFormat = SimpleDateFormat("'Today,' d MMMM, yyyy", Locale.getDefault())
+        binding.tvDate.text = dateFormat.format(Date())
     }
 
-    private fun setupRecyclerViews() {
-        breakfastAdapter = FoodEntryAdapter { viewModel.deleteFoodEntry(it) }
-        lunchAdapter = FoodEntryAdapter { viewModel.deleteFoodEntry(it) }
-        dinnerAdapter = FoodEntryAdapter { viewModel.deleteFoodEntry(it) }
-        snackAdapter = FoodEntryAdapter { viewModel.deleteFoodEntry(it) }
-
-        binding.rvBreakfast.apply {
-            layoutManager = LinearLayoutManager(this@NutritionTrackingActivity)
-            adapter = breakfastAdapter
-        }
-        binding.rvLunch.apply {
-            layoutManager = LinearLayoutManager(this@NutritionTrackingActivity)
-            adapter = lunchAdapter
-        }
-        binding.rvDinner.apply {
-            layoutManager = LinearLayoutManager(this@NutritionTrackingActivity)
-            adapter = dinnerAdapter
-        }
-        binding.rvSnack.apply {
-            layoutManager = LinearLayoutManager(this@NutritionTrackingActivity)
-            adapter = snackAdapter
-        }
+    private fun setupMealCards() {
+        setupExpandableCard(
+            binding.headerBreakfast, binding.expandBreakfast, binding.chevronBreakfast
+        )
+        setupExpandableCard(
+            binding.headerLunch, binding.expandLunch, binding.chevronLunch
+        )
+        setupExpandableCard(
+            binding.headerDinner, binding.expandDinner, binding.chevronDinner
+        )
+        setupExpandableCard(
+            binding.headerSnack, binding.expandSnack, binding.chevronSnack
+        )
     }
 
-    private fun setupExportButton() {
-        binding.btnExportCsv.setOnClickListener {
-            viewModel.exportTodayToCsv()
-        }
-        viewModel.exportStatus.observe(this) { message ->
-            if (message != null) {
-                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    private fun setupExpandableCard(
+        header: View,
+        expandableContent: View,
+        chevron: ImageView
+    ) {
+        header.setOnClickListener {
+            if (expandableContent.visibility == View.GONE) {
+                expandableContent.visibility = View.VISIBLE
+                chevron.rotation = 90f
+            } else {
+                expandableContent.visibility = View.GONE
+                chevron.rotation = 0f
             }
         }
     }
 
-    private fun setupAddButtons() {
-        binding.btnAddBreakfast.setOnClickListener { showAddFoodDialog(MealType.BREAKFAST) }
-        binding.btnAddLunch.setOnClickListener { showAddFoodDialog(MealType.LUNCH) }
-        binding.btnAddDinner.setOnClickListener { showAddFoodDialog(MealType.DINNER) }
-        binding.btnAddSnack.setOnClickListener { showAddFoodDialog(MealType.SNACK) }
+    private fun setupAddMealButton() {
+        binding.btnAddMeal.setOnClickListener { showAddMealDialog(MealType.BREAKFAST) }
+    }
+
+    private fun setupWaterGlasses() {
+        buildWaterGlasses(0, 8)
+    }
+
+    private fun buildWaterGlasses(filled: Int, total: Int) {
+        val container = binding.waterGlassesContainer
+
+        // If child count matches, update in-place to avoid scroll jump
+        if (container.childCount == total && total > 0) {
+            for (i in 0 until total) {
+                val glass = container.getChildAt(i) as ImageView
+                if (i < filled) {
+                    glass.setImageResource(R.drawable.ic_water_glass_filled)
+                    glass.contentDescription = "Filled glass"
+                    glass.setOnClickListener { viewModel.setWaterCount(i) }
+                } else {
+                    glass.setImageResource(R.drawable.ic_water_glass_empty)
+                    glass.contentDescription = "Empty glass"
+                    glass.setOnClickListener { viewModel.setWaterCount(i + 1) }
+                }
+            }
+            return
+        }
+
+        // Full rebuild only when glass count changes
+        val marginPerGlass = dpToPx(4) * 2
+        val minSize = dpToPx(24)
+        val maxSize = dpToPx(40)
+
+        container.post {
+            container.removeAllViews()
+            val availableWidth = container.width
+            val sizePerGlass = if (total > 0) {
+                ((availableWidth - (marginPerGlass * total)) / total).coerceIn(minSize, maxSize)
+            } else maxSize
+
+            for (i in 0 until total) {
+                val glass = ImageView(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(sizePerGlass, sizePerGlass).apply {
+                        marginEnd = dpToPx(4)
+                        marginStart = dpToPx(4)
+                    }
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+
+                    if (i < filled) {
+                        setImageResource(R.drawable.ic_water_glass_filled)
+                        contentDescription = "Filled glass"
+                        setOnClickListener { viewModel.setWaterCount(i) }
+                    } else {
+                        setImageResource(R.drawable.ic_water_glass_empty)
+                        contentDescription = "Empty glass"
+                        setOnClickListener { viewModel.setWaterCount(i + 1) }
+                    }
+                }
+                container.addView(glass)
+            }
+        }
     }
 
     private fun observeData() {
         viewModel.entries.observe(this) { entries ->
-            val grouped = entries.groupBy { it.mealType }
-            breakfastAdapter.submitList(grouped[MealType.BREAKFAST.name] ?: emptyList())
-            lunchAdapter.submitList(grouped[MealType.LUNCH.name] ?: emptyList())
-            dinnerAdapter.submitList(grouped[MealType.DINNER.name] ?: emptyList())
-            snackAdapter.submitList(grouped[MealType.SNACK.name] ?: emptyList())
+            currentEntries = entries
+            updateMealCards(entries)
         }
 
         viewModel.dailyTotals.observe(this) { totals ->
@@ -112,165 +157,291 @@ class NutritionTrackingActivity : AppCompatActivity() {
             viewModel.dailyTotals.value?.let { totals -> updateNutritionDisplay(totals) }
         }
 
-        viewModel.savedFoods.observe(this) { saved ->
-            savedFoodsList = saved
+        viewModel.waterIntake.observe(this) { water ->
+            updateWaterDisplay(water)
+        }
+
+        viewModel.exportStatus.observe(this) { message ->
+            if (message != null) {
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            }
         }
     }
 
-    private fun showAddFoodDialog(mealType: MealType) {
-        val dialogView = layoutInflater.inflate(R.layout.dialog_add_food, null)
+    private fun updateMealCards(entries: List<FoodEntry>) {
+        val grouped = entries.groupBy { it.mealType }
 
-        val etFoodName = dialogView.findViewById<TextInputEditText>(R.id.etFoodName)
-        val etServingSize = dialogView.findViewById<TextInputEditText>(R.id.etServingSize)
-        val etCalories = dialogView.findViewById<TextInputEditText>(R.id.etCalories)
-        val etProtein = dialogView.findViewById<TextInputEditText>(R.id.etProtein)
-        val etCarbs = dialogView.findViewById<TextInputEditText>(R.id.etCarbs)
-        val etFat = dialogView.findViewById<TextInputEditText>(R.id.etFat)
-        val etSodium = dialogView.findViewById<TextInputEditText>(R.id.etSodium)
-        val etFiber = dialogView.findViewById<TextInputEditText>(R.id.etFiber)
-        val etSugar = dialogView.findViewById<TextInputEditText>(R.id.etSugar)
-        val etCholesterol = dialogView.findViewById<TextInputEditText>(R.id.etCholesterol)
-        val tvAdvancedToggle = dialogView.findViewById<TextView>(R.id.tvAdvancedToggle)
-        val layoutAdvanced = dialogView.findViewById<LinearLayout>(R.id.layoutAdvanced)
-        val rgMealType = dialogView.findViewById<RadioGroup>(R.id.rgMealType)
-        val cbSaveForLater = dialogView.findViewById<CheckBox>(R.id.cbSaveForLater)
-        val spinnerSavedFoods = dialogView.findViewById<Spinner>(R.id.spinnerSavedFoods)
-        val tvSavedFoodsLabel = dialogView.findViewById<TextView>(R.id.tvSavedFoodsLabel)
+        updateMealSection(
+            grouped[MealType.BREAKFAST.name] ?: emptyList(),
+            binding.tvBreakfastInfo,
+            binding.listBreakfast,
+            isSnack = false
+        )
+        updateMealSection(
+            grouped[MealType.LUNCH.name] ?: emptyList(),
+            binding.tvLunchInfo,
+            binding.listLunch,
+            isSnack = false
+        )
+        updateMealSection(
+            grouped[MealType.DINNER.name] ?: emptyList(),
+            binding.tvDinnerInfo,
+            binding.listDinner,
+            isSnack = false
+        )
+        updateMealSection(
+            grouped[MealType.SNACK.name] ?: emptyList(),
+            binding.tvSnackInfo,
+            binding.listSnack,
+            isSnack = true
+        )
+    }
 
-        // Set default meal type radio button
-        when (mealType) {
-            MealType.BREAKFAST -> rgMealType.check(R.id.rbBreakfast)
-            MealType.LUNCH -> rgMealType.check(R.id.rbLunch)
-            MealType.DINNER -> rgMealType.check(R.id.rbDinner)
-            MealType.SNACK -> rgMealType.check(R.id.rbSnack)
+    private fun updateMealSection(
+        foods: List<FoodEntry>,
+        infoView: TextView,
+        listContainer: LinearLayout,
+        isSnack: Boolean
+    ) {
+        listContainer.removeAllViews()
+
+        if (foods.isEmpty()) {
+            infoView.text = if (isSnack) "Throughout Day" else "No meals logged"
+            return
         }
 
-        // Advanced fields toggle
-        tvAdvancedToggle.setOnClickListener {
-            if (layoutAdvanced.visibility == View.GONE) {
-                layoutAdvanced.visibility = View.VISIBLE
-                tvAdvancedToggle.text = "Hide Advanced Fields"
-            } else {
-                layoutAdvanced.visibility = View.GONE
-                tvAdvancedToggle.text = "Show Advanced Fields"
-            }
+        val totalCals = foods.sumOf { it.calories }
+        val timeStr = if (isSnack) {
+            "Throughout Day"
+        } else {
+            val firstTime = foods.minOf { it.createdAt }
+            SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(firstTime))
         }
+        infoView.text = "$timeStr \u2022 $totalCals kcal"
 
-        // Saved foods dropdown
-        if (savedFoodsList.isNotEmpty()) {
-            tvSavedFoodsLabel.visibility = View.VISIBLE
-            spinnerSavedFoods.visibility = View.VISIBLE
+        for (food in foods) {
+            val itemView = TextView(this).apply {
+                text = "\u2022  ${food.name}"
+                textSize = 14f
+                setTextColor(ContextCompat.getColor(context, R.color.text_dark))
+                setPadding(dpToPx(8), dpToPx(2), 0, dpToPx(2))
 
-            val foodNames = listOf("-- Select saved food --") + savedFoodsList.map { it.name }
-            spinnerSavedFoods.adapter = ArrayAdapter(
-                this, android.R.layout.simple_spinner_dropdown_item, foodNames
-            )
-            spinnerSavedFoods.setOnItemSelectedListener(object : android.widget.AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    if (position > 0) {
-                        val saved = savedFoodsList[position - 1]
-                        etFoodName.setText(saved.name)
-                        etServingSize.setText(saved.servingSize)
-                        etCalories.setText(saved.calories.toString())
-                        etProtein.setText(saved.protein.toString())
-                        etCarbs.setText(saved.carbs.toString())
-                        etFat.setText(saved.fat.toString())
-                        etSodium.setText(saved.sodium.toString())
-                        etFiber.setText(saved.fiber.toString())
-                        etSugar.setText(saved.sugar.toString())
-                        etCholesterol.setText(saved.cholesterol.toString())
-                    }
+                setOnLongClickListener {
+                    viewModel.deleteFoodEntry(food)
+                    Toast.makeText(context, "${food.name} removed", Toast.LENGTH_SHORT).show()
+                    true
                 }
-                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
-            })
-        }
-
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Add Food - ${mealType.displayName()}")
-            .setView(dialogView)
-            .setPositiveButton("Add", null)
-            .setNegativeButton("Cancel", null)
-            .create()
-
-        dialog.show()
-
-        // Override positive button to prevent auto-dismiss on validation failure
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            val name = etFoodName.text?.toString()?.trim() ?: ""
-            val servingSize = etServingSize.text?.toString()?.trim() ?: ""
-            val caloriesStr = etCalories.text?.toString()?.trim() ?: ""
-            val proteinStr = etProtein.text?.toString()?.trim() ?: ""
-            val carbsStr = etCarbs.text?.toString()?.trim() ?: ""
-            val fatStr = etFat.text?.toString()?.trim() ?: ""
-            val sodiumStr = etSodium.text?.toString()?.trim() ?: ""
-
-            // Validate required fields
-            if (name.isEmpty() || servingSize.isEmpty() || caloriesStr.isEmpty() ||
-                proteinStr.isEmpty() || carbsStr.isEmpty() || fatStr.isEmpty() || sodiumStr.isEmpty()) {
-                Toast.makeText(this, "Please fill in all required fields", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
             }
-
-            val calories = caloriesStr.toIntOrNull()
-            val protein = proteinStr.toFloatOrNull()
-            val carbs = carbsStr.toFloatOrNull()
-            val fat = fatStr.toFloatOrNull()
-            val sodium = sodiumStr.toFloatOrNull()
-
-            if (calories == null || protein == null || carbs == null || fat == null || sodium == null) {
-                Toast.makeText(this, "Please enter valid numbers", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
-            val fiber = etFiber.text?.toString()?.trim()?.toFloatOrNull() ?: 0f
-            val sugar = etSugar.text?.toString()?.trim()?.toFloatOrNull() ?: 0f
-            val cholesterol = etCholesterol.text?.toString()?.trim()?.toFloatOrNull() ?: 0f
-
-            val selectedMealType = when (rgMealType.checkedRadioButtonId) {
-                R.id.rbBreakfast -> MealType.BREAKFAST
-                R.id.rbLunch -> MealType.LUNCH
-                R.id.rbDinner -> MealType.DINNER
-                R.id.rbSnack -> MealType.SNACK
-                else -> mealType
-            }
-
-            viewModel.addFoodEntry(
-                name = name,
-                servingSize = servingSize,
-                calories = calories,
-                protein = protein,
-                carbs = carbs,
-                fat = fat,
-                sodium = sodium,
-                fiber = fiber,
-                sugar = sugar,
-                cholesterol = cholesterol,
-                mealType = selectedMealType.name,
-                isSaved = cbSaveForLater.isChecked
-            )
-
-            dialog.dismiss()
+            listContainer.addView(itemView)
         }
     }
 
     private fun updateNutritionDisplay(totals: DailyNutritionSummary) {
         val goals = viewModel.goals.value ?: NutritionGoals()
-        binding.apply {
-            tvCaloriesValue.text = "${totals.totalCalories} / ${goals.calories}"
-            progressCalories.progress = ((totals.totalCalories.toFloat() / goals.calories) * 100).toInt().coerceAtMost(100)
 
-            tvProteinValue.text = "${"%.1f".format(totals.totalProtein)} / ${goals.protein.toInt()}g"
-            progressProtein.progress = ((totals.totalProtein / goals.protein) * 100).toInt().coerceAtMost(100)
+        // Circular progress
+        binding.circularProgress.setProgress(totals.totalCalories, goals.calories)
 
-            tvCarbsValue.text = "${"%.1f".format(totals.totalCarbs)} / ${goals.carbs.toInt()}g"
-            progressCarbs.progress = ((totals.totalCarbs / goals.carbs) * 100).toInt().coerceAtMost(100)
+        // Remaining
+        val remaining = (goals.calories - totals.totalCalories).coerceAtLeast(0)
+        binding.tvRemainingCalories.text = "$remaining kcal"
 
-            tvFatValue.text = "${"%.1f".format(totals.totalFat)} / ${goals.fat.toInt()}g"
-            progressFat.progress = ((totals.totalFat / goals.fat) * 100).toInt().coerceAtMost(100)
+        // Calorie Burned (placeholder - can be hooked to activity data)
+        binding.tvCalorieBurned.text = "0 kcal"
 
-            tvSodiumValue.text = "${"%.0f".format(totals.totalSodium)} / ${goals.sodium.toInt()}mg"
-            progressSodium.progress = ((totals.totalSodium / goals.sodium) * 100).toInt().coerceAtMost(100)
+        // Macro bars
+        val proteinPct = if (goals.protein > 0) ((totals.totalProtein / goals.protein) * 100).toInt().coerceAtMost(100) else 0
+        binding.progressProtein.progress = proteinPct
+        binding.tvProteinValue.text = "${totals.totalProtein.toInt()}g  of ${goals.protein.toInt()}g"
+
+        val carbsPct = if (goals.carbs > 0) ((totals.totalCarbs / goals.carbs) * 100).toInt().coerceAtMost(100) else 0
+        binding.progressCarbs.progress = carbsPct
+        binding.tvCarbsValue.text = "${totals.totalCarbs.toInt()}g  of ${goals.carbs.toInt()}g"
+
+        val fatPct = if (goals.fat > 0) ((totals.totalFat / goals.fat) * 100).toInt().coerceAtMost(100) else 0
+        binding.progressFat.progress = fatPct
+        binding.tvFatValue.text = "${totals.totalFat.toInt()}g  of ${goals.fat.toInt()}g"
+    }
+
+    private fun updateWaterDisplay(water: WaterIntakeEntry?) {
+        val count = water?.glassCount ?: 0
+        val goal = water?.goalGlasses ?: 8
+        val pct = if (goal > 0) (count * 100) / goal else 0
+        val volumeL = count * 0.25 // ~250ml per glass
+
+        buildWaterGlasses(count, goal)
+        binding.tvWaterGoal.text = "Goal: $count / $goal glasses ($pct%)"
+        binding.tvWaterProgress.text = "$count/$goal"
+        binding.progressWater.progress = pct
+        binding.tvWaterPercentage.text = "$pct%"
+        binding.tvWaterVolume.text = "${"%.1f".format(volumeL)}L"
+    }
+
+    // ─── Add Meal Dialog ────────────────────────────────────────────
+
+    private fun showAddMealDialog(defaultMealType: MealType) {
+        val dialog = BottomSheetDialog(this, R.style.Theme_FitGuard_BottomSheet)
+        val dialogView = layoutInflater.inflate(R.layout.dialog_add_food, null)
+        dialog.setContentView(dialogView)
+
+        // Make bottom sheet expanded
+        dialog.behavior.skipCollapsed = true
+
+        val etFoodName = dialogView.findViewById<TextInputEditText>(R.id.etFoodName)
+        val etCalories = dialogView.findViewById<TextInputEditText>(R.id.etCalories)
+        val etProtein = dialogView.findViewById<TextInputEditText>(R.id.etProtein)
+        val etCarbs = dialogView.findViewById<TextInputEditText>(R.id.etCarbs)
+        val etFat = dialogView.findViewById<TextInputEditText>(R.id.etFat)
+        val btnClose = dialogView.findViewById<View>(R.id.btnClose)
+        val btnCancel = dialogView.findViewById<View>(R.id.btnCancel)
+        val btnAddMeal = dialogView.findViewById<View>(R.id.btnAddMealConfirm)
+        val quickAddContainer = dialogView.findViewById<LinearLayout>(R.id.quickAddContainer)
+        val tvQuickAddLabel = dialogView.findViewById<View>(R.id.tvQuickAddLabel)
+        val scrollQuickAdd = dialogView.findViewById<View>(R.id.scrollQuickAdd)
+
+        // Meal type buttons
+        val btnBreakfast = dialogView.findViewById<TextView>(R.id.btnMealBreakfast)
+        val btnLunch = dialogView.findViewById<TextView>(R.id.btnMealLunch)
+        val btnDinner = dialogView.findViewById<TextView>(R.id.btnMealDinner)
+        val btnSnack = dialogView.findViewById<TextView>(R.id.btnMealSnack)
+        val mealButtons = listOf(btnBreakfast, btnLunch, btnDinner, btnSnack)
+
+        var selectedMealType = defaultMealType
+
+        fun selectMealType(mealType: MealType) {
+            selectedMealType = mealType
+            for (btn in mealButtons) {
+                btn.setBackgroundResource(R.drawable.bg_meal_type_unselected)
+            }
+            when (mealType) {
+                MealType.BREAKFAST -> btnBreakfast.setBackgroundResource(R.drawable.bg_meal_type_selected)
+                MealType.LUNCH -> btnLunch.setBackgroundResource(R.drawable.bg_meal_type_selected)
+                MealType.DINNER -> btnDinner.setBackgroundResource(R.drawable.bg_meal_type_selected)
+                MealType.SNACK -> btnSnack.setBackgroundResource(R.drawable.bg_meal_type_selected)
+            }
+            // Load quick add foods for this meal type
+            viewModel.loadQuickAddForMealType(mealType.name)
         }
+
+        btnBreakfast.setOnClickListener { selectMealType(MealType.BREAKFAST) }
+        btnLunch.setOnClickListener { selectMealType(MealType.LUNCH) }
+        btnDinner.setOnClickListener { selectMealType(MealType.DINNER) }
+        btnSnack.setOnClickListener { selectMealType(MealType.SNACK) }
+
+        // Observe quick add foods
+        viewModel.quickAddFoods.observe(this) { foods ->
+            quickAddContainer.removeAllViews()
+            if (foods.isNotEmpty()) {
+                tvQuickAddLabel.visibility = View.VISIBLE
+                scrollQuickAdd.visibility = View.VISIBLE
+
+                for (food in foods) {
+                    val itemView = layoutInflater.inflate(R.layout.item_quick_add_food, quickAddContainer, false)
+                    val tvIcon = itemView.findViewById<TextView>(R.id.tvQuickAddIcon)
+                    val tvName = itemView.findViewById<TextView>(R.id.tvQuickAddName)
+                    val tvCals = itemView.findViewById<TextView>(R.id.tvQuickAddCalories)
+
+                    tvIcon.text = getFoodEmoji(food.name)
+                    tvName.text = food.name
+                    tvCals.text = "${food.calories} kcal"
+
+                    itemView.setOnClickListener {
+                        etFoodName.setText(food.name)
+                        etCalories.setText(food.calories.toString())
+                        if (food.protein > 0) etProtein.setText(food.protein.toString())
+                        if (food.carbs > 0) etCarbs.setText(food.carbs.toString())
+                        if (food.fat > 0) etFat.setText(food.fat.toString())
+
+                        // Highlight selected
+                        for (i in 0 until quickAddContainer.childCount) {
+                            quickAddContainer.getChildAt(i).setBackgroundResource(R.drawable.bg_quick_add_item)
+                        }
+                        itemView.setBackgroundResource(R.drawable.bg_quick_add_item_selected)
+                    }
+                    quickAddContainer.addView(itemView)
+                }
+            } else {
+                tvQuickAddLabel.visibility = View.GONE
+                scrollQuickAdd.visibility = View.GONE
+            }
+        }
+
+        // Set default selection
+        selectMealType(defaultMealType)
+
+        btnClose.setOnClickListener { dialog.dismiss() }
+        btnCancel.setOnClickListener { dialog.dismiss() }
+
+        btnAddMeal.setOnClickListener {
+            val name = etFoodName.text?.toString()?.trim() ?: ""
+            val caloriesStr = etCalories.text?.toString()?.trim() ?: ""
+
+            if (name.isEmpty() || caloriesStr.isEmpty()) {
+                Toast.makeText(this, "Please fill in Food Name and Calories", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val calories = caloriesStr.toIntOrNull()
+            if (calories == null) {
+                Toast.makeText(this, "Please enter a valid calorie value", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val protein = etProtein.text?.toString()?.trim()?.toFloatOrNull() ?: 0f
+            val carbs = etCarbs.text?.toString()?.trim()?.toFloatOrNull() ?: 0f
+            val fat = etFat.text?.toString()?.trim()?.toFloatOrNull() ?: 0f
+
+            viewModel.addFoodEntry(
+                name = name,
+                servingSize = "",
+                calories = calories,
+                protein = protein,
+                carbs = carbs,
+                fat = fat,
+                sodium = 0f,
+                fiber = 0f,
+                sugar = 0f,
+                cholesterol = 0f,
+                mealType = selectedMealType.name,
+                isSaved = false
+            )
+
+            dialog.dismiss()
+        }
+
+        dialog.show()
+    }
+
+    private fun getFoodEmoji(name: String): String {
+        val lower = name.lowercase()
+        return when {
+            lower.contains("rice") -> "\uD83C\uDF5A"
+            lower.contains("egg") -> "\uD83E\uDD5A"
+            lower.contains("apple") -> "\uD83C\uDF4E"
+            lower.contains("milk") -> "\uD83E\uDD5B"
+            lower.contains("bread") -> "\uD83C\uDF5E"
+            lower.contains("chicken") -> "\uD83C\uDF57"
+            lower.contains("fish") || lower.contains("salmon") -> "\uD83C\uDF1F"
+            lower.contains("salad") || lower.contains("vegetable") -> "\uD83E\uDD57"
+            lower.contains("banana") -> "\uD83C\uDF4C"
+            lower.contains("coffee") -> "\u2615"
+            lower.contains("oat") -> "\uD83E\uDD63"
+            lower.contains("pasta") || lower.contains("noodle") -> "\uD83C\uDF5D"
+            lower.contains("pizza") -> "\uD83C\uDF55"
+            lower.contains("sandwich") || lower.contains("burger") -> "\uD83C\uDF54"
+            lower.contains("soup") -> "\uD83C\uDF72"
+            lower.contains("fruit") || lower.contains("orange") -> "\uD83C\uDF4A"
+            lower.contains("cookie") || lower.contains("biscuit") -> "\uD83C\uDF6A"
+            lower.contains("cake") -> "\uD83C\uDF70"
+            lower.contains("juice") -> "\uD83E\uDDC3"
+            lower.contains("water") -> "\uD83D\uDCA7"
+            lower.contains("meat") || lower.contains("steak") || lower.contains("beef") -> "\uD83E\uDD69"
+            else -> "\uD83C\uDF7D"
+        }
+    }
+
+    private fun dpToPx(dp: Int): Int {
+        return (dp * resources.displayMetrics.density).toInt()
     }
 
     override fun onSupportNavigateUp(): Boolean {

@@ -8,12 +8,14 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.fitguard.data.model.FoodEntry
 import com.example.fitguard.data.model.UserProfile
+import com.example.fitguard.data.model.WaterIntakeEntry
 
-@Database(entities = [FoodEntry::class, UserProfile::class], version = 5, exportSchema = false)
+@Database(entities = [FoodEntry::class, UserProfile::class, WaterIntakeEntry::class], version = 6, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun foodEntryDao(): FoodEntryDao
     abstract fun userProfileDao(): UserProfileDao
+    abstract fun waterIntakeDao(): WaterIntakeDao
 
     companion object {
         @Volatile
@@ -62,6 +64,20 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS water_intake (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        userId TEXT NOT NULL DEFAULT '',
+                        dateMillis INTEGER NOT NULL,
+                        glassCount INTEGER NOT NULL DEFAULT 0,
+                        goalGlasses INTEGER NOT NULL DEFAULT 8
+                    )
+                """.trimIndent())
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -69,7 +85,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "fitguard_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build().also { INSTANCE = it }
             }
         }

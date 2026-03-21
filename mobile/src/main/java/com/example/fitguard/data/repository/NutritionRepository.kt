@@ -64,6 +64,10 @@ class NutritionRepository(
         return dao.getEntriesByDateSync(dateMillis, userId)
     }
 
+    suspend fun getDistinctFoodsByMealType(mealType: String, userId: String): List<FoodEntry> {
+        return dao.getDistinctFoodsByMealType(mealType, userId)
+    }
+
     suspend fun syncFromFirestore(userId: String) {
         try {
             val snapshot = firestore.collection("users")

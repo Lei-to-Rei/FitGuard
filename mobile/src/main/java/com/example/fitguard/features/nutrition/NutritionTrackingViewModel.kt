@@ -11,6 +11,7 @@ import com.example.fitguard.data.processing.CsvWriter
 import com.example.fitguard.data.model.DailyNutritionSummary
 import com.example.fitguard.data.model.FoodEntry
 import com.example.fitguard.data.model.NutritionGoals
+import com.example.fitguard.data.model.WaterIntakeEntry
 import com.example.fitguard.data.repository.NutritionRepository
 import com.example.fitguard.data.repository.UserProfileRepository
 import com.google.firebase.auth.FirebaseAuth
@@ -30,6 +31,7 @@ class NutritionTrackingViewModel(application: Application) : AndroidViewModel(ap
     private val firestore = FirebaseFirestore.getInstance()
     private val nutritionRepo = NutritionRepository(db.foodEntryDao(), firestore)
     private val profileRepo = UserProfileRepository(db.userProfileDao(), firestore)
+    private val waterDao = db.waterIntakeDao()
 
     private val userId: String
         get() = FirebaseAuth.getInstance().currentUser?.uid ?: ""
@@ -48,10 +50,17 @@ class NutritionTrackingViewModel(application: Application) : AndroidViewModel(ap
         nutritionRepo.getDailyTotals(date, userId)
     }
 
+    val waterIntake: LiveData<WaterIntakeEntry?> = _currentDateMillis.switchMap { date ->
+        waterDao.getByDate(date, userId)
+    }
+
     val savedFoods: LiveData<List<FoodEntry>> = nutritionRepo.getSavedFoods(userId)
 
     private val _exportStatus = MutableLiveData<String?>()
     val exportStatus: LiveData<String?> = _exportStatus
+
+    private val _quickAddFoods = MutableLiveData<List<FoodEntry>>()
+    val quickAddFoods: LiveData<List<FoodEntry>> = _quickAddFoods
 
     init {
         viewModelScope.launch {
@@ -67,6 +76,13 @@ class NutritionTrackingViewModel(application: Application) : AndroidViewModel(ap
                 )
                 nutritionRepo.syncFromFirestore(firebaseUser.uid)
             }
+        }
+    }
+
+    fun loadQuickAddForMealType(mealType: String) {
+        viewModelScope.launch {
+            val foods = nutritionRepo.getDistinctFoodsByMealType(mealType, userId)
+            _quickAddFoods.postValue(foods)
         }
     }
 
@@ -108,6 +124,23 @@ class NutritionTrackingViewModel(application: Application) : AndroidViewModel(ap
     fun deleteFoodEntry(entry: FoodEntry) {
         viewModelScope.launch {
             nutritionRepo.delete(entry)
+        }
+    }
+
+    fun setWaterCount(count: Int) {
+        viewModelScope.launch {
+            val dateMillis = _currentDateMillis.value ?: todayMidnightMillis()
+            val existing = waterDao.getByDateSync(dateMillis, userId)
+            val goal = existing?.goalGlasses ?: 8
+            val clamped = count.coerceIn(0, goal)
+            val entry = WaterIntakeEntry(
+                id = existing?.id ?: 0,
+                userId = userId,
+                dateMillis = dateMillis,
+                glassCount = clamped,
+                goalGlasses = goal
+            )
+            waterDao.upsert(entry)
         }
     }
 
