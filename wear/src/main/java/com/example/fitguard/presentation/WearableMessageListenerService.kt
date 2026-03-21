@@ -17,6 +17,8 @@ class WearableMessageListenerService : WearableListenerService() {
         private const val TAG = "WearMsgListener"
         const val ACTION_START_ACTIVITY = "com.example.fitguard.wear.START_ACTIVITY"
         const val ACTION_STOP_ACTIVITY = "com.example.fitguard.wear.STOP_ACTIVITY"
+        const val ACTION_START_TRACKER = "com.example.fitguard.wear.START_TRACKER"
+        const val ACTION_STOP_TRACKER = "com.example.fitguard.wear.STOP_TRACKER"
     }
 
     override fun onMessageReceived(messageEvent: MessageEvent) {
@@ -59,6 +61,22 @@ class WearableMessageListenerService : WearableListenerService() {
                         setPackage(packageName)
                         putExtra(RpePromptActivity.EXTRA_RPE_VALUE, rpeValue)
                         putExtra(RpePromptActivity.EXTRA_SESSION_ID, sessionId)
+                    })
+                }
+                "/fitguard/tracker/start" -> {
+                    val trackerType = json.optString("tracker_type", "")
+                    Log.d(TAG, "Tracker start command: $trackerType")
+                    sendBroadcast(Intent(ACTION_START_TRACKER).apply {
+                        setPackage(packageName)
+                        putExtra("tracker_type", trackerType)
+                    })
+                }
+                "/fitguard/tracker/stop" -> {
+                    val trackerType = json.optString("tracker_type", "")
+                    Log.d(TAG, "Tracker stop command: $trackerType")
+                    sendBroadcast(Intent(ACTION_STOP_TRACKER).apply {
+                        setPackage(packageName)
+                        putExtra("tracker_type", trackerType)
                     })
                 }
             }

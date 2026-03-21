@@ -56,7 +56,9 @@
       "Bash(ls -la /c/Users/claud/AndroidStudioProjects/FitGuard/mobile/src/main/res/drawable*/)",
       "Bash(grep:*)",
       "Bash(ls:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(gh api:*)",
+      "Bash(where gh:*)"
     ]
   }
 }

@@ -63,6 +63,9 @@ class SensorSequenceManager(
         when (data) {
             is HealthTrackerManager.TrackerData.PPGData -> ppgBuffer.add(data)
             is HealthTrackerManager.TrackerData.AccelerometerData -> accelerometerBuffer.add(data)
+            is HealthTrackerManager.TrackerData.SpO2Data,
+            is HealthTrackerManager.TrackerData.HeartRateData,
+            is HealthTrackerManager.TrackerData.SkinTemperatureData -> { /* not used in sequence yet */ }
         }
     }
 

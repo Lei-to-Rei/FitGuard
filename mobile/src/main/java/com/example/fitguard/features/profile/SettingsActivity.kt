@@ -33,32 +33,37 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun setupPreferences() {
-        binding.rgAppearance.setOnCheckedChangeListener { _, checkedId ->
+        val prefs = getSharedPreferences("health_tracker_prefs", MODE_PRIVATE)
+
+        binding.rgHeartRate.setOnCheckedChangeListener { _, checkedId ->
             val mode = when (checkedId) {
-                binding.rbPhoneDefault.id -> "Phone Default"
-                binding.rbLightMode.id -> "Light Mode"
-                binding.rbDarkMode.id -> "Dark Mode"
+                binding.rbHrManual.id -> "Manual"
+                binding.rbHr10Min.id -> "Every 10 minutes"
+                binding.rbHrContinuous.id -> "Continuous"
                 else -> return@setOnCheckedChangeListener
             }
-            Toast.makeText(this, "Appearance: $mode", Toast.LENGTH_SHORT).show()
+            prefs.edit().putString("hr_mode", mode).apply()
+            Toast.makeText(this, "Heart Rate: $mode", Toast.LENGTH_SHORT).show()
         }
 
-        binding.rgUnits.setOnCheckedChangeListener { _, checkedId ->
-            val unit = when (checkedId) {
-                binding.rbKilometers.id -> "Kilometers"
-                binding.rbMiles.id -> "Miles"
+        binding.rgSpO2.setOnCheckedChangeListener { _, checkedId ->
+            val mode = when (checkedId) {
+                binding.rbSpO2Manual.id -> "Manual"
+                binding.rbSpO210Min.id -> "Every 10 minutes"
                 else -> return@setOnCheckedChangeListener
             }
-            Toast.makeText(this, "Units: $unit", Toast.LENGTH_SHORT).show()
+            prefs.edit().putString("spo2_mode", mode).apply()
+            Toast.makeText(this, "SpO2: $mode", Toast.LENGTH_SHORT).show()
         }
 
-        binding.rgTemperature.setOnCheckedChangeListener { _, checkedId ->
-            val temp = when (checkedId) {
-                binding.rbCelsius.id -> "Celsius"
-                binding.rbFahrenheit.id -> "Fahrenheit"
+        binding.rgSkinTemp.setOnCheckedChangeListener { _, checkedId ->
+            val mode = when (checkedId) {
+                binding.rbSkinTempManual.id -> "Manual"
+                binding.rbSkinTemp10Min.id -> "Every 10 minutes"
                 else -> return@setOnCheckedChangeListener
             }
-            Toast.makeText(this, "Temperature: $temp", Toast.LENGTH_SHORT).show()
+            prefs.edit().putString("skin_temp_mode", mode).apply()
+            Toast.makeText(this, "Skin Temperature: $mode", Toast.LENGTH_SHORT).show()
         }
     }
 
