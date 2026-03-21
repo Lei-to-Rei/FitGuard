@@ -8,12 +8,17 @@ import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.example.fitguard.data.processing.CsvWriter
 import com.example.fitguard.data.processing.SequenceProcessor
 import com.example.fitguard.databinding.ActivityMetricsMonitoringBinding
 import com.google.android.gms.wearable.Wearable
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.*
 import kotlinx.coroutines.tasks.await
 import org.json.JSONObject
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.*
 
 class MetricsMonitoringActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMetricsMonitoringBinding
@@ -66,6 +71,7 @@ class MetricsMonitoringActivity : AppCompatActivity() {
 
         setupSensorToggles()
         setupMeasureButtons()
+        loadHistoricalData()
     }
 
     private fun setupSensorToggles() {
@@ -331,6 +337,98 @@ class MetricsMonitoringActivity : AppCompatActivity() {
         binding.tvHrAvg.text = String.format("%.0f", hrValues.average())
         binding.tvHrMin.text = String.format("%.0f", hrValues.min())
         binding.tvHrMax.text = String.format("%.0f", hrValues.max())
+    }
+
+    // ===== Historical Data Loading =====
+
+    private fun loadHistoricalData() {
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                val dateFolder = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                val baseDir = CsvWriter.getOutputDir(userId, "")
+                val dir = File(baseDir, dateFolder)
+
+                // --- Heart Rate ---
+                val hrFile = File(dir, "HeartRate.jsonl")
+                if (hrFile.exists()) {
+                    val readings = hrFile.readLines()
+                        .filter { it.isNotBlank() }
+                        .mapNotNull { line ->
+                            try {
+                                JSONObject(line).optInt("heart_rate", 0).toFloat()
+                            } catch (_: Exception) { null }
+                        }
+                        .filter { it > 0f }
+
+                    if (readings.isNotEmpty()) {
+                        val chartPoints = readings.takeLast(12)
+                        val lastHr = readings.last()
+                        withContext(Dispatchers.Main) {
+                            binding.tvHeartRateValue.text = "${lastHr.toInt()} bpm"
+                            binding.chartHeartRate.setData(chartPoints)
+                            hrValues.addAll(readings)
+                            updateHrStats()
+                        }
+                    }
+                }
+
+                // --- SpO2 ---
+                val spo2File = File(dir, "SpO2.jsonl")
+                if (spo2File.exists()) {
+                    val readings = spo2File.readLines()
+                        .filter { it.isNotBlank() }
+                        .mapNotNull { line ->
+                            try {
+                                JSONObject(line).optInt("spo2", 0).toFloat()
+                            } catch (_: Exception) { null }
+                        }
+                        .filter { it > 0f }
+
+                    if (readings.isNotEmpty()) {
+                        val chartPoints = readings.takeLast(12)
+                        val lastSpO2 = readings.last()
+                        withContext(Dispatchers.Main) {
+                            binding.tvSpO2Value.text = "${lastSpO2.toInt()}% SpO2"
+                            binding.chartBloodOxygen.setData(chartPoints)
+                        }
+                    }
+                }
+
+                // --- Skin Temperature ---
+                val skinTempFile = File(dir, "SkinTemp.jsonl")
+                if (skinTempFile.exists()) {
+                    val objTemps = mutableListOf<Float>()
+                    val ambTemps = mutableListOf<Float>()
+
+                    skinTempFile.readLines()
+                        .filter { it.isNotBlank() }
+                        .forEach { line ->
+                            try {
+                                val json = JSONObject(line)
+                                val obj = json.optDouble("object_temp", 0.0).toFloat()
+                                val amb = json.optDouble("ambient_temp", 0.0).toFloat()
+                                if (obj > 0f) {
+                                    objTemps.add(obj)
+                                    ambTemps.add(amb)
+                                }
+                            } catch (_: Exception) {}
+                        }
+
+                    if (objTemps.isNotEmpty()) {
+                        val lastObj = objTemps.last()
+                        val skinLast12 = objTemps.takeLast(12)
+                        val ambLast12 = ambTemps.takeLast(12)
+                        withContext(Dispatchers.Main) {
+                            binding.tvSkinTempValue.text = String.format("%.1f °C", lastObj)
+                            binding.chartSkinTemp.setData(skinLast12, ambLast12)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load historical data: ${e.message}")
+            }
+        }
     }
 
     // ===== Data Receivers =====
