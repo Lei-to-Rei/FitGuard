@@ -58,9 +58,6 @@ class BloodOxygenChartView @JvmOverloads constructor(
     private val maxY = 100f
     private val gridLines = listOf(70f, 80f, 90f, 100f)
 
-    init {
-        dataPoints.addAll(listOf(98f, 97f, 95f, 99f, 85f, 96f, 94f, 98f, 97f, 88f, 96f, 99f))
-    }
 
     fun setData(points: List<Float>) {
         dataPoints.clear()
@@ -78,7 +75,6 @@ class BloodOxygenChartView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (dataPoints.isEmpty()) return
 
         val leftPad = 60f
         val rightPad = 20f
@@ -88,12 +84,34 @@ class BloodOxygenChartView @JvmOverloads constructor(
         val chartW = width - leftPad - rightPad
         val chartH = height - topPad - bottomPad
 
-        // Grid
+        // Grid (always visible)
         for (value in gridLines) {
             val y = topPad + chartH * (1f - (value - minY) / (maxY - minY))
             canvas.drawLine(leftPad, y, width - rightPad, y, gridPaint)
             canvas.drawText(value.toInt().toString(), leftPad - 10f, y + 10f, gridTextPaint)
         }
+
+        // Range bar at bottom (always visible)
+        val rangeBarTop = height - 50f
+        val rangeBarHeight = 10f
+        val rangeRect = RectF(leftPad, rangeBarTop, width - rightPad, rangeBarTop + rangeBarHeight)
+
+        rangeBgPaint.shader = LinearGradient(
+            leftPad, 0f, width - rightPad, 0f,
+            Color.parseColor("#E0E0E0"),
+            Color.parseColor("#6EDB34"),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(rangeRect, 5f, 5f, rangeBgPaint)
+
+        // Range labels
+        canvas.drawText("70", leftPad, rangeBarTop + rangeBarHeight + 24f, rangeLabelPaint)
+        rangeTextPaint.textAlign = Paint.Align.RIGHT
+        canvas.drawText("100", width - rightPad, rangeBarTop + rangeBarHeight + 24f, rangeTextPaint)
+        rangeTextPaint.textAlign = Paint.Align.CENTER
+        canvas.drawText("SpO2 Range", (leftPad + width - rightPad) / 2, rangeBarTop + rangeBarHeight + 24f, rangeTextPaint)
+
+        if (dataPoints.isEmpty()) return
 
         // Bars
         val barCount = dataPoints.size
@@ -116,25 +134,5 @@ class BloodOxygenChartView @JvmOverloads constructor(
                 canvas.drawCircle(x + barWidth / 2, barTop - 12f, 6f, lowDotPaint)
             }
         }
-
-        // Range bar at bottom
-        val rangeBarTop = height - 50f
-        val rangeBarHeight = 10f
-        val rangeRect = RectF(leftPad, rangeBarTop, width - rightPad, rangeBarTop + rangeBarHeight)
-
-        rangeBgPaint.shader = LinearGradient(
-            leftPad, 0f, width - rightPad, 0f,
-            Color.parseColor("#E0E0E0"),
-            Color.parseColor("#6EDB34"),
-            Shader.TileMode.CLAMP
-        )
-        canvas.drawRoundRect(rangeRect, 5f, 5f, rangeBgPaint)
-
-        // Range labels
-        canvas.drawText("70", leftPad, rangeBarTop + rangeBarHeight + 24f, rangeLabelPaint)
-        rangeTextPaint.textAlign = Paint.Align.RIGHT
-        canvas.drawText("100", width - rightPad, rangeBarTop + rangeBarHeight + 24f, rangeTextPaint)
-        rangeTextPaint.textAlign = Paint.Align.CENTER
-        canvas.drawText("SpO2 Range", (leftPad + width - rightPad) / 2, rangeBarTop + rangeBarHeight + 24f, rangeTextPaint)
     }
 }

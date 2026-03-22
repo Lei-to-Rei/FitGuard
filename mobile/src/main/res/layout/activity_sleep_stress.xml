@@ -89,7 +89,7 @@
                             android:id="@+id/switchSleepMonitor"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            app:trackTint="#6EDB34"
+                            app:trackTint="@color/switch_track_color"
                             app:thumbTint="@color/white"
                             android:checked="true" />
 

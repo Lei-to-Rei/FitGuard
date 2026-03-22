@@ -720,6 +720,11 @@ class MainActivity : Activity() {
                                 sequenceStatusText?.text = "Continuous: $activityType"
                                 statusText.text = "Session started from phone"
                             }
+                            // Stop any running passive trackers before starting sequence session
+                            if (::passiveTrackerManager.isInitialized) {
+                                passiveTrackerManager.stopAllTrackers()
+                                Log.d(TAG, "Stopped all passive trackers before starting sequence session")
+                            }
                             sensorSequenceManager.startContinuousSession(sessionId, activityType)
                             sendMessageToPhone("/fitguard/activity/ack", JSONObject().apply {
                                 put("session_id", sessionId)
@@ -782,6 +787,11 @@ class MainActivity : Activity() {
                 }
                 when (intent.action) {
                     WearableMessageListenerService.ACTION_START_TRACKER -> {
+                        // Block passive trackers while sequence session is active
+                        if (::sensorSequenceManager.isInitialized && sensorSequenceManager.isRunning) {
+                            Log.w(TAG, "Passive tracker start blocked — sequence session active: $trackerType")
+                            return
+                        }
                         val started = when (trackerType) {
                             "HeartRate" -> passiveTrackerManager.startHeartRateContinuous()
                             "SpO2" -> passiveTrackerManager.startSpO2OnDemand()

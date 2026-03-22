@@ -17,6 +17,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
 import com.google.android.gms.wearable.Wearable
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.*
@@ -133,6 +134,10 @@ class SleepMonitorService : Service() {
     }
 
     private fun startAllTrackers() {
+        if (ActivityTrackingViewModel.activeSessionId != null) {
+            Log.d(TAG, "Sleep tracker start skipped — workout session active")
+            return
+        }
         coroutineScope.launch {
             sendTrackerCommand("start", "HeartRate")
             sendTrackerCommand("start", "Accelerometer")
@@ -153,10 +158,14 @@ class SleepMonitorService : Service() {
     private fun scheduleOnDemandRestart() {
         onDemandRestartRunnable = object : Runnable {
             override fun run() {
-                coroutineScope.launch {
-                    Log.d(TAG, "Restarting on-demand trackers (SpO2, SkinTemp)")
-                    sendTrackerCommand("start", "SpO2")
-                    sendTrackerCommand("start", "SkinTemp")
+                if (ActivityTrackingViewModel.activeSessionId != null) {
+                    Log.d(TAG, "On-demand restart skipped — workout session active")
+                } else {
+                    coroutineScope.launch {
+                        Log.d(TAG, "Restarting on-demand trackers (SpO2, SkinTemp)")
+                        sendTrackerCommand("start", "SpO2")
+                        sendTrackerCommand("start", "SkinTemp")
+                    }
                 }
                 handler.postDelayed(this, ON_DEMAND_RESTART_INTERVAL_MS)
             }

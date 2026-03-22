@@ -83,7 +83,6 @@ class SkinTemperatureChartView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (skinData.isEmpty()) return
 
         val leftPad = 60f
         val rightPad = 20f
@@ -93,12 +92,14 @@ class SkinTemperatureChartView @JvmOverloads constructor(
         val chartW = width - leftPad - rightPad
         val chartH = height - topPad - bottomPad
 
-        // Grid
+        // Grid (always visible)
         for (value in gridLines) {
             val y = topPad + chartH * (1f - (value - minY) / (maxY - minY))
             canvas.drawLine(leftPad, y, width - rightPad, y, gridPaint)
             canvas.drawText("${value.toInt()}°", leftPad - 10f, y + 10f, gridTextPaint)
         }
+
+        if (skinData.isEmpty()) return
 
         val count = skinData.size.coerceAtMost(ambientData.size)
         val stepX = chartW / (count - 1).coerceAtLeast(1)

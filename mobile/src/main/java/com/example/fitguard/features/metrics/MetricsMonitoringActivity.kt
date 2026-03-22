@@ -8,6 +8,7 @@ import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
 import com.example.fitguard.data.processing.CsvWriter
 import com.example.fitguard.data.processing.SequenceProcessor
 import com.example.fitguard.databinding.ActivityMetricsMonitoringBinding
@@ -50,6 +51,7 @@ class MetricsMonitoringActivity : AppCompatActivity() {
     private var hrStopRunnable: Runnable? = null
 
     // Active measurement tracking
+    private var isWatchConnected = false
     private var isHrMeasuring = false
     private var isSpo2Measuring = false
     private var isSkinTempMeasuring = false
@@ -76,10 +78,6 @@ class MetricsMonitoringActivity : AppCompatActivity() {
 
     private fun setupSensorToggles() {
         binding.switchHeartRate.setOnCheckedChangeListener { _, isChecked ->
-            val vis = if (isChecked) View.VISIBLE else View.GONE
-            binding.tvHeartRateValue.visibility = vis
-            binding.chartHeartRate.visibility = vis
-            binding.hrStatsRow.visibility = vis
             if (!isChecked && isHrMeasuring) {
                 stopMeasurement("HeartRate")
                 hrIntervalRunnable?.let { handler.removeCallbacks(it) }
@@ -89,9 +87,6 @@ class MetricsMonitoringActivity : AppCompatActivity() {
         }
 
         binding.switchSkinTemp.setOnCheckedChangeListener { _, isChecked ->
-            val vis = if (isChecked) View.VISIBLE else View.GONE
-            binding.tvSkinTempValue.visibility = vis
-            binding.chartSkinTemp.visibility = vis
             if (!isChecked && isSkinTempMeasuring) {
                 stopMeasurement("SkinTemp")
                 skinTempIntervalRunnable?.let { handler.removeCallbacks(it) }
@@ -101,9 +96,6 @@ class MetricsMonitoringActivity : AppCompatActivity() {
         }
 
         binding.switchSpO2.setOnCheckedChangeListener { _, isChecked ->
-            val vis = if (isChecked) View.VISIBLE else View.GONE
-            binding.tvSpO2Value.visibility = vis
-            binding.chartBloodOxygen.visibility = vis
             if (!isChecked && isSpo2Measuring) {
                 stopMeasurement("SpO2")
                 spo2IntervalRunnable?.let { handler.removeCallbacks(it) }
@@ -116,7 +108,7 @@ class MetricsMonitoringActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         updateMeasureButtons()
-        startScheduledMeasurements()
+        checkWatchConnection()
     }
 
     override fun onPause() {
@@ -151,6 +143,42 @@ class MetricsMonitoringActivity : AppCompatActivity() {
         binding.btnMeasureSkinTemp.visibility = if (showSkinTemp) View.VISIBLE else View.GONE
     }
 
+    // ===== Watch Connection Check =====
+
+    private fun checkWatchConnection() {
+        coroutineScope.launch(Dispatchers.IO) {
+            val connected = try {
+                Wearable.getNodeClient(this@MetricsMonitoringActivity)
+                    .connectedNodes.await().isNotEmpty()
+            } catch (_: Exception) { false }
+
+            withContext(Dispatchers.Main) {
+                isWatchConnected = connected
+                binding.btnMeasureHeartRate.isEnabled = connected
+                binding.btnMeasureSpO2.isEnabled = connected
+                binding.btnMeasureSkinTemp.isEnabled = connected
+
+                if (!connected) {
+                    binding.btnMeasureHeartRate.text = "No Watch Connected"
+                    binding.btnMeasureSpO2.text = "No Watch Connected"
+                    binding.btnMeasureSkinTemp.text = "No Watch Connected"
+                } else if (ActivityTrackingViewModel.activeSessionId != null) {
+                    binding.btnMeasureHeartRate.text = "Workout Active"
+                    binding.btnMeasureSpO2.text = "Workout Active"
+                    binding.btnMeasureSkinTemp.text = "Workout Active"
+                    binding.btnMeasureHeartRate.isEnabled = false
+                    binding.btnMeasureSpO2.isEnabled = false
+                    binding.btnMeasureSkinTemp.isEnabled = false
+                } else {
+                    binding.btnMeasureHeartRate.text = "Measure"
+                    binding.btnMeasureSpO2.text = "Measure"
+                    binding.btnMeasureSkinTemp.text = "Measure"
+                    startScheduledMeasurements()
+                }
+            }
+        }
+    }
+
     // ===== Measurement Control =====
 
     private suspend fun sendTrackerCommand(command: String, trackerType: String): Boolean {
@@ -183,6 +211,14 @@ class MetricsMonitoringActivity : AppCompatActivity() {
     }
 
     private fun startSingleMeasurement(trackerType: String) {
+        if (!isWatchConnected) {
+            Toast.makeText(this, "No watch connected", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (ActivityTrackingViewModel.activeSessionId != null) {
+            Toast.makeText(this, "Workout active — passive measurements paused", Toast.LENGTH_SHORT).show()
+            return
+        }
         coroutineScope.launch {
             val sent = sendTrackerCommand("start", trackerType)
             if (!sent) return@launch
@@ -235,6 +271,10 @@ class MetricsMonitoringActivity : AppCompatActivity() {
     }
 
     private fun startScheduledMeasurements() {
+        if (ActivityTrackingViewModel.activeSessionId != null) {
+            Log.d(TAG, "Scheduled measurements skipped — workout session active")
+            return
+        }
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         val hrMode = prefs.getString("hr_mode", "Manual") ?: "Manual"
         val spo2Mode = prefs.getString("spo2_mode", "Manual") ?: "Manual"

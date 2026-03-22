@@ -9,6 +9,7 @@ import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
 import com.example.fitguard.data.processing.CsvWriter
 import com.example.fitguard.data.processing.StressCalculator
 import com.example.fitguard.databinding.ActivitySleepStressBinding
@@ -26,6 +27,7 @@ class SleepStressActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySleepStressBinding
     private val stressCalculator = StressCalculator()
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
+    private var isWatchConnected = false
     private var isHrMeasuring = false
     private val stressHistory = mutableListOf<Float>()
     private var isSleepMonitoring = false
@@ -79,7 +81,7 @@ class SleepStressActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        startHrMeasurement()
+        checkWatchConnection()
     }
 
     override fun onPause() {
@@ -95,7 +97,34 @@ class SleepStressActivity : AppCompatActivity() {
         sleepSessionReceiver?.let { try { unregisterReceiver(it) } catch (_: Exception) {} }
     }
 
+    private fun checkWatchConnection() {
+        coroutineScope.launch(Dispatchers.IO) {
+            val connected = try {
+                Wearable.getNodeClient(this@SleepStressActivity)
+                    .connectedNodes.await().isNotEmpty()
+            } catch (_: Exception) { false }
+
+            withContext(Dispatchers.Main) {
+                isWatchConnected = connected
+                binding.switchSleepMonitor.isEnabled = connected
+
+                if (!connected && !isSleepMonitoring) {
+                    binding.tvSleepStatus.text = "No watch connected"
+                    binding.tvSleepStatus.visibility = View.VISIBLE
+                }
+
+                if (connected) {
+                    startHrMeasurement()
+                }
+            }
+        }
+    }
+
     private fun startHrMeasurement() {
+        if (ActivityTrackingViewModel.activeSessionId != null) {
+            Log.d(TAG, "HR measurement skipped — workout session active")
+            return
+        }
         coroutineScope.launch {
             val sent = sendTrackerCommand("start", "HeartRate")
             if (sent) {
@@ -193,6 +222,16 @@ class SleepStressActivity : AppCompatActivity() {
         binding.switchSleepMonitor.isChecked = isSleepMonitoring
 
         binding.switchSleepMonitor.setOnCheckedChangeListener { _, isChecked ->
+            if (!isWatchConnected && isChecked) {
+                binding.switchSleepMonitor.isChecked = false
+                Toast.makeText(this, "No watch connected", Toast.LENGTH_SHORT).show()
+                return@setOnCheckedChangeListener
+            }
+            if (ActivityTrackingViewModel.activeSessionId != null && isChecked) {
+                binding.switchSleepMonitor.isChecked = false
+                Toast.makeText(this, "Workout active — sleep monitoring unavailable", Toast.LENGTH_SHORT).show()
+                return@setOnCheckedChangeListener
+            }
             if (isChecked) {
                 SleepMonitorService.start(this)
                 isSleepMonitoring = true

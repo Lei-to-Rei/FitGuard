@@ -85,15 +85,6 @@
                             android:textColor="@color/text_dark"
                             android:fontFamily="@font/inter" />
 
-                        <com.google.android.material.switchmaterial.SwitchMaterial
-                            android:id="@+id/switchHeartRate"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            app:trackTint="#6EDB34"
-                            app:thumbTint="@color/white"
-                            android:checked="true"
-                            android:layout_marginEnd="8dp" />
-
                         <TextView
                             android:id="@+id/tvHeartRateValue"
                             android:layout_width="wrap_content"
@@ -102,7 +93,16 @@
                             android:textSize="28sp"
                             android:textStyle="bold"
                             android:textColor="@color/text_dark"
-                            android:fontFamily="@font/inter" />
+                            android:fontFamily="@font/inter"
+                            android:layout_marginEnd="8dp" />
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchHeartRate"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            app:trackTint="@color/switch_track_color"
+                            app:thumbTint="@color/white"
+                            android:checked="true" />
 
                     </LinearLayout>
 
@@ -262,15 +262,6 @@
                             android:textColor="@color/text_dark"
                             android:fontFamily="@font/inter" />
 
-                        <com.google.android.material.switchmaterial.SwitchMaterial
-                            android:id="@+id/switchSkinTemp"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            app:trackTint="#6EDB34"
-                            app:thumbTint="@color/white"
-                            android:checked="true"
-                            android:layout_marginEnd="8dp" />
-
                         <TextView
                             android:id="@+id/tvSkinTempValue"
                             android:layout_width="wrap_content"
@@ -279,7 +270,16 @@
                             android:textSize="28sp"
                             android:textStyle="bold"
                             android:textColor="@color/text_dark"
-                            android:fontFamily="@font/inter" />
+                            android:fontFamily="@font/inter"
+                            android:layout_marginEnd="8dp" />
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchSkinTemp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            app:trackTint="@color/switch_track_color"
+                            app:thumbTint="@color/white"
+                            android:checked="true" />
 
                     </LinearLayout>
 
@@ -339,15 +339,6 @@
                             android:textColor="@color/text_dark"
                             android:fontFamily="@font/inter" />
 
-                        <com.google.android.material.switchmaterial.SwitchMaterial
-                            android:id="@+id/switchSpO2"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            app:trackTint="#6EDB34"
-                            app:thumbTint="@color/white"
-                            android:checked="true"
-                            android:layout_marginEnd="8dp" />
-
                         <TextView
                             android:id="@+id/tvSpO2Value"
                             android:layout_width="wrap_content"
@@ -356,7 +347,16 @@
                             android:textSize="28sp"
                             android:textStyle="bold"
                             android:textColor="@color/text_dark"
-                            android:fontFamily="@font/inter" />
+                            android:fontFamily="@font/inter"
+                            android:layout_marginEnd="8dp" />
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchSpO2"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            app:trackTint="@color/switch_track_color"
+                            app:thumbTint="@color/white"
+                            android:checked="true" />
 
                     </LinearLayout>
 
