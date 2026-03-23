@@ -79,6 +79,14 @@ class LoginActivity : AppCompatActivity() {
                     showLoading(false)
                     Toast.makeText(this, state.message, Toast.LENGTH_SHORT).show()
                 }
+                is AuthState.GoogleAccountDetected -> {
+                    showLoading(false)
+                    showGoogleAccountDialog(state.message)
+                }
+                is AuthState.SignInFailed -> {
+                    showLoading(false)
+                    showSignInFailedDialog(state.message)
+                }
             }
         }
     }
@@ -115,6 +123,28 @@ class LoginActivity : AppCompatActivity() {
         } else {
             Toast.makeText(this, "Google Sign-In not initialized", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun showSignInFailedDialog(message: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Sign-In Failed")
+            .setMessage(message)
+            .setPositiveButton("Try Google Sign-In") { _, _ ->
+                startGoogleSignIn()
+            }
+            .setNegativeButton("OK", null)
+            .show()
+    }
+
+    private fun showGoogleAccountDialog(message: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Google Account Detected")
+            .setMessage(message)
+            .setPositiveButton("Sign in with Google") { _, _ ->
+                startGoogleSignIn()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun showVerificationDialog(message: String) {

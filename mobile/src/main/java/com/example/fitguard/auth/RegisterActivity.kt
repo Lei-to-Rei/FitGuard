@@ -69,6 +69,14 @@ class RegisterActivity : AppCompatActivity() {
                     showLoading(false)
                     Toast.makeText(this, state.message, Toast.LENGTH_SHORT).show()
                 }
+                is AuthState.GoogleAccountDetected -> {
+                    showLoading(false)
+                    Toast.makeText(this, state.message, Toast.LENGTH_LONG).show()
+                }
+                is AuthState.SignInFailed -> {
+                    showLoading(false)
+                    Toast.makeText(this, state.message, Toast.LENGTH_LONG).show()
+                }
             }
         }
     }

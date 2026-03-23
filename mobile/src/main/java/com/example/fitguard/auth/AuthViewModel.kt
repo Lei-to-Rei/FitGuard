@@ -73,7 +73,30 @@ class AuthViewModel : ViewModel() {
                     }
                 },
                 onFailure = { exception ->
-                    _authState.value = AuthState.Error(exception.message ?: "Login failed")
+                    // Check if this email is linked to a Google account
+                    val methodsResult = AuthRepository.fetchSignInMethodsForEmail(email)
+                    methodsResult.fold(
+                        onSuccess = { methods ->
+                            when {
+                                methods.contains("google.com") && !methods.contains("password") -> {
+                                    _authState.value = AuthState.GoogleAccountDetected(
+                                        "This account uses Google Sign-In. Please use the \"Sign in with Google\" button instead."
+                                    )
+                                }
+                                methods.isEmpty() -> {
+                                    _authState.value = AuthState.SignInFailed(
+                                        "Incorrect email or password. If you signed up with Google, please use the Google Sign-In button below."
+                                    )
+                                }
+                                else -> {
+                                    _authState.value = AuthState.Error("Incorrect email or password.")
+                                }
+                            }
+                        },
+                        onFailure = {
+                            _authState.value = AuthState.Error("Login failed. Please check your credentials and try again.")
+                        }
+                    )
                 }
             )
         }
@@ -172,4 +195,6 @@ sealed class AuthState {
     data class Error(val message: String) : AuthState()
     data class VerificationRequired(val message: String) : AuthState()
     data class Info(val message: String) : AuthState()
+    data class GoogleAccountDetected(val message: String) : AuthState()
+    data class SignInFailed(val message: String) : AuthState()
 }

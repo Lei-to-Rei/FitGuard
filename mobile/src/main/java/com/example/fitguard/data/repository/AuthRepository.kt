@@ -91,6 +91,15 @@ object AuthRepository {
         }
     }
 
+    suspend fun fetchSignInMethodsForEmail(email: String): Result<List<String>> {
+        return try {
+            val result = auth.fetchSignInMethodsForEmail(email).await()
+            Result.success(result.signInMethods ?: emptyList())
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun sendPasswordResetEmail(email: String): Result<Unit> {
         return try {
             auth.sendPasswordResetEmail(email).await()
