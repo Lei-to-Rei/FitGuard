@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
+import com.example.fitguard.features.fatigue.FatigueAlertManager
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -67,6 +68,7 @@ class SequenceProcessor(private val context: Context) {
             lastFlushedRpe = -1
             pendingRpe = null
             SequenceBatchAccumulator.clearAll()
+            FatigueAlertManager.reset()
         }
     }
 
@@ -215,6 +217,7 @@ class SequenceProcessor(private val context: Context) {
                 val pw = pendingWindows[i]
                 val finalFv = pw.fv.copy(rpeRaw = roundedRpe, fatigueLevel = fatigue)
                 CsvWriter.writeFeatureVector(finalFv, pw.userId, pw.sessionDir)
+                CsvWriter.writeFeatureJsonl(finalFv, pw.userId, pw.sessionDir)
                 broadcastResult(finalFv)
             }
             Log.d(TAG, "Flushed $n windows with RPE interpolation: " +
@@ -229,6 +232,7 @@ class SequenceProcessor(private val context: Context) {
                     fatigueLevel = fatigue
                 )
                 CsvWriter.writeFeatureVector(finalFv, pw.userId, pw.sessionDir)
+                CsvWriter.writeFeatureJsonl(finalFv, pw.userId, pw.sessionDir)
                 broadcastResult(finalFv)
             }
             Log.d(TAG, "Flushed $n windows with carry-forward RPE=$carryRpe (skipped)")
@@ -261,8 +265,10 @@ class SequenceProcessor(private val context: Context) {
             putExtra("spo2_mean_pct", fv.ppg.spo2MeanPct)
             putExtra("total_steps", fv.totalSteps)
             putExtra("cadence_spm", fv.cadenceSpm)
+            putExtra("feature_array", fv.toFeatureFloatArray())
         }
         context.sendBroadcast(intent)
+        FatigueAlertManager.onFeatureWindow(context, fv.toFeatureFloatArray())
         Log.d(TAG, "Broadcast SEQUENCE_PROCESSED for ${fv.sequenceId}")
     }
 }

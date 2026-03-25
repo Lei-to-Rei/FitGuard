@@ -79,6 +79,13 @@ class WearableMessageListenerService : WearableListenerService() {
                         putExtra("tracker_type", trackerType)
                     })
                 }
+                "/fitguard/fatigue/alert" -> {
+                    val level = json.optString("level", "Unknown")
+                    val levelIndex = json.optInt("levelIndex", 0)
+                    val percentDisplay = json.optInt("percentDisplay", 0)
+                    Log.d(TAG, "Fatigue alert: $level ($percentDisplay%)")
+                    FatigueAlertHelper.showAlert(this, level, levelIndex, percentDisplay)
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to process message: ${e.message}", e)
