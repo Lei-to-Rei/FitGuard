@@ -1,6 +1,8 @@
 package com.example.fitguard.presentation
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.samsung.android.service.health.tracking.HealthTracker
 import com.samsung.android.service.health.tracking.HealthTrackerException
@@ -24,8 +26,19 @@ class PassiveHealthTrackerManager(
     private var healthTrackingService: HealthTrackingService? = null
     private val activeTrackers = mutableMapOf<HealthTrackerType, HealthTracker>()
 
+    private var spo2RetryCount = 0
+    private var hrRetryCount = 0
+    private var hrDataReceived = false
+    private var hrWatchdogHandler: Handler? = null
+    private var hrWatchdogRunnable: Runnable? = null
+
     companion object {
         private const val TAG = "PassiveTrackerManager"
+        private const val MAX_SPO2_RETRIES = 3
+        private const val SPO2_RETRY_DELAY_MS = 2000L
+        private const val MAX_HR_RETRIES = 3
+        private const val HR_RETRY_DELAY_MS = 3000L
+        private const val HR_WATCHDOG_TIMEOUT_MS = 10_000L
     }
 
     fun initialize(onSuccess: () -> Unit, onError: (HealthTrackerException) -> Unit) {
@@ -128,16 +141,25 @@ class PassiveHealthTrackerManager(
 
     fun startHeartRateContinuous(): Boolean {
         return try {
+            hrDataReceived = false
             val tracker = healthTrackingService?.getHealthTracker(HealthTrackerType.HEART_RATE_CONTINUOUS)
 
             tracker?.setEventListener(object : HealthTracker.TrackerEventListener {
                 override fun onDataReceived(dataPoints: MutableList<DataPoint>) {
                     dataPoints.forEach { dp ->
+                        val status = dp.getValue(ValueKey.HeartRateSet.HEART_RATE_STATUS) ?: -1
+                        val heartRate = dp.getValue(ValueKey.HeartRateSet.HEART_RATE) ?: 0
+                        Log.d(TAG, "HR data: status=$status hr=$heartRate")
+                        if (status == 1 && heartRate > 0) {
+                            hrDataReceived = true
+                            cancelHrWatchdog()
+                            hrRetryCount = 0
+                        }
                         onDataCallback(HealthTrackerManager.TrackerData.HeartRateData(
-                            heartRate = dp.getValue(ValueKey.HeartRateSet.HEART_RATE) ?: 0,
+                            heartRate = heartRate,
                             ibiList = dp.getValue(ValueKey.HeartRateSet.IBI_LIST) ?: emptyList(),
                             ibiStatusList = dp.getValue(ValueKey.HeartRateSet.IBI_STATUS_LIST) ?: emptyList(),
-                            status = dp.getValue(ValueKey.HeartRateSet.HEART_RATE_STATUS) ?: 0,
+                            status = status,
                             timestamp = dp.timestamp
                         ))
                     }
@@ -149,11 +171,13 @@ class PassiveHealthTrackerManager(
 
                 override fun onError(error: HealthTracker.TrackerError) {
                     Log.e(TAG, "Heart Rate error: ${error.name}")
+                    retryHeartRate()
                 }
             })
 
             activeTrackers[HealthTrackerType.HEART_RATE_CONTINUOUS] = tracker!!
             Log.d(TAG, "Started Heart Rate Continuous tracker")
+            startHrWatchdog()
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start Heart Rate: ${e.message}", e)
@@ -168,12 +192,32 @@ class PassiveHealthTrackerManager(
             tracker?.setEventListener(object : HealthTracker.TrackerEventListener {
                 override fun onDataReceived(dataPoints: MutableList<DataPoint>) {
                     dataPoints.forEach { dp ->
-                        onDataCallback(HealthTrackerManager.TrackerData.SpO2Data(
-                            spO2 = dp.getValue(ValueKey.SpO2Set.SPO2) ?: 0,
-                            heartRate = dp.getValue(ValueKey.SpO2Set.HEART_RATE) ?: 0,
-                            status = dp.getValue(ValueKey.SpO2Set.STATUS) ?: 0,
-                            timestamp = dp.timestamp
-                        ))
+                        val status = dp.getValue(ValueKey.SpO2Set.STATUS) ?: -1
+                        val spo2 = dp.getValue(ValueKey.SpO2Set.SPO2) ?: 0
+                        val heartRate = dp.getValue(ValueKey.SpO2Set.HEART_RATE) ?: 0
+                        // Status 2 = completed, 0 = calculating, negative = error
+                        when {
+                            status == 2 && spo2 > 0 -> {
+                                spo2RetryCount = 0
+                                onDataCallback(HealthTrackerManager.TrackerData.SpO2Data(
+                                    spO2 = spo2,
+                                    heartRate = heartRate,
+                                    status = status,
+                                    timestamp = dp.timestamp
+                                ))
+                            }
+                            status == 2 && spo2 == 0 -> {
+                                Log.w(TAG, "SpO2 completed with spo2=0, retrying")
+                                retrySpO2()
+                            }
+                            status < 0 -> {
+                                Log.w(TAG, "SpO2 error: status=$status, retrying")
+                                retrySpO2()
+                            }
+                            else -> {
+                                Log.d(TAG, "SpO2 in progress: status=$status spo2=$spo2")
+                            }
+                        }
                     }
                 }
 
@@ -183,6 +227,7 @@ class PassiveHealthTrackerManager(
 
                 override fun onError(error: HealthTracker.TrackerError) {
                     Log.e(TAG, "SpO2 error: ${error.name}")
+                    retrySpO2()
                 }
             })
 
@@ -193,6 +238,58 @@ class PassiveHealthTrackerManager(
             Log.e(TAG, "Failed to start SpO2: ${e.message}", e)
             false
         }
+    }
+
+    private fun retrySpO2() {
+        if (spo2RetryCount >= MAX_SPO2_RETRIES) {
+            Log.w(TAG, "SpO2 max retries reached ($MAX_SPO2_RETRIES)")
+            spo2RetryCount = 0
+            onDataCallback(HealthTrackerManager.TrackerData.SpO2Data(
+                spO2 = 0, heartRate = 0, status = -1, timestamp = System.currentTimeMillis()
+            ))
+            return
+        }
+        spo2RetryCount++
+        Log.d(TAG, "SpO2 retry $spo2RetryCount/$MAX_SPO2_RETRIES")
+        stopTracker(HealthTrackerType.SPO2_ON_DEMAND)
+        Handler(Looper.getMainLooper()).postDelayed({ startSpO2OnDemand() }, SPO2_RETRY_DELAY_MS)
+    }
+
+    private fun retryHeartRate() {
+        cancelHrWatchdog()
+        if (hrRetryCount >= MAX_HR_RETRIES) {
+            Log.w(TAG, "HR max retries reached ($MAX_HR_RETRIES)")
+            hrRetryCount = 0
+            onDataCallback(HealthTrackerManager.TrackerData.HeartRateData(
+                heartRate = 0, ibiList = emptyList(), ibiStatusList = emptyList(),
+                status = -1, timestamp = System.currentTimeMillis()
+            ))
+            return
+        }
+        hrRetryCount++
+        Log.d(TAG, "HR retry $hrRetryCount/$MAX_HR_RETRIES")
+        stopTracker(HealthTrackerType.HEART_RATE_CONTINUOUS)
+        Handler(Looper.getMainLooper()).postDelayed({ startHeartRateContinuous() }, HR_RETRY_DELAY_MS)
+    }
+
+    private fun startHrWatchdog() {
+        cancelHrWatchdog()
+        val handler = Handler(Looper.getMainLooper())
+        val runnable = Runnable {
+            if (!hrDataReceived) {
+                Log.w(TAG, "HR watchdog: no valid data in ${HR_WATCHDOG_TIMEOUT_MS}ms, retrying")
+                retryHeartRate()
+            }
+        }
+        hrWatchdogHandler = handler
+        hrWatchdogRunnable = runnable
+        handler.postDelayed(runnable, HR_WATCHDOG_TIMEOUT_MS)
+    }
+
+    private fun cancelHrWatchdog() {
+        hrWatchdogRunnable?.let { hrWatchdogHandler?.removeCallbacks(it) }
+        hrWatchdogRunnable = null
+        hrWatchdogHandler = null
     }
 
     fun startSkinTemperatureOnDemand(): Boolean {
@@ -230,6 +327,9 @@ class PassiveHealthTrackerManager(
     }
 
     fun stopTracker(type: HealthTrackerType) {
+        if (type == HealthTrackerType.HEART_RATE_CONTINUOUS) {
+            cancelHrWatchdog()
+        }
         activeTrackers[type]?.let { tracker ->
             tracker.unsetEventListener()
             activeTrackers.remove(type)
@@ -244,6 +344,7 @@ class PassiveHealthTrackerManager(
     }
 
     fun disconnect() {
+        cancelHrWatchdog()
         stopAllTrackers()
         healthTrackingService?.disconnectService()
         Log.d(TAG, "Passive Health Tracking Service disconnected")

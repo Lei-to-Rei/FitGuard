@@ -134,6 +134,12 @@
             android:foregroundServiceType="health"
             android:exported="false" />
 
+        <!-- Passive Health Tracker Foreground Service -->
+        <service
+            android:name=".presentation.PassiveTrackerService"
+            android:foregroundServiceType="health"
+            android:exported="false" />
+
         <!-- RPE Notification Action Receiver -->
         <receiver
             android:name=".presentation.RpeNotificationReceiver"

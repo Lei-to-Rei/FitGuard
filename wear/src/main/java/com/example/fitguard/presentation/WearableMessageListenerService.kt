@@ -66,18 +66,12 @@ class WearableMessageListenerService : WearableListenerService() {
                 "/fitguard/tracker/start" -> {
                     val trackerType = json.optString("tracker_type", "")
                     Log.d(TAG, "Tracker start command: $trackerType")
-                    sendBroadcast(Intent(ACTION_START_TRACKER).apply {
-                        setPackage(packageName)
-                        putExtra("tracker_type", trackerType)
-                    })
+                    PassiveTrackerService.startTracker(this, trackerType)
                 }
                 "/fitguard/tracker/stop" -> {
                     val trackerType = json.optString("tracker_type", "")
                     Log.d(TAG, "Tracker stop command: $trackerType")
-                    sendBroadcast(Intent(ACTION_STOP_TRACKER).apply {
-                        setPackage(packageName)
-                        putExtra("tracker_type", trackerType)
-                    })
+                    PassiveTrackerService.stopTracker(this, trackerType)
                 }
                 "/fitguard/fatigue/alert" -> {
                     val level = json.optString("level", "Unknown")

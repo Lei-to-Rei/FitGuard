@@ -34,7 +34,6 @@ class MainActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var buttonContainer: LinearLayout
     private lateinit var healthTrackerManager: HealthTrackerManager
-    private lateinit var passiveTrackerManager: PassiveHealthTrackerManager
     private lateinit var sensorSequenceManager: SensorSequenceManager
     private lateinit var rpeNotificationHelper: RpeNotificationHelper
     private val activeTrackerButtons = mutableMapOf<HealthTrackerType, Button>()
@@ -42,7 +41,6 @@ class MainActivity : Activity() {
     private var sequenceButton: Button? = null
     private var sequenceStatusText: TextView? = null
     private var activityCommandReceiver: BroadcastReceiver? = null
-    private var trackerCommandReceiver: BroadcastReceiver? = null
     private var rpeResponseReceiver: BroadcastReceiver? = null
     private var rpeDismissReceiver: BroadcastReceiver? = null
     private var lastRpeValue: Int = -1
@@ -123,7 +121,6 @@ class MainActivity : Activity() {
 
         checkAndRequestPermissions()
         registerActivityCommandReceiver()
-        registerTrackerCommandReceiver()
         registerRpeResponseReceiver()
         registerRpeDismissReceiver()
     }
@@ -316,15 +313,6 @@ class MainActivity : Activity() {
                     statusText.text = "✓ Connected to Health Service"
                     createTrackerButtons()
                 }
-                // Initialize passive tracker manager with its own service connection
-                passiveTrackerManager = PassiveHealthTrackerManager(
-                    context = this,
-                    onDataCallback = { data -> sendDataToPhone(data) }
-                )
-                passiveTrackerManager.initialize(
-                    onSuccess = { Log.d(TAG, "Passive tracker manager connected") },
-                    onError = { e -> Log.e(TAG, "Passive tracker manager failed: ${e.errorCode}") }
-                )
             },
             onError = { error ->
                 runOnUiThread {
@@ -421,8 +409,8 @@ class MainActivity : Activity() {
 
         if (availableTrackers.contains(HealthTrackerType.HEART_RATE_CONTINUOUS)) {
             addTrackerButton("HR", HealthTrackerType.HEART_RATE_CONTINUOUS, "BPM + IBI",
-                start = { passiveTrackerManager.startHeartRateContinuous() },
-                stop = { passiveTrackerManager.stopTracker(HealthTrackerType.HEART_RATE_CONTINUOUS) }
+                start = { PassiveTrackerService.startTracker(this, "HeartRate"); true },
+                stop = { PassiveTrackerService.stopTracker(this, "HeartRate") }
             )
         }
 
@@ -430,15 +418,15 @@ class MainActivity : Activity() {
 
         if (availableTrackers.contains(HealthTrackerType.SPO2_ON_DEMAND)) {
             addTrackerButton("SpO2", HealthTrackerType.SPO2_ON_DEMAND, "Blood oxygen %",
-                start = { passiveTrackerManager.startSpO2OnDemand() },
-                stop = { passiveTrackerManager.stopTracker(HealthTrackerType.SPO2_ON_DEMAND) }
+                start = { PassiveTrackerService.startTracker(this, "SpO2"); true },
+                stop = { PassiveTrackerService.stopTracker(this, "SpO2") }
             )
         }
 
         if (availableTrackers.contains(HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND)) {
             addTrackerButton("Skin Temp", HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND, "Object + Ambient",
-                start = { passiveTrackerManager.startSkinTemperatureOnDemand() },
-                stop = { passiveTrackerManager.stopTracker(HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND) }
+                start = { PassiveTrackerService.startTracker(this, "SkinTemp"); true },
+                stop = { PassiveTrackerService.stopTracker(this, "SkinTemp") }
             )
         }
 
@@ -721,10 +709,10 @@ class MainActivity : Activity() {
                                 statusText.text = "Session started from phone"
                             }
                             // Stop any running passive trackers before starting sequence session
-                            if (::passiveTrackerManager.isInitialized) {
-                                passiveTrackerManager.stopAllTrackers()
-                                Log.d(TAG, "Stopped all passive trackers before starting sequence session")
-                            }
+                            PassiveTrackerService.stopTracker(this@MainActivity, "HeartRate")
+                            PassiveTrackerService.stopTracker(this@MainActivity, "SpO2")
+                            PassiveTrackerService.stopTracker(this@MainActivity, "SkinTemp")
+                            Log.d(TAG, "Stopped all passive trackers before starting sequence session")
                             sensorSequenceManager.startContinuousSession(sessionId, activityType)
                             sendMessageToPhone("/fitguard/activity/ack", JSONObject().apply {
                                 put("session_id", sessionId)
@@ -774,55 +762,6 @@ class MainActivity : Activity() {
             addAction(WearableMessageListenerService.ACTION_STOP_ACTIVITY)
         }
         registerReceiver(activityCommandReceiver, filter, RECEIVER_NOT_EXPORTED)
-    }
-
-    private fun registerTrackerCommandReceiver() {
-        trackerCommandReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                intent ?: return
-                val trackerType = intent.getStringExtra("tracker_type") ?: return
-                if (!::passiveTrackerManager.isInitialized) {
-                    Log.w(TAG, "Passive tracker manager not ready, ignoring $trackerType")
-                    return
-                }
-                when (intent.action) {
-                    WearableMessageListenerService.ACTION_START_TRACKER -> {
-                        // Block passive trackers while sequence session is active
-                        if (::sensorSequenceManager.isInitialized && sensorSequenceManager.isRunning) {
-                            Log.w(TAG, "Passive tracker start blocked — sequence session active: $trackerType")
-                            return
-                        }
-                        val started = when (trackerType) {
-                            "HeartRate" -> passiveTrackerManager.startHeartRateContinuous()
-                            "SpO2" -> passiveTrackerManager.startSpO2OnDemand()
-                            "SkinTemp" -> passiveTrackerManager.startSkinTemperatureOnDemand()
-                            "PPG" -> passiveTrackerManager.startPPGContinuous()
-                            "Accelerometer" -> passiveTrackerManager.startAccelerometerContinuous()
-                            else -> false
-                        }
-                        Log.d(TAG, "Passive tracker start $trackerType: ${if (started) "OK" else "FAILED"}")
-                    }
-                    WearableMessageListenerService.ACTION_STOP_TRACKER -> {
-                        val htType = when (trackerType) {
-                            "HeartRate" -> HealthTrackerType.HEART_RATE_CONTINUOUS
-                            "SpO2" -> HealthTrackerType.SPO2_ON_DEMAND
-                            "SkinTemp" -> HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND
-                            "PPG" -> HealthTrackerType.PPG_CONTINUOUS
-                            "Accelerometer" -> HealthTrackerType.ACCELEROMETER_CONTINUOUS
-                            else -> return
-                        }
-                        passiveTrackerManager.stopTracker(htType)
-                        Log.d(TAG, "Passive tracker stopped: $trackerType")
-                    }
-                }
-            }
-        }
-
-        val filter = IntentFilter().apply {
-            addAction(WearableMessageListenerService.ACTION_START_TRACKER)
-            addAction(WearableMessageListenerService.ACTION_STOP_TRACKER)
-        }
-        registerReceiver(trackerCommandReceiver, filter, RECEIVER_NOT_EXPORTED)
     }
 
     private fun registerRpeResponseReceiver() {
@@ -920,9 +859,6 @@ class MainActivity : Activity() {
         activityCommandReceiver?.let {
             try { unregisterReceiver(it) } catch (_: Exception) {}
         }
-        trackerCommandReceiver?.let {
-            try { unregisterReceiver(it) } catch (_: Exception) {}
-        }
         rpeResponseReceiver?.let {
             try { unregisterReceiver(it) } catch (_: Exception) {}
         }
@@ -941,9 +877,6 @@ class MainActivity : Activity() {
                 })
             }
             sensorSequenceManager.cancelSequence()
-        }
-        if (::passiveTrackerManager.isInitialized) {
-            passiveTrackerManager.disconnect()
         }
         healthTrackerManager.disconnect()
     }

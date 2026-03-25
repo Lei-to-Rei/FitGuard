@@ -12,6 +12,7 @@ import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
 import com.example.fitguard.data.processing.CsvWriter
 import com.example.fitguard.data.processing.SequenceProcessor
 import com.example.fitguard.databinding.ActivityMetricsMonitoringBinding
+import com.example.fitguard.services.HealthMonitorService
 import com.google.android.gms.wearable.Wearable
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.*
@@ -29,32 +30,26 @@ class MetricsMonitoringActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "MetricsMonitoring"
 
-        // Samsung recommended measurement durations
-        private const val HR_MEASUREMENT_DURATION_MS = 15_000L       // 15s for single HR reading
-        private const val SPO2_MEASUREMENT_TIMEOUT_MS = 30_000L      // 30s max, auto-stops on valid
-        private const val SKIN_TEMP_MEASUREMENT_TIMEOUT_MS = 30_000L // 30s max, auto-stops on valid
-
-        // Auto-measurement interval
-        private const val AUTO_INTERVAL_MS = 600_000L // 10 minutes
+        // Manual measurement durations (only used for manual "Measure" button)
+        private const val HR_MEASUREMENT_DURATION_MS = 15_000L
+        private const val SPO2_MEASUREMENT_TIMEOUT_MS = 90_000L
+        private const val SKIN_TEMP_MEASUREMENT_TIMEOUT_MS = 30_000L
+        private const val MAX_HR_RETRIES = 2
 
         private const val PREFS_NAME = "health_tracker_prefs"
     }
 
-    // Coroutine scope for sending messages to watch
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
-
-    // Interval scheduling
     private val handler = Handler(Looper.getMainLooper())
-    private var hrIntervalRunnable: Runnable? = null
-    private var spo2IntervalRunnable: Runnable? = null
-    private var skinTempIntervalRunnable: Runnable? = null
     private var hrStopRunnable: Runnable? = null
 
-    // Active measurement tracking
+    // Manual measurement tracking (only for "Measure" button presses)
     private var isWatchConnected = false
-    private var isHrMeasuring = false
-    private var isSpo2Measuring = false
-    private var isSkinTempMeasuring = false
+    private var isManualHrMeasuring = false
+    private var isManualSpo2Measuring = false
+    private var isManualSkinTempMeasuring = false
+    private var hrReceivedValid = false
+    private var hrRetryCount = 0
 
     // HR stats tracking
     private val hrValues = mutableListOf<Float>()
@@ -71,6 +66,12 @@ class MetricsMonitoringActivity : AppCompatActivity() {
         registerReceiver(receiver, IntentFilter("com.example.fitguard.HEALTH_DATA"), RECEIVER_NOT_EXPORTED)
         registerReceiver(hrvReceiver, IntentFilter(SequenceProcessor.ACTION_SEQUENCE_PROCESSED), RECEIVER_NOT_EXPORTED)
 
+        // Restore switch states before setting up listeners
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        binding.switchHeartRate.isChecked = prefs.getBoolean("switch_hr", false)
+        binding.switchSpO2.isChecked = prefs.getBoolean("switch_spo2", false)
+        binding.switchSkinTemp.isChecked = prefs.getBoolean("switch_skin_temp", false)
+
         setupSensorToggles()
         setupMeasureButtons()
         loadHistoricalData()
@@ -78,53 +79,82 @@ class MetricsMonitoringActivity : AppCompatActivity() {
 
     private fun setupSensorToggles() {
         binding.switchHeartRate.setOnCheckedChangeListener { _, isChecked ->
-            if (!isChecked && isHrMeasuring) {
-                stopMeasurement("HeartRate")
-                hrIntervalRunnable?.let { handler.removeCallbacks(it) }
-                hrIntervalRunnable = null
-            }
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                .putBoolean("switch_hr", isChecked).apply()
+            updateServiceState()
             updateMeasureButtons()
         }
 
         binding.switchSkinTemp.setOnCheckedChangeListener { _, isChecked ->
-            if (!isChecked && isSkinTempMeasuring) {
-                stopMeasurement("SkinTemp")
-                skinTempIntervalRunnable?.let { handler.removeCallbacks(it) }
-                skinTempIntervalRunnable = null
-            }
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                .putBoolean("switch_skin_temp", isChecked).apply()
+            updateServiceState()
             updateMeasureButtons()
         }
 
         binding.switchSpO2.setOnCheckedChangeListener { _, isChecked ->
-            if (!isChecked && isSpo2Measuring) {
-                stopMeasurement("SpO2")
-                spo2IntervalRunnable?.let { handler.removeCallbacks(it) }
-                spo2IntervalRunnable = null
-            }
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                .putBoolean("switch_spo2", isChecked).apply()
+            updateServiceState()
             updateMeasureButtons()
+        }
+    }
+
+    private fun updateServiceState() {
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val hrEnabled = prefs.getBoolean("switch_hr", false)
+        val spo2Enabled = prefs.getBoolean("switch_spo2", false)
+        val skinTempEnabled = prefs.getBoolean("switch_skin_temp", false)
+
+        val hrMode = prefs.getString("hr_mode", "Manual") ?: "Manual"
+        val spo2Mode = prefs.getString("spo2_mode", "Manual") ?: "Manual"
+        val skinTempMode = prefs.getString("skin_temp_mode", "Manual") ?: "Manual"
+
+        // Service needed if any enabled tracker has a non-Manual mode
+        val needsService = (hrEnabled && hrMode != "Manual")
+                || (spo2Enabled && spo2Mode != "Manual")
+                || (skinTempEnabled && skinTempMode != "Manual")
+
+        if (needsService) {
+            HealthMonitorService.start(this)
+        } else {
+            HealthMonitorService.stop(this)
         }
     }
 
     override fun onResume() {
         super.onResume()
+
+        // Restore switch states (may have changed in Settings)
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        binding.switchHeartRate.isChecked = prefs.getBoolean("switch_hr", false)
+        binding.switchSpO2.isChecked = prefs.getBoolean("switch_spo2", false)
+        binding.switchSkinTemp.isChecked = prefs.getBoolean("switch_skin_temp", false)
+
         updateMeasureButtons()
         checkWatchConnection()
+
+        // Ensure service state matches current prefs
+        updateServiceState()
     }
 
     override fun onPause() {
         super.onPause()
-        stopAllMeasurements()
+        // Only stop manual measurements — service handles scheduled ones
+        stopManualMeasurement("HeartRate")
+        stopManualMeasurement("SpO2")
+        stopManualMeasurement("SkinTemp")
     }
 
     private fun setupMeasureButtons() {
         binding.btnMeasureHeartRate.setOnClickListener {
-            startSingleMeasurement("HeartRate")
+            startManualMeasurement("HeartRate")
         }
         binding.btnMeasureSpO2.setOnClickListener {
-            startSingleMeasurement("SpO2")
+            startManualMeasurement("SpO2")
         }
         binding.btnMeasureSkinTemp.setOnClickListener {
-            startSingleMeasurement("SkinTemp")
+            startManualMeasurement("SkinTemp")
         }
     }
 
@@ -173,13 +203,12 @@ class MetricsMonitoringActivity : AppCompatActivity() {
                     binding.btnMeasureHeartRate.text = "Measure"
                     binding.btnMeasureSpO2.text = "Measure"
                     binding.btnMeasureSkinTemp.text = "Measure"
-                    startScheduledMeasurements()
                 }
             }
         }
     }
 
-    // ===== Measurement Control =====
+    // ===== Manual Measurement (Measure button only) =====
 
     private suspend fun sendTrackerCommand(command: String, trackerType: String): Boolean {
         return withContext(Dispatchers.IO) {
@@ -210,7 +239,7 @@ class MetricsMonitoringActivity : AppCompatActivity() {
         }
     }
 
-    private fun startSingleMeasurement(trackerType: String) {
+    private fun startManualMeasurement(trackerType: String) {
         if (!isWatchConnected) {
             Toast.makeText(this, "No watch connected", Toast.LENGTH_SHORT).show()
             return
@@ -225,149 +254,68 @@ class MetricsMonitoringActivity : AppCompatActivity() {
 
             when (trackerType) {
                 "HeartRate" -> {
-                    isHrMeasuring = true
+                    isManualHrMeasuring = true
+                    hrReceivedValid = false
                     binding.btnMeasureHeartRate.text = "Measuring..."
                     binding.btnMeasureHeartRate.isEnabled = false
-                    hrStopRunnable = Runnable { stopMeasurement("HeartRate") }
+                    hrStopRunnable = Runnable {
+                        if (!hrReceivedValid && hrRetryCount < MAX_HR_RETRIES) {
+                            hrRetryCount++
+                            Log.d(TAG, "HR retry $hrRetryCount — no valid data yet")
+                            handler.postDelayed(hrStopRunnable!!, HR_MEASUREMENT_DURATION_MS)
+                        } else {
+                            stopManualMeasurement("HeartRate")
+                            if (!hrReceivedValid) {
+                                Toast.makeText(this@MetricsMonitoringActivity,
+                                    "HR measurement failed — try again", Toast.LENGTH_SHORT).show()
+                            }
+                            hrRetryCount = 0
+                        }
+                    }
                     handler.postDelayed(hrStopRunnable!!, HR_MEASUREMENT_DURATION_MS)
                 }
                 "SpO2" -> {
-                    isSpo2Measuring = true
+                    isManualSpo2Measuring = true
                     binding.btnMeasureSpO2.text = "Measuring..."
                     binding.btnMeasureSpO2.isEnabled = false
-                    handler.postDelayed({ stopMeasurement("SpO2") }, SPO2_MEASUREMENT_TIMEOUT_MS)
+                    handler.postDelayed({ stopManualMeasurement("SpO2") }, SPO2_MEASUREMENT_TIMEOUT_MS)
                 }
                 "SkinTemp" -> {
-                    isSkinTempMeasuring = true
+                    isManualSkinTempMeasuring = true
                     binding.btnMeasureSkinTemp.text = "Measuring..."
                     binding.btnMeasureSkinTemp.isEnabled = false
-                    handler.postDelayed({ stopMeasurement("SkinTemp") }, SKIN_TEMP_MEASUREMENT_TIMEOUT_MS)
+                    handler.postDelayed({ stopManualMeasurement("SkinTemp") }, SKIN_TEMP_MEASUREMENT_TIMEOUT_MS)
                 }
             }
         }
     }
 
-    private fun stopMeasurement(trackerType: String) {
-        coroutineScope.launch { sendTrackerCommand("stop", trackerType) }
+    private fun stopManualMeasurement(trackerType: String) {
         when (trackerType) {
             "HeartRate" -> {
-                isHrMeasuring = false
+                if (!isManualHrMeasuring) return
+                isManualHrMeasuring = false
+                coroutineScope.launch { sendTrackerCommand("stop", trackerType) }
                 hrStopRunnable?.let { handler.removeCallbacks(it) }
                 hrStopRunnable = null
                 binding.btnMeasureHeartRate.text = "Measure"
                 binding.btnMeasureHeartRate.isEnabled = true
             }
             "SpO2" -> {
-                isSpo2Measuring = false
+                if (!isManualSpo2Measuring) return
+                isManualSpo2Measuring = false
+                coroutineScope.launch { sendTrackerCommand("stop", trackerType) }
                 binding.btnMeasureSpO2.text = "Measure"
                 binding.btnMeasureSpO2.isEnabled = true
             }
             "SkinTemp" -> {
-                isSkinTempMeasuring = false
+                if (!isManualSkinTempMeasuring) return
+                isManualSkinTempMeasuring = false
+                coroutineScope.launch { sendTrackerCommand("stop", trackerType) }
                 binding.btnMeasureSkinTemp.text = "Measure"
                 binding.btnMeasureSkinTemp.isEnabled = true
             }
         }
-    }
-
-    private fun startScheduledMeasurements() {
-        if (ActivityTrackingViewModel.activeSessionId != null) {
-            Log.d(TAG, "Scheduled measurements skipped — workout session active")
-            return
-        }
-        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-        val hrMode = prefs.getString("hr_mode", "Manual") ?: "Manual"
-        val spo2Mode = prefs.getString("spo2_mode", "Manual") ?: "Manual"
-        val skinTempMode = prefs.getString("skin_temp_mode", "Manual") ?: "Manual"
-
-        // Heart Rate
-        if (binding.switchHeartRate.isChecked) {
-            when (hrMode) {
-                "Continuous" -> {
-                    coroutineScope.launch {
-                        val sent = sendTrackerCommand("start", "HeartRate")
-                        if (sent) isHrMeasuring = true
-                    }
-                }
-                "Every 10 minutes" -> {
-                    startSingleMeasurement("HeartRate")
-                    hrIntervalRunnable = object : Runnable {
-                        override fun run() {
-                            if (binding.switchHeartRate.isChecked) {
-                                startSingleMeasurement("HeartRate")
-                                handler.postDelayed(this, AUTO_INTERVAL_MS)
-                            }
-                        }
-                    }
-                    handler.postDelayed(hrIntervalRunnable!!, AUTO_INTERVAL_MS)
-                }
-                // "Manual" -> user clicks Measure button
-            }
-        }
-
-        // SpO2
-        if (binding.switchSpO2.isChecked && spo2Mode == "Every 10 minutes") {
-            startSingleMeasurement("SpO2")
-            spo2IntervalRunnable = object : Runnable {
-                override fun run() {
-                    if (binding.switchSpO2.isChecked) {
-                        startSingleMeasurement("SpO2")
-                        handler.postDelayed(this, AUTO_INTERVAL_MS)
-                    }
-                }
-            }
-            handler.postDelayed(spo2IntervalRunnable!!, AUTO_INTERVAL_MS)
-        }
-
-        // Skin Temperature
-        if (binding.switchSkinTemp.isChecked && skinTempMode == "Every 10 minutes") {
-            startSingleMeasurement("SkinTemp")
-            skinTempIntervalRunnable = object : Runnable {
-                override fun run() {
-                    if (binding.switchSkinTemp.isChecked) {
-                        startSingleMeasurement("SkinTemp")
-                        handler.postDelayed(this, AUTO_INTERVAL_MS)
-                    }
-                }
-            }
-            handler.postDelayed(skinTempIntervalRunnable!!, AUTO_INTERVAL_MS)
-        }
-    }
-
-    private fun stopAllMeasurements() {
-        // Cancel interval runnables
-        hrIntervalRunnable?.let { handler.removeCallbacks(it) }
-        spo2IntervalRunnable?.let { handler.removeCallbacks(it) }
-        skinTempIntervalRunnable?.let { handler.removeCallbacks(it) }
-        hrIntervalRunnable = null
-        spo2IntervalRunnable = null
-        skinTempIntervalRunnable = null
-
-        // Cancel pending HR stop
-        hrStopRunnable?.let { handler.removeCallbacks(it) }
-        hrStopRunnable = null
-
-        // Stop active measurements on watch
-        if (isHrMeasuring) {
-            coroutineScope.launch { sendTrackerCommand("stop", "HeartRate") }
-            isHrMeasuring = false
-        }
-        if (isSpo2Measuring) {
-            coroutineScope.launch { sendTrackerCommand("stop", "SpO2") }
-            isSpo2Measuring = false
-        }
-        if (isSkinTempMeasuring) {
-            coroutineScope.launch { sendTrackerCommand("stop", "SkinTemp") }
-            isSkinTempMeasuring = false
-        }
-
-        // Reset button states
-        binding.btnMeasureHeartRate.text = "Measure"
-        binding.btnMeasureHeartRate.isEnabled = true
-        binding.btnMeasureSpO2.text = "Measure"
-        binding.btnMeasureSpO2.isEnabled = true
-        binding.btnMeasureSkinTemp.text = "Measure"
-        binding.btnMeasureSkinTemp.isEnabled = true
     }
 
     // ===== HR Stats =====
@@ -471,7 +419,7 @@ class MetricsMonitoringActivity : AppCompatActivity() {
         }
     }
 
-    // ===== Data Receivers =====
+    // ===== Data Receivers (UI updates only) =====
 
     inner class HealthDataReceiver : BroadcastReceiver() {
         override fun onReceive(ctx: Context?, intent: Intent?) {
@@ -482,7 +430,9 @@ class MetricsMonitoringActivity : AppCompatActivity() {
                 when (type) {
                     "HeartRate" -> {
                         val hr = json.optInt("heart_rate", 0)
-                        if (hr > 0) {
+                        val status = json.optInt("status", -1)
+                        if (hr > 0 && status == 1) {
+                            hrReceivedValid = true
                             binding.tvHeartRateValue.text = "$hr bpm"
                             binding.chartHeartRate.addDataPoint(hr.toFloat())
                             hrValues.add(hr.toFloat())
@@ -492,12 +442,14 @@ class MetricsMonitoringActivity : AppCompatActivity() {
                     "SpO2" -> {
                         val spo2 = json.optInt("spo2", 0)
                         val status = json.optInt("status", -1)
-                        if (spo2 > 0) {
+                        if (spo2 > 0 && status == 2) {
                             binding.tvSpO2Value.text = "$spo2% SpO2"
                             binding.chartBloodOxygen.addDataPoint(spo2.toFloat())
-                        }
-                        if (status == 0 && isSpo2Measuring) {
-                            stopMeasurement("SpO2")
+                            if (isManualSpo2Measuring) stopManualMeasurement("SpO2")
+                        } else if (status < 0 && isManualSpo2Measuring) {
+                            stopManualMeasurement("SpO2")
+                            Toast.makeText(this@MetricsMonitoringActivity,
+                                "SpO2 measurement failed — try again", Toast.LENGTH_SHORT).show()
                         }
                     }
                     "SkinTemp" -> {
@@ -508,8 +460,8 @@ class MetricsMonitoringActivity : AppCompatActivity() {
                             binding.tvSkinTempValue.text = String.format("%.1f °C", objTemp)
                             binding.chartSkinTemp.addDataPoint(objTemp, ambTemp)
                         }
-                        if (status == 0 && isSkinTempMeasuring) {
-                            stopMeasurement("SkinTemp")
+                        if (status == 0 && isManualSkinTempMeasuring) {
+                            stopManualMeasurement("SkinTemp")
                         }
                     }
                     "PPG" -> {
@@ -544,9 +496,8 @@ class MetricsMonitoringActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        stopAllMeasurements()
         coroutineScope.cancel()
-        try { unregisterReceiver(receiver) } catch (e: Exception) {}
-        try { unregisterReceiver(hrvReceiver) } catch (e: Exception) {}
+        try { unregisterReceiver(receiver) } catch (_: Exception) {}
+        try { unregisterReceiver(hrvReceiver) } catch (_: Exception) {}
     }
 }
