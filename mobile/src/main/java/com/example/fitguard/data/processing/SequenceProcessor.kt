@@ -70,6 +70,25 @@ class SequenceProcessor(private val context: Context) {
             SequenceBatchAccumulator.clearAll()
             FatigueAlertManager.reset()
         }
+
+        /**
+         * Flush any remaining pending windows to CSV with carry-forward RPE,
+         * then clear all buffers. Call this on session stop so features.csv
+         * is always written before the session directory is finalized.
+         */
+        fun flushRemainingAndClear() {
+            if (pendingWindows.isNotEmpty()) {
+                val carryRpe = if (lastFlushedRpe >= 0) lastFlushedRpe else -1
+                val fatigue = RpeState.fatigueLevelForRpe(carryRpe)
+                for (pw in pendingWindows) {
+                    val finalFv = pw.fv.copy(rpeRaw = carryRpe, fatigueLevel = fatigue)
+                    CsvWriter.writeFeatureVector(finalFv, pw.userId, pw.sessionDir)
+                    CsvWriter.writeFeatureJsonl(finalFv, pw.userId, pw.sessionDir)
+                }
+                Log.d(TAG, "Flushed ${pendingWindows.size} remaining windows on session end with RPE=$carryRpe")
+            }
+            clearBuffer()
+        }
     }
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
