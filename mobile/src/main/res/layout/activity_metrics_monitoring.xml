@@ -89,11 +89,20 @@
                             android:id="@+id/tvHeartRateValue"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="72 bpm"
+                            android:text="-- bpm"
                             android:textSize="28sp"
                             android:textStyle="bold"
                             android:textColor="@color/text_dark"
-                            android:fontFamily="@font/inter" />
+                            android:fontFamily="@font/inter"
+                            android:layout_marginEnd="8dp" />
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchHeartRate"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            app:trackTint="@color/switch_track_color"
+                            app:thumbTint="@color/white"
+                            android:checked="true" />
 
                     </LinearLayout>
 
@@ -103,8 +112,22 @@
                         android:layout_height="200dp"
                         android:layout_marginTop="12dp" />
 
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnMeasureHeartRate"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:layout_marginTop="12dp"
+                        android:text="Measure"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:fontFamily="@font/inter"
+                        app:cornerRadius="12dp"
+                        app:backgroundTint="#6EDB34"
+                        android:textColor="@color/white" />
+
                     <!-- Stats Row -->
                     <LinearLayout
+                        android:id="@+id/hrStatsRow"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
@@ -132,7 +155,7 @@
                                 android:id="@+id/tvHrAvg"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="78"
+                                android:text="--"
                                 android:textSize="18sp"
                                 android:textStyle="bold"
                                 android:textColor="@color/text_dark"
@@ -163,7 +186,7 @@
                                 android:id="@+id/tvHrMin"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="63"
+                                android:text="--"
                                 android:textSize="18sp"
                                 android:textStyle="bold"
                                 android:textColor="@color/text_dark"
@@ -193,7 +216,7 @@
                                 android:id="@+id/tvHrMax"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="102"
+                                android:text="--"
                                 android:textSize="18sp"
                                 android:textStyle="bold"
                                 android:textColor="@color/text_dark"
@@ -207,7 +230,7 @@
 
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- ===== Blood Pressure Card ===== -->
+            <!-- ===== Skin Temperature Card ===== -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -233,29 +256,51 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:text="Blood Pressure"
+                            android:text="Skin Temperature"
                             android:textSize="16sp"
                             android:textStyle="bold"
                             android:textColor="@color/text_dark"
                             android:fontFamily="@font/inter" />
 
                         <TextView
-                            android:id="@+id/tvBPValue"
+                            android:id="@+id/tvSkinTempValue"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="120/80 mmHg"
+                            android:text="-- °C"
                             android:textSize="28sp"
                             android:textStyle="bold"
                             android:textColor="@color/text_dark"
-                            android:fontFamily="@font/inter" />
+                            android:fontFamily="@font/inter"
+                            android:layout_marginEnd="8dp" />
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchSkinTemp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            app:trackTint="@color/switch_track_color"
+                            app:thumbTint="@color/white"
+                            android:checked="true" />
 
                     </LinearLayout>
 
-                    <com.example.fitguard.ui.chart.BloodPressureChartView
-                        android:id="@+id/chartBloodPressure"
+                    <com.example.fitguard.ui.chart.SkinTemperatureChartView
+                        android:id="@+id/chartSkinTemp"
                         android:layout_width="match_parent"
                         android:layout_height="200dp"
                         android:layout_marginTop="12dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnMeasureSkinTemp"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:layout_marginTop="12dp"
+                        android:text="Measure"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:fontFamily="@font/inter"
+                        app:cornerRadius="12dp"
+                        app:backgroundTint="#6EDB34"
+                        android:textColor="@color/white" />
 
                 </LinearLayout>
 
@@ -298,11 +343,20 @@
                             android:id="@+id/tvSpO2Value"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="85% SpO2"
+                            android:text="-- %"
                             android:textSize="28sp"
                             android:textStyle="bold"
                             android:textColor="@color/text_dark"
-                            android:fontFamily="@font/inter" />
+                            android:fontFamily="@font/inter"
+                            android:layout_marginEnd="8dp" />
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchSpO2"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            app:trackTint="@color/switch_track_color"
+                            app:thumbTint="@color/white"
+                            android:checked="true" />
 
                     </LinearLayout>
 
@@ -311,6 +365,19 @@
                         android:layout_width="match_parent"
                         android:layout_height="260dp"
                         android:layout_marginTop="12dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnMeasureSpO2"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:layout_marginTop="12dp"
+                        android:text="Measure"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:fontFamily="@font/inter"
+                        app:cornerRadius="12dp"
+                        app:backgroundTint="#6EDB34"
+                        android:textColor="@color/white" />
 
                 </LinearLayout>
 

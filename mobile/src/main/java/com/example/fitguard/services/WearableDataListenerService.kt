@@ -40,7 +40,10 @@ class WearableDataListenerService : WearableListenerService() {
                 Log.d(TAG, "DataEvent: path=$path")
                 val dataMap = DataMapItem.fromDataItem(event.dataItem).dataMap
                 when {
-                    path == "/health_tracker_data" -> processHealthData(dataMap.toBundle())
+                    path == "/health_tracker_data" -> {
+                        processHealthData(dataMap.toBundle())
+                        processedUris.add(uri)
+                    }
                     path?.startsWith("/health_tracker_batch/") == true -> {
                         processBatchData(dataMap)
                         processedUris.add(uri)
@@ -147,11 +150,43 @@ class WearableDataListenerService : WearableListenerService() {
                     put("ir", bundle.getInt("ir"))
                     put("red", bundle.getInt("red"))
                 }
+                "SpO2" -> {
+                    put("spo2", bundle.getInt("spo2"))
+                    put("heart_rate", bundle.getInt("heart_rate"))
+                    put("status", bundle.getInt("status"))
+                }
+                "HeartRate" -> {
+                    put("heart_rate", bundle.getInt("heart_rate"))
+                    put("ibi_list", bundle.getIntegerArrayList("ibi_list")?.toString() ?: "[]")
+                    put("ibi_status_list", bundle.getIntegerArrayList("ibi_status_list")?.toString() ?: "[]")
+                    put("status", bundle.getInt("status"))
+                }
+                "SkinTemp" -> {
+                    put("status", bundle.getInt("status"))
+                    put("object_temp", bundle.getFloat("object_temp"))
+                    put("ambient_temp", bundle.getFloat("ambient_temp"))
+                }
+                "Accelerometer" -> {
+                    put("x", bundle.getInt("x"))
+                    put("y", bundle.getInt("y"))
+                    put("z", bundle.getInt("z"))
+                }
             }
         }
 
+        val logMsg = when (type) {
+            "PPG" -> "PPG green=${json.optInt("green")} ir=${json.optInt("ir")} red=${json.optInt("red")}"
+            "SpO2" -> "SpO2=${json.optInt("spo2")}% HR=${json.optInt("heart_rate")} status=${json.optInt("status")}"
+            "HeartRate" -> "HR=${json.optInt("heart_rate")} BPM IBI=${json.optString("ibi_list")} status=${json.optInt("status")}"
+            "SkinTemp" -> "SkinTemp obj=${json.optDouble("object_temp")}°C amb=${json.optDouble("ambient_temp")}°C status=${json.optInt("status")}"
+            "Accelerometer" -> "Accel x=${json.optInt("x")} y=${json.optInt("y")} z=${json.optInt("z")}"
+            else -> type
+        }
+        Log.d(TAG, "Health data received: $logMsg")
+
         saveToFile(type, json.toString())
         sendBroadcast(android.content.Intent("com.example.fitguard.HEALTH_DATA").apply {
+            setPackage(packageName)
             putExtra("type", type)
             putExtra("data", json.toString())
         })
@@ -277,10 +312,21 @@ class WearableDataListenerService : WearableListenerService() {
 
     private fun saveToFile(type: String, data: String) {
         try {
-            val sessionDir = ActivityTrackingViewModel.activeSessionDir ?: ""
-            val dir = com.example.fitguard.data.processing.CsvWriter.getOutputDir(currentUserId, sessionDir)
-            File(dir, "${type}_${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())}.jsonl")
-                .appendText(data + "\n")
+            when (type) {
+                "SpO2", "HeartRate", "SkinTemp" -> {
+                    val dateFolder = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                    val baseDir = com.example.fitguard.data.processing.CsvWriter.getOutputDir(currentUserId, "")
+                    val dir = File(baseDir, dateFolder)
+                    dir.mkdirs()
+                    File(dir, "$type.jsonl").appendText(data + "\n")
+                }
+                else -> {
+                    val sessionDir = ActivityTrackingViewModel.activeSessionDir ?: ""
+                    val dir = com.example.fitguard.data.processing.CsvWriter.getOutputDir(currentUserId, sessionDir)
+                    File(dir, "${type}_${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())}.jsonl")
+                        .appendText(data + "\n")
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Save failed: ${e.message}")
         }

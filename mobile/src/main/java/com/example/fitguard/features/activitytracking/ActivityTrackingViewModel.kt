@@ -267,7 +267,7 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         cancelConnectTimeout()
         saveRouteData()
         stopLocationTracking()
-        SequenceProcessor.clearBuffer()
+        SequenceProcessor.flushRemainingAndClear()
         activeSessionId = null
         activeSessionDir = null
         SessionForegroundService.stop(getApplication())
@@ -317,7 +317,7 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         saveRouteData()
         stopTimer()
         stopLocationTracking()
-        SequenceProcessor.clearBuffer()
+        SequenceProcessor.flushRemainingAndClear()
         RpeState.reset()
         activeSessionId = null
         activeSessionDir = null

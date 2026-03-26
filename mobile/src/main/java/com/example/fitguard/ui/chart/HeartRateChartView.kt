@@ -78,10 +78,6 @@ class HeartRateChartView @JvmOverloads constructor(
     private val maxY = 100f
     private val gridLines = listOf(40f, 60f, 80f, 100f)
 
-    init {
-        dataPoints.addAll(listOf(72f, 68f, 75f, 80f, 65f, 70f, 78f, 72f, 85f, 60f, 68f, 74f))
-        highlightIndex = 8
-    }
 
     fun setData(points: List<Float>, highlight: Int = -1) {
         dataPoints.clear()
@@ -101,7 +97,6 @@ class HeartRateChartView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (dataPoints.isEmpty()) return
 
         val leftPad = 60f
         val rightPad = 20f
@@ -111,12 +106,14 @@ class HeartRateChartView @JvmOverloads constructor(
         val chartW = width - leftPad - rightPad
         val chartH = height - topPad - bottomPad
 
-        // Draw grid lines and labels
+        // Draw grid lines and labels (always visible)
         for (value in gridLines) {
             val y = topPad + chartH * (1f - (value - minY) / (maxY - minY))
             canvas.drawLine(leftPad, y, width - rightPad, y, gridPaint)
             canvas.drawText(value.toInt().toString(), leftPad - 10f, y + 10f, gridTextPaint)
         }
+
+        if (dataPoints.isEmpty()) return
 
         // Build path
         val stepX = chartW / (dataPoints.size - 1).coerceAtLeast(1)

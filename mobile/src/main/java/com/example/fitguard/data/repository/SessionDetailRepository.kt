@@ -16,6 +16,7 @@ object SessionDetailRepository {
     fun loadRouteCsv(userId: String, sessionDir: String): List<RoutePoint> {
         return try {
             val file = File(CsvWriter.getOutputDir(userId, sessionDir), "route.csv")
+            Log.d(TAG, "loadRouteCsv: path=${file.absolutePath}, exists=${file.exists()}")
             if (!file.exists()) return emptyList()
             val lines = file.readLines()
             if (lines.size < 2) return emptyList()

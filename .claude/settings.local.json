@@ -56,7 +56,14 @@
       "Bash(ls -la /c/Users/claud/AndroidStudioProjects/FitGuard/mobile/src/main/res/drawable*/)",
       "Bash(grep:*)",
       "Bash(ls:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(gh api:*)",
+      "Bash(where gh:*)",
+      "Bash(gh repo:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(cp \"C:/Users/claud/Downloads/fatigue_model.tflite\" \"C:/Users/claud/AndroidStudioProjects/FitGuard/mobile/src/main/assets/\")",
+      "Bash(cp \"C:/Users/claud/Downloads/scaler_params.json\" \"C:/Users/claud/AndroidStudioProjects/FitGuard/mobile/src/main/assets/\")"
     ]
   }
 }

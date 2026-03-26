@@ -26,6 +26,9 @@
     <!-- Blood Oxygen (SpO2) - Required for oxygen saturation monitoring -->
     <uses-permission android:name="android.permission.health.READ_OXYGEN_SATURATION" />
 
+    <!-- Skin Temperature - Required for skin temperature monitoring -->
+    <uses-permission android:name="android.permission.health.READ_SKIN_TEMPERATURE" />
+
     <!-- Background Health Data Access - For continuous monitoring -->
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
 
@@ -131,6 +134,12 @@
             android:foregroundServiceType="health"
             android:exported="false" />
 
+        <!-- Passive Health Tracker Foreground Service -->
+        <service
+            android:name=".presentation.PassiveTrackerService"
+            android:foregroundServiceType="health"
+            android:exported="false" />
+
         <!-- RPE Notification Action Receiver -->
         <receiver
             android:name=".presentation.RpeNotificationReceiver"
@@ -153,6 +162,16 @@
                 <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
                 <data android:scheme="wear" android:host="*"
                     android:pathPrefix="/fitguard/device" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data android:scheme="wear" android:host="*"
+                    android:pathPrefix="/fitguard/tracker" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data android:scheme="wear" android:host="*"
+                    android:pathPrefix="/fitguard/fatigue" />
             </intent-filter>
         </service>
 

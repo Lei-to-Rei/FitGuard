@@ -1,9 +1,14 @@
 package com.example.fitguard.features.profile
 
+import android.graphics.Color
 import android.os.Bundle
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.example.fitguard.R
 import com.example.fitguard.databinding.ActivitySettingsBinding
+import com.example.fitguard.services.HealthMonitorService
 
 class SettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
@@ -16,6 +21,7 @@ class SettingsActivity : AppCompatActivity() {
         binding.btnBack.setOnClickListener { finish() }
 
         setupToggles()
+        restorePreferences()
         setupPreferences()
         setupDataManagement()
     }
@@ -32,33 +38,100 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    private fun restorePreferences() {
+        val prefs = getSharedPreferences("health_tracker_prefs", MODE_PRIVATE)
+
+        when (prefs.getString("hr_mode", "Manual")) {
+            "Manual" -> binding.rgHeartRate.check(binding.rbHrManual.id)
+            "Every 10 minutes" -> binding.rgHeartRate.check(binding.rbHr10Min.id)
+            "Continuous" -> binding.rgHeartRate.check(binding.rbHrContinuous.id)
+        }
+
+        when (prefs.getString("spo2_mode", "Manual")) {
+            "Manual" -> binding.rgSpO2.check(binding.rbSpO2Manual.id)
+            "Every 10 minutes" -> binding.rgSpO2.check(binding.rbSpO210Min.id)
+        }
+
+        when (prefs.getString("skin_temp_mode", "Manual")) {
+            "Manual" -> binding.rgSkinTemp.check(binding.rbSkinTempManual.id)
+            "Every 10 minutes" -> binding.rgSkinTemp.check(binding.rbSkinTemp10Min.id)
+        }
+
+        // Set initial text colors based on restored selection
+        updateRadioGroupColors(binding.rgHeartRate, binding.rgHeartRate.checkedRadioButtonId)
+        updateRadioGroupColors(binding.rgSpO2, binding.rgSpO2.checkedRadioButtonId)
+        updateRadioGroupColors(binding.rgSkinTemp, binding.rgSkinTemp.checkedRadioButtonId)
+    }
+
+    private fun updateRadioGroupColors(group: RadioGroup, checkedId: Int) {
+        for (i in 0 until group.childCount) {
+            val rb = group.getChildAt(i) as? RadioButton ?: continue
+            rb.setTextColor(
+                if (rb.id == checkedId) Color.parseColor("#6EDB34")
+                else getColor(R.color.text_dark)
+            )
+        }
+    }
+
     private fun setupPreferences() {
-        binding.rgAppearance.setOnCheckedChangeListener { _, checkedId ->
+        val prefs = getSharedPreferences("health_tracker_prefs", MODE_PRIVATE)
+
+        binding.rgHeartRate.setOnCheckedChangeListener { group, checkedId ->
             val mode = when (checkedId) {
-                binding.rbPhoneDefault.id -> "Phone Default"
-                binding.rbLightMode.id -> "Light Mode"
-                binding.rbDarkMode.id -> "Dark Mode"
+                binding.rbHrManual.id -> "Manual"
+                binding.rbHr10Min.id -> "Every 10 minutes"
+                binding.rbHrContinuous.id -> "Continuous"
                 else -> return@setOnCheckedChangeListener
             }
-            Toast.makeText(this, "Appearance: $mode", Toast.LENGTH_SHORT).show()
+            prefs.edit().putString("hr_mode", mode).apply()
+            if (mode != "Manual") {
+                prefs.edit().putBoolean("switch_hr", true).apply()
+            }
+            updateRadioGroupColors(group, checkedId)
+            updateServiceState()
+            Toast.makeText(this, "Heart Rate: $mode", Toast.LENGTH_SHORT).show()
         }
 
-        binding.rgUnits.setOnCheckedChangeListener { _, checkedId ->
-            val unit = when (checkedId) {
-                binding.rbKilometers.id -> "Kilometers"
-                binding.rbMiles.id -> "Miles"
+        binding.rgSpO2.setOnCheckedChangeListener { group, checkedId ->
+            val mode = when (checkedId) {
+                binding.rbSpO2Manual.id -> "Manual"
+                binding.rbSpO210Min.id -> "Every 10 minutes"
                 else -> return@setOnCheckedChangeListener
             }
-            Toast.makeText(this, "Units: $unit", Toast.LENGTH_SHORT).show()
+            prefs.edit().putString("spo2_mode", mode).apply()
+            if (mode != "Manual") {
+                prefs.edit().putBoolean("switch_spo2", true).apply()
+            }
+            updateRadioGroupColors(group, checkedId)
+            updateServiceState()
+            Toast.makeText(this, "SpO2: $mode", Toast.LENGTH_SHORT).show()
         }
 
-        binding.rgTemperature.setOnCheckedChangeListener { _, checkedId ->
-            val temp = when (checkedId) {
-                binding.rbCelsius.id -> "Celsius"
-                binding.rbFahrenheit.id -> "Fahrenheit"
+        binding.rgSkinTemp.setOnCheckedChangeListener { group, checkedId ->
+            val mode = when (checkedId) {
+                binding.rbSkinTempManual.id -> "Manual"
+                binding.rbSkinTemp10Min.id -> "Every 10 minutes"
                 else -> return@setOnCheckedChangeListener
             }
-            Toast.makeText(this, "Temperature: $temp", Toast.LENGTH_SHORT).show()
+            prefs.edit().putString("skin_temp_mode", mode).apply()
+            if (mode != "Manual") {
+                prefs.edit().putBoolean("switch_skin_temp", true).apply()
+            }
+            updateRadioGroupColors(group, checkedId)
+            updateServiceState()
+            Toast.makeText(this, "Skin Temperature: $mode", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun updateServiceState() {
+        val prefs = getSharedPreferences("health_tracker_prefs", MODE_PRIVATE)
+        val needsService = (prefs.getBoolean("switch_hr", false) && prefs.getString("hr_mode", "Manual") != "Manual")
+                || (prefs.getBoolean("switch_spo2", false) && prefs.getString("spo2_mode", "Manual") != "Manual")
+                || (prefs.getBoolean("switch_skin_temp", false) && prefs.getString("skin_temp_mode", "Manual") != "Manual")
+        if (needsService) {
+            HealthMonitorService.start(this)
+        } else {
+            HealthMonitorService.stop(this)
         }
     }
 

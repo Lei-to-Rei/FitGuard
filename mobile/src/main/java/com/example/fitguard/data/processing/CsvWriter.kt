@@ -3,6 +3,7 @@ package com.example.fitguard.data.processing
 import android.location.Location
 import android.os.Environment
 import android.util.Log
+import org.json.JSONObject
 import com.example.fitguard.data.model.UserProfile
 import com.example.fitguard.features.activitytracking.LocationPoint
 import com.google.firebase.firestore.FirebaseFirestore
@@ -101,6 +102,53 @@ object CsvWriter {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to write features CSV: ${e.message}", e)
+        }
+    }
+
+    fun writeFeatureJsonl(fv: FeatureVector, userId: String = "", sessionDir: String = "") {
+        try {
+            val dir = getOutputDir(userId, sessionDir)
+            val file = File(dir, "features.jsonl")
+            val json = JSONObject().apply {
+                put("timestamp", fv.timestamp)
+                put("sequence_id", fv.sequenceId)
+                put("mean_hr_bpm", fv.ppg.meanHrBpm)
+                put("hr_std_bpm", fv.ppg.hrStdBpm)
+                put("hr_min_bpm", fv.ppg.hrMinBpm)
+                put("hr_max_bpm", fv.ppg.hrMaxBpm)
+                put("hr_range_bpm", fv.ppg.hrRangeBpm)
+                put("hr_slope_bpm_per_s", fv.ppg.hrSlopeBpmPerS)
+                put("nn_quality_ratio", fv.ppg.nnQualityRatio)
+                put("sdnn_ms", fv.ppg.sdnnMs)
+                put("rmssd_ms", fv.ppg.rmssdMs)
+                put("pnn50_pct", fv.ppg.pnn50Pct)
+                put("mean_nn_ms", fv.ppg.meanNnMs)
+                put("cv_nn", fv.ppg.cvNn)
+                put("lf_power_ms2", fv.ppg.lfPowerMs2)
+                put("hf_power_ms2", fv.ppg.hfPowerMs2)
+                put("lf_hf_ratio", fv.ppg.lfHfRatio)
+                put("total_power_ms2", fv.ppg.totalPowerMs2)
+                put("spo2_mean_pct", fv.ppg.spo2MeanPct)
+                put("spo2_min_pct", fv.ppg.spo2MinPct)
+                put("spo2_std_pct", fv.ppg.spo2StdPct)
+                put("accel_x_mean", fv.accelXMean)
+                put("accel_y_mean", fv.accelYMean)
+                put("accel_z_mean", fv.accelZMean)
+                put("accel_x_var", fv.accelXVar)
+                put("accel_y_var", fv.accelYVar)
+                put("accel_z_var", fv.accelZVar)
+                put("accel_mag_mean", fv.accelMagMean)
+                put("accel_mag_var", fv.accelMagVar)
+                put("accel_peak", fv.accelPeak)
+                put("total_steps", fv.totalSteps)
+                put("cadence_spm", fv.cadenceSpm)
+                put("activity_label", fv.activityLabel)
+                put("fatigue_level", fv.fatigueLevel)
+                put("rpe_raw", fv.rpeRaw)
+            }
+            file.appendText(json.toString() + "\n")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to write features JSONL: ${e.message}", e)
         }
     }
 

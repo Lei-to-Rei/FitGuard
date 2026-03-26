@@ -17,6 +17,8 @@ class WearableMessageListenerService : WearableListenerService() {
         private const val TAG = "WearMsgListener"
         const val ACTION_START_ACTIVITY = "com.example.fitguard.wear.START_ACTIVITY"
         const val ACTION_STOP_ACTIVITY = "com.example.fitguard.wear.STOP_ACTIVITY"
+        const val ACTION_START_TRACKER = "com.example.fitguard.wear.START_TRACKER"
+        const val ACTION_STOP_TRACKER = "com.example.fitguard.wear.STOP_TRACKER"
     }
 
     override fun onMessageReceived(messageEvent: MessageEvent) {
@@ -60,6 +62,23 @@ class WearableMessageListenerService : WearableListenerService() {
                         putExtra(RpePromptActivity.EXTRA_RPE_VALUE, rpeValue)
                         putExtra(RpePromptActivity.EXTRA_SESSION_ID, sessionId)
                     })
+                }
+                "/fitguard/tracker/start" -> {
+                    val trackerType = json.optString("tracker_type", "")
+                    Log.d(TAG, "Tracker start command: $trackerType")
+                    PassiveTrackerService.startTracker(this, trackerType)
+                }
+                "/fitguard/tracker/stop" -> {
+                    val trackerType = json.optString("tracker_type", "")
+                    Log.d(TAG, "Tracker stop command: $trackerType")
+                    PassiveTrackerService.stopTracker(this, trackerType)
+                }
+                "/fitguard/fatigue/alert" -> {
+                    val level = json.optString("level", "Unknown")
+                    val levelIndex = json.optInt("levelIndex", 0)
+                    val percentDisplay = json.optInt("percentDisplay", 0)
+                    Log.d(TAG, "Fatigue alert: $level ($percentDisplay%)")
+                    FatigueAlertHelper.showAlert(this, level, levelIndex, percentDisplay)
                 }
             }
         } catch (e: Exception) {

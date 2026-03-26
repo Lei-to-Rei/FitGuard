@@ -40,6 +40,10 @@ android {
     buildFeatures {
         viewBinding = true
     }
+
+    aaptOptions {
+        noCompress("tflite")
+    }
 }
 
 dependencies {
@@ -83,6 +87,9 @@ dependencies {
 
     // OpenStreetMap (osmdroid) - free map display
     implementation("org.osmdroid:osmdroid-android:6.1.18")
+
+    // TensorFlow Lite for on-device fatigue prediction
+    implementation("com.google.android.gms:play-services-tflite-java:16.4.0")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

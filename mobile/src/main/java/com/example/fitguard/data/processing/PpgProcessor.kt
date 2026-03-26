@@ -48,7 +48,21 @@ data class FeatureVector(
     val activityLabel: String = "",
     val fatigueLevel: String = "",
     val rpeRaw: Int = -1
-)
+) {
+    /** Extract 30 model features in scaler_params.json order. */
+    fun toFeatureFloatArray(): FloatArray = floatArrayOf(
+        ppg.meanHrBpm.toFloat(), ppg.hrStdBpm.toFloat(), ppg.hrMinBpm.toFloat(),
+        ppg.hrMaxBpm.toFloat(), ppg.hrRangeBpm.toFloat(), ppg.hrSlopeBpmPerS.toFloat(),
+        ppg.nnQualityRatio.toFloat(), ppg.sdnnMs.toFloat(), ppg.rmssdMs.toFloat(),
+        ppg.pnn50Pct.toFloat(), ppg.meanNnMs.toFloat(), ppg.cvNn.toFloat(),
+        ppg.lfPowerMs2.toFloat(), ppg.hfPowerMs2.toFloat(), ppg.lfHfRatio.toFloat(),
+        ppg.totalPowerMs2.toFloat(), ppg.spo2MeanPct.toFloat(), ppg.spo2MinPct.toFloat(),
+        ppg.spo2StdPct.toFloat(), accelXMean.toFloat(), accelYMean.toFloat(),
+        accelZMean.toFloat(), accelXVar.toFloat(), accelYVar.toFloat(),
+        accelZVar.toFloat(), accelMagMean.toFloat(), accelMagVar.toFloat(),
+        accelPeak.toFloat(), totalSteps.toFloat(), cadenceSpm.toFloat()
+    )
+}
 
 object PpgProcessor {
 

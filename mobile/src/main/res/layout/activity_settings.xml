@@ -236,7 +236,7 @@
                 android:paddingTop="14dp"
                 android:paddingBottom="14dp" />
 
-            <!-- Appearance -->
+            <!-- Heart Rate -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -248,38 +248,24 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Appearance"
+                    android:text="Heart Rate"
                     android:textSize="15sp"
                     android:textStyle="bold"
                     android:textColor="@color/text_dark"
                     android:fontFamily="@font/inter" />
 
                 <RadioGroup
-                    android:id="@+id/rgAppearance"
+                    android:id="@+id/rgHeartRate"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
                     android:layout_marginTop="8dp">
 
                     <RadioButton
-                        android:id="@+id/rbPhoneDefault"
+                        android:id="@+id/rbHrManual"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Phone Default"
-                        android:textSize="14sp"
-                        android:textColor="#6EDB34"
-                        android:fontFamily="@font/inter"
-                        android:buttonTint="#6EDB34"
-                        android:checked="true"
-                        android:paddingStart="8dp"
-                        android:paddingTop="8dp"
-                        android:paddingBottom="8dp" />
-
-                    <RadioButton
-                        android:id="@+id/rbLightMode"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="Light Mode"
+                        android:text="Manual"
                         android:textSize="14sp"
                         android:textColor="@color/text_dark"
                         android:fontFamily="@font/inter"
@@ -289,10 +275,23 @@
                         android:paddingBottom="8dp" />
 
                     <RadioButton
-                        android:id="@+id/rbDarkMode"
+                        android:id="@+id/rbHr10Min"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Dark Mode"
+                        android:text="Every 10 minutes"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_dark"
+                        android:fontFamily="@font/inter"
+                        android:buttonTint="#6EDB34"
+                        android:paddingStart="8dp"
+                        android:paddingTop="8dp"
+                        android:paddingBottom="8dp" />
+
+                    <RadioButton
+                        android:id="@+id/rbHrContinuous"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Continuous"
                         android:textSize="14sp"
                         android:textColor="@color/text_dark"
                         android:fontFamily="@font/inter"
@@ -314,7 +313,7 @@
                 android:layout_marginEnd="20dp"
                 android:layout_marginTop="8dp" />
 
-            <!-- Units of Measurement -->
+            <!-- Blood Oxygen (SpO2) -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -326,42 +325,41 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Units of Measurement"
+                    android:text="Blood Oxygen (SpO2)"
                     android:textSize="15sp"
                     android:textStyle="bold"
                     android:textColor="@color/text_dark"
                     android:fontFamily="@font/inter" />
 
                 <RadioGroup
-                    android:id="@+id/rgUnits"
+                    android:id="@+id/rgSpO2"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
                     android:layout_marginTop="8dp">
 
                     <RadioButton
-                        android:id="@+id/rbKilometers"
+                        android:id="@+id/rbSpO2Manual"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Kilometers"
+                        android:text="Manual"
                         android:textSize="14sp"
-                        android:textColor="#6EDB34"
+                        android:textColor="@color/text_dark"
                         android:fontFamily="@font/inter"
                         android:buttonTint="#6EDB34"
-                        android:checked="true"
                         android:paddingStart="8dp"
                         android:paddingTop="8dp"
                         android:paddingBottom="8dp" />
 
                     <RadioButton
-                        android:id="@+id/rbMiles"
+                        android:id="@+id/rbSpO210Min"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Miles"
+                        android:text="Every 10 minutes"
                         android:textSize="14sp"
                         android:textColor="@color/text_dark"
                         android:fontFamily="@font/inter"
-                        android:buttonTint="@color/green_primary"
+                        android:buttonTint="#6EDB34"
                         android:paddingStart="8dp"
                         android:paddingTop="8dp"
                         android:paddingBottom="8dp" />
@@ -379,7 +377,7 @@
                 android:layout_marginEnd="20dp"
                 android:layout_marginTop="8dp" />
 
-            <!-- Temperature -->
+            <!-- Skin Temperature -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -392,42 +390,41 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Temperature"
+                    android:text="Skin Temperature"
                     android:textSize="15sp"
                     android:textStyle="bold"
                     android:textColor="@color/text_dark"
                     android:fontFamily="@font/inter" />
 
                 <RadioGroup
-                    android:id="@+id/rgTemperature"
+                    android:id="@+id/rgSkinTemp"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
                     android:layout_marginTop="8dp">
 
                     <RadioButton
-                        android:id="@+id/rbCelsius"
+                        android:id="@+id/rbSkinTempManual"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Celsius"
+                        android:text="Manual"
                         android:textSize="14sp"
-                        android:textColor="@color/green_primary"
+                        android:textColor="@color/text_dark"
                         android:fontFamily="@font/inter"
-                        android:buttonTint="@color/green_primary"
-                        android:checked="true"
+                        android:buttonTint="#6EDB34"
                         android:paddingStart="8dp"
                         android:paddingTop="8dp"
                         android:paddingBottom="8dp" />
 
                     <RadioButton
-                        android:id="@+id/rbFahrenheit"
+                        android:id="@+id/rbSkinTemp10Min"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Fahrenheit"
+                        android:text="Every 10 minutes"
                         android:textSize="14sp"
                         android:textColor="@color/text_dark"
                         android:fontFamily="@font/inter"
-                        android:buttonTint="@color/green_primary"
+                        android:buttonTint="#6EDB34"
                         android:paddingStart="8dp"
                         android:paddingTop="8dp"
                         android:paddingBottom="8dp" />

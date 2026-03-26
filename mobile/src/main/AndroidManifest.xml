@@ -12,6 +12,8 @@
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
 
     <!-- Location tracking for activity routes -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -240,6 +242,18 @@
             android:name=".services.SessionForegroundService"
             android:exported="false"
             android:foregroundServiceType="dataSync|location" />
+
+        <!-- Sleep Monitor Foreground Service -->
+        <service
+            android:name=".features.sleep.SleepMonitorService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- Health Monitor Foreground Service (persistent metrics tracking) -->
+        <service
+            android:name=".services.HealthMonitorService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
     </application>
 

@@ -1,7 +1,13 @@
 package com.example.fitguard
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.fitguard.auth.LoginActivity
@@ -20,6 +26,15 @@ import com.example.fitguard.ui.model.DashboardItem
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var dashboardAdapter: DashboardAdapter
+    private var storagePermissionDialogShown = false
+
+    private val manageStorageLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (!Environment.isExternalStorageManager()) {
+            Toast.makeText(this, "Storage permission not granted. Some features may not work.", Toast.LENGTH_LONG).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,6 +53,7 @@ class MainActivity : AppCompatActivity() {
         setupDashboard()
         setupBottomNavigation()
         setupIndicatorDots()
+        checkStoragePermission()
     }
 
     override fun onResume() {
@@ -108,6 +124,30 @@ class MainActivity : AppCompatActivity() {
             val stressFraction = 54f / 100f
             binding.dotStress.translationX = barWidth * stressFraction
         }
+    }
+
+    private fun checkStoragePermission() {
+        if (!Environment.isExternalStorageManager()) {
+            showStoragePermissionDialog()
+        }
+    }
+
+    private fun showStoragePermissionDialog() {
+        if (storagePermissionDialogShown) return
+        storagePermissionDialogShown = true
+
+        AlertDialog.Builder(this)
+            .setTitle("Storage Access Required")
+            .setMessage("FitGuard needs access to manage files in your Downloads folder to save and review workout data. Please grant \"All files access\" on the next screen.")
+            .setPositiveButton("Grant") { _, _ ->
+                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                manageStorageLauncher.launch(intent)
+            }
+            .setNegativeButton("Later", null)
+            .setCancelable(false)
+            .show()
     }
 
     private fun setupBottomNavigation() {

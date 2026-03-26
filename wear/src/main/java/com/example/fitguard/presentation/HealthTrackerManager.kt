@@ -10,10 +10,11 @@ import com.samsung.android.service.health.tracking.data.HealthTrackerType
 import com.samsung.android.service.health.tracking.data.ValueKey
 
 /**
- * Health Tracker Manager for Samsung Watch 7
- * Samsung Health Sensor API 1.4.1 - All Available Trackers
+ * Health Tracker Manager for Samsung Watch 7 — Activity Tracking (Sequence Pipeline)
+ * Samsung Health Sensor API 1.4.1
  *
- * Working Trackers: PPG, Heart Rate, SpO2, ECG, BIA, Sweat Loss
+ * Only PPG + Accelerometer. HR, SpO2, SkinTemp are in PassiveHealthTrackerManager.
+ * TrackerData sealed class kept here as shared data types for both managers.
  */
 class HealthTrackerManager(
     private val context: Context,
@@ -39,6 +40,28 @@ class HealthTrackerManager(
             val green: Int?,
             val ir: Int?,
             val red: Int?,
+            val timestamp: Long
+        ) : TrackerData()
+
+        data class SpO2Data(
+            val spO2: Int,
+            val heartRate: Int,
+            val status: Int,
+            val timestamp: Long
+        ) : TrackerData()
+
+        data class HeartRateData(
+            val heartRate: Int,
+            val ibiList: List<Int>,
+            val ibiStatusList: List<Int>,
+            val status: Int,
+            val timestamp: Long
+        ) : TrackerData()
+
+        data class SkinTemperatureData(
+            val status: Int,
+            val objectTemperature: Float?,
+            val ambientTemperature: Float?,
             val timestamp: Long
         ) : TrackerData()
 

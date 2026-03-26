@@ -55,6 +55,7 @@ class MainActivity : Activity() {
         private val HEALTH_PERMISSIONS_API36 = arrayOf(
             "android.permission.health.READ_HEART_RATE",
             "android.permission.health.READ_OXYGEN_SATURATION",
+            "android.permission.health.READ_SKIN_TEMPERATURE",
             "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
         )
 
@@ -148,6 +149,7 @@ class MainActivity : Activity() {
                 ✓ Fitness & Wellness
                   • Heart Rate
                   • Blood Oxygen (SpO2)
+                  • Skin Temperature
                   • Background Health Data
 
                 ✓ Physical Activity
@@ -215,6 +217,7 @@ class MainActivity : Activity() {
         return when {
             permission.contains("health.READ_HEART_RATE") -> "• Heart Rate"
             permission.contains("health.READ_OXYGEN_SATURATION") -> "• Blood Oxygen"
+            permission.contains("health.READ_SKIN_TEMPERATURE") -> "• Skin Temperature"
             permission.contains("health.READ_HEALTH_DATA_IN_BACKGROUND") -> "• Background Health Data"
             permission == Manifest.permission.BODY_SENSORS -> "• Body Sensors"
             permission == Manifest.permission.BODY_SENSORS_BACKGROUND -> "• Background Body Sensors"
@@ -393,15 +396,38 @@ class MainActivity : Activity() {
         addSectionHeader("Continuous Trackers")
 
         if (availableTrackers.contains(HealthTrackerType.PPG_CONTINUOUS)) {
-            addTrackerButton("PPG", HealthTrackerType.PPG_CONTINUOUS, "3 LEDs @ 100Hz") {
-                healthTrackerManager.startPPGContinuous()
-            }
+            addTrackerButton("PPG", HealthTrackerType.PPG_CONTINUOUS, "3 LEDs @ 100Hz",
+                start = { healthTrackerManager.startPPGContinuous() }
+            )
         }
 
         if (availableTrackers.contains(HealthTrackerType.ACCELEROMETER_CONTINUOUS)) {
-            addTrackerButton("Accel", HealthTrackerType.ACCELEROMETER_CONTINUOUS, "X/Y/Z axes") {
-                healthTrackerManager.startAccelerometerContinuous()
-            }
+            addTrackerButton("Accel", HealthTrackerType.ACCELEROMETER_CONTINUOUS, "X/Y/Z axes",
+                start = { healthTrackerManager.startAccelerometerContinuous() }
+            )
+        }
+
+        if (availableTrackers.contains(HealthTrackerType.HEART_RATE_CONTINUOUS)) {
+            addTrackerButton("HR", HealthTrackerType.HEART_RATE_CONTINUOUS, "BPM + IBI",
+                start = { PassiveTrackerService.startTracker(this, "HeartRate"); true },
+                stop = { PassiveTrackerService.stopTracker(this, "HeartRate") }
+            )
+        }
+
+        addSectionHeader("On-Demand Trackers")
+
+        if (availableTrackers.contains(HealthTrackerType.SPO2_ON_DEMAND)) {
+            addTrackerButton("SpO2", HealthTrackerType.SPO2_ON_DEMAND, "Blood oxygen %",
+                start = { PassiveTrackerService.startTracker(this, "SpO2"); true },
+                stop = { PassiveTrackerService.stopTracker(this, "SpO2") }
+            )
+        }
+
+        if (availableTrackers.contains(HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND)) {
+            addTrackerButton("Skin Temp", HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND, "Object + Ambient",
+                start = { PassiveTrackerService.startTracker(this, "SkinTemp"); true },
+                stop = { PassiveTrackerService.stopTracker(this, "SkinTemp") }
+            )
         }
 
         // Automated Sequence section
@@ -528,7 +554,8 @@ class MainActivity : Activity() {
         name: String,
         type: HealthTrackerType,
         desc: String,
-        start: () -> Boolean
+        start: () -> Boolean,
+        stop: () -> Unit = { healthTrackerManager.stopTracker(type) }
     ) {
         val button = Button(this).apply {
             text = "▶ $name"
@@ -540,7 +567,7 @@ class MainActivity : Activity() {
                 if (sensorSequenceManager.isRunning) return@setOnClickListener
 
                 if (activeTrackerButtons.containsKey(type)) {
-                    healthTrackerManager.stopTracker(type)
+                    stop()
                     activeTrackerButtons.remove(type)
                     setBackgroundColor(Color.DKGRAY)
                     text = "▶ $name"
@@ -613,6 +640,28 @@ class MainActivity : Activity() {
                     dataMap.putInt("red", data.red ?: 0)
                     dataMap.putLong("timestamp", data.timestamp)
                 }
+                is HealthTrackerManager.TrackerData.SpO2Data -> {
+                    dataMap.putString("type", "SpO2")
+                    dataMap.putInt("spo2", data.spO2)
+                    dataMap.putInt("heart_rate", data.heartRate)
+                    dataMap.putInt("status", data.status)
+                    dataMap.putLong("timestamp", data.timestamp)
+                }
+                is HealthTrackerManager.TrackerData.HeartRateData -> {
+                    dataMap.putString("type", "HeartRate")
+                    dataMap.putInt("heart_rate", data.heartRate)
+                    dataMap.putIntegerArrayList("ibi_list", ArrayList(data.ibiList))
+                    dataMap.putIntegerArrayList("ibi_status_list", ArrayList(data.ibiStatusList))
+                    dataMap.putInt("status", data.status)
+                    dataMap.putLong("timestamp", data.timestamp)
+                }
+                is HealthTrackerManager.TrackerData.SkinTemperatureData -> {
+                    dataMap.putString("type", "SkinTemp")
+                    dataMap.putInt("status", data.status)
+                    dataMap.putFloat("object_temp", data.objectTemperature ?: 0f)
+                    dataMap.putFloat("ambient_temp", data.ambientTemperature ?: 0f)
+                    dataMap.putLong("timestamp", data.timestamp)
+                }
                 is HealthTrackerManager.TrackerData.AccelerometerData -> {
                     dataMap.putString("type", "Accelerometer")
                     dataMap.putInt("x", data.x ?: 0)
@@ -622,10 +671,12 @@ class MainActivity : Activity() {
                 }
             }
             dataMap.putLong("sent_at", System.currentTimeMillis())
-        }.asPutDataRequest().setUrgent()
+        }
+        val type = request.dataMap.getString("type") ?: "Unknown"
+        val putRequest = request.asPutDataRequest().setUrgent()
 
-        Wearable.getDataClient(this).putDataItem(request)
-            .addOnSuccessListener { Log.d(TAG, "✓ Data sent to phone") }
+        Wearable.getDataClient(this).putDataItem(putRequest)
+            .addOnSuccessListener { Log.d(TAG, "✓ $type sent to phone") }
             .addOnFailureListener { Log.e(TAG, "✗ Failed to send: ${it.message}") }
     }
 
@@ -657,6 +708,11 @@ class MainActivity : Activity() {
                                 sequenceStatusText?.text = "Continuous: $activityType"
                                 statusText.text = "Session started from phone"
                             }
+                            // Stop any running passive trackers before starting sequence session
+                            PassiveTrackerService.stopTracker(this@MainActivity, "HeartRate")
+                            PassiveTrackerService.stopTracker(this@MainActivity, "SpO2")
+                            PassiveTrackerService.stopTracker(this@MainActivity, "SkinTemp")
+                            Log.d(TAG, "Stopped all passive trackers before starting sequence session")
                             sensorSequenceManager.startContinuousSession(sessionId, activityType)
                             sendMessageToPhone("/fitguard/activity/ack", JSONObject().apply {
                                 put("session_id", sessionId)
