@@ -26,6 +26,9 @@ class PassiveHealthTrackerManager(
     private var healthTrackingService: HealthTrackingService? = null
     private val activeTrackers = mutableMapOf<HealthTrackerType, HealthTracker>()
 
+    // Cache HR tracker — SDK docs: "Only one TrackerEventListener should be set per HealthTrackerType"
+    private var cachedHrTracker: HealthTracker? = null
+
     private var spo2RetryCount = 0
     private var hrRetryCount = 0
     private var hrDataReceived = false
@@ -142,7 +145,9 @@ class PassiveHealthTrackerManager(
     fun startHeartRateContinuous(): Boolean {
         return try {
             hrDataReceived = false
-            val tracker = healthTrackingService?.getHealthTracker(HealthTrackerType.HEART_RATE_CONTINUOUS)
+            val tracker = cachedHrTracker
+                ?: healthTrackingService?.getHealthTracker(HealthTrackerType.HEART_RATE_CONTINUOUS)
+            cachedHrTracker = tracker
 
             tracker?.setEventListener(object : HealthTracker.TrackerEventListener {
                 override fun onDataReceived(dataPoints: MutableList<DataPoint>) {
@@ -181,6 +186,7 @@ class PassiveHealthTrackerManager(
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start Heart Rate: ${e.message}", e)
+            cachedHrTracker = null
             false
         }
     }
@@ -346,6 +352,7 @@ class PassiveHealthTrackerManager(
     fun disconnect() {
         cancelHrWatchdog()
         stopAllTrackers()
+        cachedHrTracker = null
         healthTrackingService?.disconnectService()
         Log.d(TAG, "Passive Health Tracking Service disconnected")
     }

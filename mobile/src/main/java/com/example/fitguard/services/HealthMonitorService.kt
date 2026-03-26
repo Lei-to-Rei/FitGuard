@@ -73,6 +73,8 @@ class HealthMonitorService : Service() {
     private var hrReceivedValid = false
     private var hrRetryCount = 0
     private var hrStopRunnable: Runnable? = null
+    private var spo2StopRunnable: Runnable? = null
+    private var skinTempStopRunnable: Runnable? = null
 
     // Sequential measurement queue
     private val measurementQueue = ArrayDeque<String>()
@@ -122,6 +124,12 @@ class HealthMonitorService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannel()
+        acquireWakeLock()
+        registerReceiver(
+            healthDataReceiver,
+            IntentFilter("com.example.fitguard.HEALTH_DATA"),
+            RECEIVER_NOT_EXPORTED
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -132,21 +140,11 @@ class HealthMonitorService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        acquireWakeLock()
-
-        registerReceiver(
-            healthDataReceiver,
-            IntentFilter("com.example.fitguard.HEALTH_DATA"),
-            RECEIVER_NOT_EXPORTED
-        )
-
         // Persist active state
         getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
             .putBoolean("monitor_active", true).apply()
 
-        // Stop any previous scheduling and restart fresh
-        stopAllTracking()
-        startTracking()
+        reconcileTracking()
 
         Log.d(TAG, "Health monitoring service started")
         return START_STICKY
@@ -154,7 +152,11 @@ class HealthMonitorService : Service() {
 
     // ===== Tracking Logic =====
 
-    private fun startTracking() {
+    /**
+     * Idempotent reconciliation — compares desired state (prefs) with current state
+     * and only starts/stops what changed. Safe to call on every onStartCommand.
+     */
+    private fun reconcileTracking() {
         if (ActivityTrackingViewModel.activeSessionId != null) {
             Log.d(TAG, "Tracking skipped — workout session active")
             return
@@ -168,28 +170,44 @@ class HealthMonitorService : Service() {
         val spo2Mode = prefs.getString("spo2_mode", "Manual") ?: "Manual"
         val skinTempMode = prefs.getString("skin_temp_mode", "Manual") ?: "Manual"
 
-        Log.d(TAG, "Starting tracking: HR=$hrEnabled($hrMode) SpO2=$spo2Enabled($spo2Mode) SkinTemp=$skinTempEnabled($skinTempMode)")
+        Log.d(TAG, "Reconcile: HR=$hrEnabled($hrMode) SpO2=$spo2Enabled($spo2Mode) SkinTemp=$skinTempEnabled($skinTempMode)")
 
-        // Continuous HR mode
-        if (hrEnabled && hrMode == "Continuous") {
+        // --- Continuous HR: start/stop as needed ---
+        val wantHrContinuous = hrEnabled && hrMode == "Continuous"
+        if (wantHrContinuous && !isHrContinuousMode) {
             isHrContinuousMode = true
             coroutineScope.launch {
                 val sent = sendTrackerCommand("start", "HeartRate")
                 if (sent) {
                     isHrMeasuring = true
                     Log.d(TAG, "HR Continuous started")
+                } else {
+                    isHrContinuousMode = false // Allow retry on next reconcile
                 }
             }
+        } else if (!wantHrContinuous && isHrContinuousMode) {
+            coroutineScope.launch { sendTrackerCommand("stop", "HeartRate") }
+            isHrMeasuring = false
+            isHrContinuousMode = false
+            Log.d(TAG, "HR Continuous stopped")
         }
 
-        // "Every 10 minutes" trackers — sequential queue
-        val hasInterval = listOf(
-            hrEnabled && hrMode == "Every 10 minutes",
-            spo2Enabled && spo2Mode == "Every 10 minutes",
-            skinTempEnabled && skinTempMode == "Every 10 minutes"
-        ).any { it }
+        // --- Stop active measurements for toggled-off sensors ---
+        if (!hrEnabled && isHrMeasuring && !isHrContinuousMode) stopMeasurement("HeartRate")
+        if (!spo2Enabled && isSpo2Measuring) stopMeasurement("SpO2")
+        if (!skinTempEnabled && isSkinTempMeasuring) stopMeasurement("SkinTemp")
 
-        if (hasInterval) {
+        // --- Remove toggled-off sensors from pending queue ---
+        if (!hrEnabled || hrMode != "Every 10 minutes") measurementQueue.removeAll { it == "HeartRate" }
+        if (!spo2Enabled || spo2Mode != "Every 10 minutes") measurementQueue.removeAll { it == "SpO2" }
+        if (!skinTempEnabled || skinTempMode != "Every 10 minutes") measurementQueue.removeAll { it == "SkinTemp" }
+
+        // --- Interval schedule: start/stop as needed (don't reset if already running) ---
+        val wantInterval = (hrEnabled && hrMode == "Every 10 minutes")
+                || (spo2Enabled && spo2Mode == "Every 10 minutes")
+                || (skinTempEnabled && skinTempMode == "Every 10 minutes")
+
+        if (wantInterval && intervalRunnable == null) {
             startQueuedMeasurementCycle()
             intervalRunnable = object : Runnable {
                 override fun run() {
@@ -198,15 +216,18 @@ class HealthMonitorService : Service() {
                 }
             }
             handler.postDelayed(intervalRunnable!!, AUTO_INTERVAL_MS)
+            Log.d(TAG, "Interval schedule started (${AUTO_INTERVAL_MS / 1000}s)")
+        } else if (!wantInterval && intervalRunnable != null) {
+            handler.removeCallbacks(intervalRunnable!!)
+            intervalRunnable = null
+            measurementQueue.clear()
+            isQueueRunning = false
+            Log.d(TAG, "Interval schedule stopped")
         }
 
-        // If only Manual modes are enabled, no background scheduling needed
-        val anyNonManual = (hrEnabled && hrMode != "Manual")
-                || (spo2Enabled && spo2Mode != "Manual")
-                || (skinTempEnabled && skinTempMode != "Manual")
-
-        if (!anyNonManual) {
-            Log.d(TAG, "All enabled trackers are Manual — stopping service")
+        // --- Nothing needed? Stop service ---
+        if (!wantHrContinuous && !wantInterval) {
+            Log.d(TAG, "No non-Manual trackers — stopping service")
             stopSelf()
         }
     }
@@ -274,11 +295,13 @@ class HealthMonitorService : Service() {
                 }
                 "SpO2" -> {
                     isSpo2Measuring = true
-                    handler.postDelayed({ stopMeasurement("SpO2") }, SPO2_MEASUREMENT_TIMEOUT_MS)
+                    spo2StopRunnable = Runnable { stopMeasurement("SpO2") }
+                    handler.postDelayed(spo2StopRunnable!!, SPO2_MEASUREMENT_TIMEOUT_MS)
                 }
                 "SkinTemp" -> {
                     isSkinTempMeasuring = true
-                    handler.postDelayed({ stopMeasurement("SkinTemp") }, SKIN_TEMP_MEASUREMENT_TIMEOUT_MS)
+                    skinTempStopRunnable = Runnable { stopMeasurement("SkinTemp") }
+                    handler.postDelayed(skinTempStopRunnable!!, SKIN_TEMP_MEASUREMENT_TIMEOUT_MS)
                 }
             }
         }
@@ -294,9 +317,13 @@ class HealthMonitorService : Service() {
             }
             "SpO2" -> {
                 isSpo2Measuring = false
+                spo2StopRunnable?.let { handler.removeCallbacks(it) }
+                spo2StopRunnable = null
             }
             "SkinTemp" -> {
                 isSkinTempMeasuring = false
+                skinTempStopRunnable?.let { handler.removeCallbacks(it) }
+                skinTempStopRunnable = null
             }
         }
         // Trigger next in queue
@@ -310,9 +337,13 @@ class HealthMonitorService : Service() {
         intervalRunnable?.let { handler.removeCallbacks(it) }
         intervalRunnable = null
 
-        // Cancel HR stop/retry
+        // Cancel stop/retry runnables
         hrStopRunnable?.let { handler.removeCallbacks(it) }
         hrStopRunnable = null
+        spo2StopRunnable?.let { handler.removeCallbacks(it) }
+        spo2StopRunnable = null
+        skinTempStopRunnable?.let { handler.removeCallbacks(it) }
+        skinTempStopRunnable = null
 
         // Clear queue
         measurementQueue.clear()

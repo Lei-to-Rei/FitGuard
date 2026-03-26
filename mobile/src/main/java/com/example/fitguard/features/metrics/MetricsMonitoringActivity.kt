@@ -31,7 +31,7 @@ class MetricsMonitoringActivity : AppCompatActivity() {
         private const val TAG = "MetricsMonitoring"
 
         // Manual measurement durations (only used for manual "Measure" button)
-        private const val HR_MEASUREMENT_DURATION_MS = 15_000L
+        private const val HR_MEASUREMENT_DURATION_MS = 30_000L
         private const val SPO2_MEASUREMENT_TIMEOUT_MS = 90_000L
         private const val SKIN_TEMP_MEASUREMENT_TIMEOUT_MS = 30_000L
         private const val MAX_HR_RETRIES = 2
@@ -81,6 +81,7 @@ class MetricsMonitoringActivity : AppCompatActivity() {
         binding.switchHeartRate.setOnCheckedChangeListener { _, isChecked ->
             getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
                 .putBoolean("switch_hr", isChecked).apply()
+            if (!isChecked) stopManualMeasurement("HeartRate")
             updateServiceState()
             updateMeasureButtons()
         }
@@ -88,6 +89,7 @@ class MetricsMonitoringActivity : AppCompatActivity() {
         binding.switchSkinTemp.setOnCheckedChangeListener { _, isChecked ->
             getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
                 .putBoolean("switch_skin_temp", isChecked).apply()
+            if (!isChecked) stopManualMeasurement("SkinTemp")
             updateServiceState()
             updateMeasureButtons()
         }
@@ -95,6 +97,7 @@ class MetricsMonitoringActivity : AppCompatActivity() {
         binding.switchSpO2.setOnCheckedChangeListener { _, isChecked ->
             getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
                 .putBoolean("switch_spo2", isChecked).apply()
+            if (!isChecked) stopManualMeasurement("SpO2")
             updateServiceState()
             updateMeasureButtons()
         }
@@ -125,16 +128,21 @@ class MetricsMonitoringActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
 
-        // Restore switch states (may have changed in Settings)
+        // Suppress listeners while restoring state to avoid redundant service restarts
+        binding.switchHeartRate.setOnCheckedChangeListener(null)
+        binding.switchSpO2.setOnCheckedChangeListener(null)
+        binding.switchSkinTemp.setOnCheckedChangeListener(null)
+
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         binding.switchHeartRate.isChecked = prefs.getBoolean("switch_hr", false)
         binding.switchSpO2.isChecked = prefs.getBoolean("switch_spo2", false)
         binding.switchSkinTemp.isChecked = prefs.getBoolean("switch_skin_temp", false)
 
+        setupSensorToggles() // Re-attach listeners
         updateMeasureButtons()
         checkWatchConnection()
 
-        // Ensure service state matches current prefs
+        // Single reconcile call
         updateServiceState()
     }
 
@@ -437,6 +445,7 @@ class MetricsMonitoringActivity : AppCompatActivity() {
                             binding.chartHeartRate.addDataPoint(hr.toFloat())
                             hrValues.add(hr.toFloat())
                             updateHrStats()
+                            if (isManualHrMeasuring) stopManualMeasurement("HeartRate")
                         }
                     }
                     "SpO2" -> {

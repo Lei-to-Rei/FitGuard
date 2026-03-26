@@ -9,7 +9,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+           import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -30,6 +32,7 @@ class PassiveTrackerService : Service() {
         private const val NOTIFICATION_ID = 1003
         private const val EXTRA_ACTION = "action"
         private const val EXTRA_TRACKER_TYPE = "tracker_type"
+        private const val IDLE_STOP_DELAY_MS = 60_000L
 
         fun startTracker(context: Context, trackerType: String) {
             context.startForegroundService(Intent(context, PassiveTrackerService::class.java).apply {
@@ -51,6 +54,10 @@ class PassiveTrackerService : Service() {
     private var isHealthSdkReady = false
     private val pendingCommands = mutableListOf<Pair<String, String>>()
     private val activeTrackerTypes = mutableSetOf<String>()
+
+    // Delayed stop — keep SDK connection alive between measurements
+    private val handler = Handler(Looper.getMainLooper())
+    private var stopDelayRunnable: Runnable? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -113,6 +120,9 @@ class PassiveTrackerService : Service() {
     private fun executeCommand(action: String, trackerType: String) {
         when (action) {
             "start" -> {
+                // Cancel any pending service stop — we have a new measurement
+                cancelDelayedStop()
+
                 val started = when (trackerType) {
                     "HeartRate" -> passiveTrackerManager?.startHeartRateContinuous() ?: false
                     "SpO2" -> passiveTrackerManager?.startSpO2OnDemand() ?: false
@@ -138,11 +148,25 @@ class PassiveTrackerService : Service() {
                 Log.d(TAG, "Tracker stopped: $trackerType (active: $activeTrackerTypes)")
 
                 if (activeTrackerTypes.isEmpty()) {
-                    Log.d(TAG, "No active trackers — stopping service")
-                    stopSelf()
+                    scheduleDelayedStop()
                 }
             }
         }
+    }
+
+    private fun scheduleDelayedStop() {
+        cancelDelayedStop()
+        stopDelayRunnable = Runnable {
+            Log.d(TAG, "Idle timeout — stopping service")
+            stopSelf()
+        }
+        handler.postDelayed(stopDelayRunnable!!, IDLE_STOP_DELAY_MS)
+        Log.d(TAG, "No active trackers — will stop in ${IDLE_STOP_DELAY_MS / 1000}s if idle")
+    }
+
+    private fun cancelDelayedStop() {
+        stopDelayRunnable?.let { handler.removeCallbacks(it) }
+        stopDelayRunnable = null
     }
 
     private fun sendDataToPhone(data: HealthTrackerManager.TrackerData) {
@@ -239,6 +263,7 @@ class PassiveTrackerService : Service() {
     // ===== Lifecycle =====
 
     override fun onDestroy() {
+        cancelDelayedStop()
         passiveTrackerManager?.disconnect()
         wakeLock?.let {
             if (it.isHeld) {

@@ -40,7 +40,10 @@ class WearableDataListenerService : WearableListenerService() {
                 Log.d(TAG, "DataEvent: path=$path")
                 val dataMap = DataMapItem.fromDataItem(event.dataItem).dataMap
                 when {
-                    path == "/health_tracker_data" -> processHealthData(dataMap.toBundle())
+                    path == "/health_tracker_data" -> {
+                        processHealthData(dataMap.toBundle())
+                        processedUris.add(uri)
+                    }
                     path?.startsWith("/health_tracker_batch/") == true -> {
                         processBatchData(dataMap)
                         processedUris.add(uri)
@@ -183,6 +186,7 @@ class WearableDataListenerService : WearableListenerService() {
 
         saveToFile(type, json.toString())
         sendBroadcast(android.content.Intent("com.example.fitguard.HEALTH_DATA").apply {
+            setPackage(packageName)
             putExtra("type", type)
             putExtra("data", json.toString())
         })
