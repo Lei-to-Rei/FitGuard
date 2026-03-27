@@ -118,7 +118,7 @@ class RegisterActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle("Verify Your Email")
             .setMessage("$message\n\nPlease check your inbox and verify your email before logging in.")
-            .setPositiveButton("Go to Login") { _, _ ->
+            .setPositiveButton("Go to Sign in") { _, _ ->
                 finish()
             }
             .setCancelable(false)

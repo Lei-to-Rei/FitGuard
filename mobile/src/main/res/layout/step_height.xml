@@ -52,33 +52,6 @@
         android:textColor="@color/text_secondary"
         android:textSize="14sp" />
 
-    <!-- Unit toggle -->
-    <com.google.android.material.button.MaterialButtonToggleGroup
-        android:id="@+id/toggleUnit"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:layout_gravity="center_horizontal"
-        app:singleSelection="true"
-        app:checkedButton="@+id/btnCm">
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnCm"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="cm"
-            android:textAllCaps="false" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnFt"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="ft"
-            android:textAllCaps="false" />
-    </com.google.android.material.button.MaterialButtonToggleGroup>
-
     <com.google.android.material.textfield.TextInputLayout
         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
         android:layout_width="match_parent"
@@ -91,7 +64,7 @@
         app:boxStrokeColor="@color/green_sage"
         app:boxBackgroundColor="@color/white"
         app:hintTextColor="@color/text_hint"
-        android:hint="Height"
+        android:hint="Height in centimeters"
         >
 
         <com.google.android.material.textfield.TextInputEditText

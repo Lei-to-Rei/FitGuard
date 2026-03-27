@@ -43,6 +43,15 @@
     <color name="water_blue">#2196F3</color>
     <color name="water_blue_light">#E3F2FD</color>
 
+    <!-- Goals Progress Colors -->
+    <color name="progress_calories">#FF4444</color>
+    <color name="progress_water">#2196F3</color>
+    <color name="progress_sleep">#9C27B0</color>
+    <color name="progress_activity">#6EDB34</color>
+    <color name="progress_track">#E0E0E0</color>
+    <color name="progress_circle_green">#6EDB34</color>
+    <color name="progress_circle_track">#E8E8E8</color>
+
     <!-- Chart Colors -->
     <color name="chart_green_fill">#1A6EDB34</color>
     <color name="stat_box_bg">#E8F5E9</color>

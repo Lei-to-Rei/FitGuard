@@ -39,6 +39,11 @@ class NutritionTrackingViewModel(application: Application) : AndroidViewModel(ap
     private val _goalsLiveData = MutableLiveData(NutritionGoals())
     val goals: LiveData<NutritionGoals> = _goalsLiveData
 
+    var profileWaterGoal: Int = 8
+        private set
+
+    fun getWaterGoal(): Int = profileWaterGoal
+
     private val _currentDateMillis = MutableLiveData(todayMidnightMillis())
     val currentDateMillis: LiveData<Long> = _currentDateMillis
 
@@ -67,6 +72,7 @@ class NutritionTrackingViewModel(application: Application) : AndroidViewModel(ap
             val firebaseUser = FirebaseAuth.getInstance().currentUser
             if (firebaseUser != null) {
                 val profile = profileRepo.loadOrCreateProfile(firebaseUser)
+                profileWaterGoal = profile.waterGoalGlasses
                 _goalsLiveData.value = NutritionGoals(
                     calories = profile.caloriesGoal,
                     protein = profile.proteinGoal,
@@ -131,7 +137,7 @@ class NutritionTrackingViewModel(application: Application) : AndroidViewModel(ap
         viewModelScope.launch {
             val dateMillis = _currentDateMillis.value ?: todayMidnightMillis()
             val existing = waterDao.getByDateSync(dateMillis, userId)
-            val goal = existing?.goalGlasses ?: 8
+            val goal = profileWaterGoal
             val clamped = count.coerceIn(0, goal)
             val entry = WaterIntakeEntry(
                 id = existing?.id ?: 0,

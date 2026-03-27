@@ -50,6 +50,9 @@ class UserProfileRepository(
                     fitnessGoal = doc.getString("fitnessGoal") ?: "",
                     fitnessLevel = doc.getString("fitnessLevel") ?: "",
                     restingHeartRateBpm = (doc.getLong("restingHeartRateBpm") ?: 0).toInt(),
+                    waterGoalGlasses = (doc.getLong("waterGoalGlasses") ?: 8).toInt(),
+                    sleepGoalHours = (doc.getDouble("sleepGoalHours") ?: 8.0).toFloat(),
+                    activityGoalHours = (doc.getDouble("activityGoalHours") ?: 1.0).toFloat(),
                     profileComplete = doc.getBoolean("profileComplete") ?: false
                 )
                 dao.upsert(profile)
@@ -108,6 +111,9 @@ class UserProfileRepository(
         "fitnessGoal" to fitnessGoal,
         "fitnessLevel" to fitnessLevel,
         "restingHeartRateBpm" to restingHeartRateBpm,
+        "waterGoalGlasses" to waterGoalGlasses,
+        "sleepGoalHours" to sleepGoalHours,
+        "activityGoalHours" to activityGoalHours,
         "profileComplete" to profileComplete
     )
 }

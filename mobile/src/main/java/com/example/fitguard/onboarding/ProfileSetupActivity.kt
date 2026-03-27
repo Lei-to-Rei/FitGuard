@@ -15,7 +15,6 @@ import com.example.fitguard.data.db.AppDatabase
 import com.example.fitguard.data.model.UserProfile
 import com.example.fitguard.data.processing.CsvWriter
 import com.example.fitguard.data.repository.UserProfileRepository
-import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.textfield.TextInputEditText
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -38,7 +37,6 @@ class ProfileSetupActivity : AppCompatActivity() {
     private var targetWeightKg = 0f
     private var fitnessGoal = ""
     private var fitnessLevel = ""
-    private var heightUnitCm = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -160,16 +158,9 @@ class ProfileSetupActivity : AppCompatActivity() {
     private fun setupHeightStep(inflater: LayoutInflater): View {
         val view = inflater.inflate(R.layout.step_height, stepContainer, false)
         val etHeight = view.findViewById<TextInputEditText>(R.id.etHeight)
-        val toggleUnit = view.findViewById<MaterialButtonToggleGroup>(R.id.toggleUnit)
 
         if (heightCm > 0) {
-            etHeight.setText(if (heightUnitCm) heightCm.toString() else (heightCm / 30.48f).toString())
-        }
-
-        toggleUnit.addOnButtonCheckedListener { _, checkedId, isChecked ->
-            if (isChecked) {
-                heightUnitCm = checkedId == R.id.btnCm
-            }
+            etHeight.setText(heightCm.toString())
         }
 
         view.findViewById<ImageButton>(R.id.btnBack).setOnClickListener { showStep(2) }
@@ -180,7 +171,7 @@ class ProfileSetupActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
             val value = heightText.toFloatOrNull() ?: 0f
-            heightCm = if (heightUnitCm) value else value * 30.48f
+            heightCm = value
             showStep(4)
         }
 

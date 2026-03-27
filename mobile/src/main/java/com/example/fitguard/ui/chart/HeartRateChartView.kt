@@ -14,6 +14,7 @@ class HeartRateChartView @JvmOverloads constructor(
 
     private val dataPoints = mutableListOf<Float>()
     private var highlightIndex = -1
+    var showGrid = true
 
     private companion object {
         const val MAX_POINTS = 12
@@ -98,19 +99,21 @@ class HeartRateChartView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        val leftPad = 60f
-        val rightPad = 20f
-        val topPad = 40f
-        val bottomPad = 20f
+        val leftPad = if (showGrid) 60f else 8f
+        val rightPad = if (showGrid) 20f else 8f
+        val topPad = if (showGrid) 40f else 8f
+        val bottomPad = if (showGrid) 20f else 8f
 
         val chartW = width - leftPad - rightPad
         val chartH = height - topPad - bottomPad
 
-        // Draw grid lines and labels (always visible)
-        for (value in gridLines) {
-            val y = topPad + chartH * (1f - (value - minY) / (maxY - minY))
-            canvas.drawLine(leftPad, y, width - rightPad, y, gridPaint)
-            canvas.drawText(value.toInt().toString(), leftPad - 10f, y + 10f, gridTextPaint)
+        // Draw grid lines and labels
+        if (showGrid) {
+            for (value in gridLines) {
+                val y = topPad + chartH * (1f - (value - minY) / (maxY - minY))
+                canvas.drawLine(leftPad, y, width - rightPad, y, gridPaint)
+                canvas.drawText(value.toInt().toString(), leftPad - 10f, y + 10f, gridTextPaint)
+            }
         }
 
         if (dataPoints.isEmpty()) return
@@ -151,8 +154,8 @@ class HeartRateChartView @JvmOverloads constructor(
         // Draw line
         canvas.drawPath(linePath, linePaint)
 
-        // Draw highlight
-        if (highlightIndex in dataPoints.indices) {
+        // Draw highlight (skip in compact mode)
+        if (showGrid && highlightIndex in dataPoints.indices) {
             val hx = leftPad + highlightIndex * stepX
             val hy = topPad + chartH * (1f - (dataPoints[highlightIndex] - minY) / (maxY - minY))
 

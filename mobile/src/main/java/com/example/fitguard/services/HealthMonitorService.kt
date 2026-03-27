@@ -41,7 +41,7 @@ class HealthMonitorService : Service() {
         private const val HR_MEASUREMENT_DURATION_MS = 15_000L
         private const val SPO2_MEASUREMENT_TIMEOUT_MS = 90_000L
         private const val SKIN_TEMP_MEASUREMENT_TIMEOUT_MS = 30_000L
-        private const val AUTO_INTERVAL_MS = 600_000L // 10 minutes
+        private const val AUTO_INTERVAL_MS = 60_000L // 10 minutes
         private const val MAX_HR_RETRIES = 2
 
         fun start(context: Context) {

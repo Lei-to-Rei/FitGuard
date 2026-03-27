@@ -21,5 +21,8 @@ data class UserProfile(
     val fitnessGoal: String = "",
     val fitnessLevel: String = "",
     val restingHeartRateBpm: Int = 0,
+    val waterGoalGlasses: Int = 8,
+    val sleepGoalHours: Float = 8f,
+    val activityGoalHours: Float = 1f,
     val profileComplete: Boolean = false
 )

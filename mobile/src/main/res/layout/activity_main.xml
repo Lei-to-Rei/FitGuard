@@ -258,8 +258,9 @@
                     android:layout_weight="1"
                     android:layout_marginEnd="8dp"
                     app:cardCornerRadius="16dp"
-                    app:cardElevation="2dp"
-                    app:strokeWidth="0dp"
+                    app:cardElevation="0dp"
+                    app:strokeWidth="1dp"
+                    app:strokeColor="#E0E0E0"
                     app:cardBackgroundColor="@color/white">
 
                     <LinearLayout
@@ -291,23 +292,24 @@
                                 android:fontFamily="@font/inter"
                                 android:layout_marginStart="6dp" />
 
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="  bpm"
-                                android:textSize="11sp"
-                                android:textColor="@color/text_secondary"
-                                android:fontFamily="@font/inter" />
+                            </LinearLayout>
 
-                        </LinearLayout>
+                        <TextView
+                            android:id="@+id/tvHeartRateValue"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="-- bpm"
+                            android:textSize="24sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_dark"
+                            android:fontFamily="@font/inter"
+                            android:layout_marginTop="4dp" />
 
-                        <ImageView
+                        <com.example.fitguard.ui.chart.HeartRateChartView
+                            android:id="@+id/chartHeartRateMini"
                             android:layout_width="match_parent"
-                            android:layout_height="40dp"
-                            android:layout_marginTop="16dp"
-                            android:src="@drawable/wave_heart_rate"
-                            android:scaleType="fitXY"
-                            android:importantForAccessibility="no" />
+                            android:layout_height="30dp"
+                            android:layout_marginTop="8dp" />
 
                     </LinearLayout>
 
@@ -321,8 +323,9 @@
                     android:layout_weight="1"
                     android:layout_marginStart="8dp"
                     app:cardCornerRadius="16dp"
-                    app:cardElevation="2dp"
-                    app:strokeWidth="0dp"
+                    app:cardElevation="0dp"
+                    app:strokeWidth="1dp"
+                    app:strokeColor="#E0E0E0"
                     app:cardBackgroundColor="@color/white">
 
                     <LinearLayout
@@ -369,7 +372,7 @@
                             android:id="@+id/tvBloodOxygenValue"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="98%"
+                            android:text="-- %"
                             android:textSize="24sp"
                             android:textStyle="bold"
                             android:textColor="@color/text_dark"
@@ -418,8 +421,9 @@
                     android:layout_weight="1"
                     android:layout_marginEnd="8dp"
                     app:cardCornerRadius="16dp"
-                    app:cardElevation="2dp"
-                    app:strokeWidth="0dp"
+                    app:cardElevation="0dp"
+                    app:strokeWidth="1dp"
+                    app:strokeColor="#E0E0E0"
                     app:cardBackgroundColor="@color/white">
 
                     <LinearLayout
@@ -497,8 +501,9 @@
                     android:layout_weight="1"
                     android:layout_marginStart="8dp"
                     app:cardCornerRadius="16dp"
-                    app:cardElevation="2dp"
-                    app:strokeWidth="0dp"
+                    app:cardElevation="0dp"
+                    app:strokeWidth="1dp"
+                    app:strokeColor="#E0E0E0"
                     app:cardBackgroundColor="@color/white">
 
                     <LinearLayout

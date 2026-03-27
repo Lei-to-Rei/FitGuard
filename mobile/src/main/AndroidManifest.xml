@@ -192,6 +192,22 @@
             android:screenOrientation="portrait" />
 
         <!-- ========================================== -->
+        <!-- PROFILE: GOALS & TARGETS -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.profile.GoalsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <!-- ========================================== -->
+        <!-- PROFILE: EDIT TARGETS -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.profile.EditTargetsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <!-- ========================================== -->
         <!-- PROFILE: CONNECTED DEVICES -->
         <!-- ========================================== -->
         <activity

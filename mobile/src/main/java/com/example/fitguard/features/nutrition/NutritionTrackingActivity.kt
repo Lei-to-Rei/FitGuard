@@ -85,7 +85,7 @@ class NutritionTrackingActivity : AppCompatActivity() {
     }
 
     private fun setupWaterGlasses() {
-        buildWaterGlasses(0, 8)
+        // Initial glasses will be rebuilt once profile loads via observeData()
     }
 
     private fun buildWaterGlasses(filled: Int, total: Int) {
@@ -155,6 +155,9 @@ class NutritionTrackingActivity : AppCompatActivity() {
 
         viewModel.goals.observe(this) {
             viewModel.dailyTotals.value?.let { totals -> updateNutritionDisplay(totals) }
+            // Rebuild water glasses with profile goal
+            val water = viewModel.waterIntake.value
+            updateWaterDisplay(water)
         }
 
         viewModel.waterIntake.observe(this) { water ->
@@ -220,19 +223,34 @@ class NutritionTrackingActivity : AppCompatActivity() {
         infoView.text = "$timeStr \u2022 $totalCals kcal"
 
         for (food in foods) {
-            val itemView = TextView(this).apply {
-                text = "\u2022  ${food.name}"
-                textSize = 14f
-                setTextColor(ContextCompat.getColor(context, R.color.text_dark))
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
                 setPadding(dpToPx(8), dpToPx(2), 0, dpToPx(2))
+            }
 
-                setOnLongClickListener {
+            val deleteBtn = TextView(this).apply {
+                text = "−"
+                textSize = 18f
+                setTextColor(ContextCompat.getColor(context, android.R.color.holo_red_dark))
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(dpToPx(24), dpToPx(24))
+                setOnClickListener {
                     viewModel.deleteFoodEntry(food)
                     Toast.makeText(context, "${food.name} removed", Toast.LENGTH_SHORT).show()
-                    true
                 }
             }
-            listContainer.addView(itemView)
+
+            val nameView = TextView(this).apply {
+                text = food.name
+                textSize = 14f
+                setTextColor(ContextCompat.getColor(context, R.color.text_dark))
+                setPadding(dpToPx(8), 0, 0, 0)
+            }
+
+            row.addView(deleteBtn)
+            row.addView(nameView)
+            listContainer.addView(row)
         }
     }
 
@@ -265,7 +283,7 @@ class NutritionTrackingActivity : AppCompatActivity() {
 
     private fun updateWaterDisplay(water: WaterIntakeEntry?) {
         val count = water?.glassCount ?: 0
-        val goal = water?.goalGlasses ?: 8
+        val goal = water?.goalGlasses ?: viewModel.getWaterGoal()
         val pct = if (goal > 0) (count * 100) / goal else 0
         val volumeL = count * 0.25 // ~250ml per glass
 

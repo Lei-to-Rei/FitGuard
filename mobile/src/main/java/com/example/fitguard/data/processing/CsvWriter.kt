@@ -258,7 +258,8 @@ object CsvWriter {
             val header = listOf(
                 "uid", "displayName", "email", "gender", "dateOfBirth",
                 "heightCm", "currentWeightKg", "targetWeightKg",
-                "fitnessGoal", "fitnessLevel", "restingHeartRateBpm", "bmi"
+                "fitnessGoal", "fitnessLevel", "restingHeartRateBpm", "bmi",
+                "caloriesGoal", "waterGoalGlasses", "sleepGoalHours", "activityGoalHours"
             ).joinToString(",")
 
             val row = listOf(
@@ -273,7 +274,11 @@ object CsvWriter {
                 csvEscape(profile.fitnessGoal),
                 csvEscape(profile.fitnessLevel),
                 profile.restingHeartRateBpm.toString(),
-                fmt(bmi)
+                fmt(bmi),
+                profile.caloriesGoal.toString(),
+                profile.waterGoalGlasses.toString(),
+                fmt(profile.sleepGoalHours.toDouble()),
+                fmt(profile.activityGoalHours.toDouble())
             ).joinToString(",")
 
             file.writeText("$header\n$row\n")

@@ -63,7 +63,8 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(cp \"C:/Users/claud/Downloads/fatigue_model.tflite\" \"C:/Users/claud/AndroidStudioProjects/FitGuard/mobile/src/main/assets/\")",
-      "Bash(cp \"C:/Users/claud/Downloads/scaler_params.json\" \"C:/Users/claud/AndroidStudioProjects/FitGuard/mobile/src/main/assets/\")"
+      "Bash(cp \"C:/Users/claud/Downloads/scaler_params.json\" \"C:/Users/claud/AndroidStudioProjects/FitGuard/mobile/src/main/assets/\")",
+      "Bash(echo \"exit: $?\")"
     ]
   }
 }

@@ -1,0 +1,560 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/white">
+
+    <!-- ===== Toolbar ===== -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="36dp"
+        android:paddingBottom="16dp"
+        android:background="@color/white">
+
+        <ImageView
+            android:id="@+id/btnBack"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@drawable/ic_arrow_small_left"
+            app:tint="@color/text_dark"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="Back" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Goals &amp; Targets"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_dark"
+            android:fontFamily="@font/inter"
+            android:layout_marginStart="12dp" />
+
+    </LinearLayout>
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:overScrollMode="never">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="24dp">
+
+            <!-- ===== Top Cards Row ===== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="16dp">
+
+                <!-- Your Primary Goal Card -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:background="@drawable/bg_card_light_gray"
+                    android:padding="16dp"
+                    android:layout_marginEnd="8dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Your Primary Goal"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_secondary"
+                        android:fontFamily="@font/inter" />
+
+                    <TextView
+                        android:id="@+id/tvPrimaryGoal"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Lose Weight"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_dark"
+                        android:fontFamily="@font/inter"
+                        android:layout_marginTop="8dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Activity Level:"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_secondary"
+                        android:fontFamily="@font/inter"
+                        android:layout_marginTop="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvActivityLevel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Active"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_dark"
+                        android:fontFamily="@font/inter" />
+
+                </LinearLayout>
+
+                <!-- Overall Progress Card -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:background="@drawable/bg_card_light_gray"
+                    android:padding="16dp"
+                    android:layout_marginStart="8dp"
+                    android:gravity="center_horizontal">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Overall Progress"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_secondary"
+                        android:fontFamily="@font/inter" />
+
+                    <TextView
+                        android:id="@+id/tvGoalsCompleted"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="1 of 5 goals\ncompleted"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_secondary"
+                        android:fontFamily="@font/inter"
+                        android:gravity="center"
+                        android:layout_marginTop="4dp" />
+
+                    <!-- Circular Progress -->
+                    <FrameLayout
+                        android:layout_width="80dp"
+                        android:layout_height="80dp"
+                        android:layout_marginTop="8dp">
+
+                        <ProgressBar
+                            android:id="@+id/progressOverall"
+                            style="?android:attr/progressBarStyleHorizontal"
+                            android:layout_width="80dp"
+                            android:layout_height="80dp"
+                            android:indeterminate="false"
+                            android:max="100"
+                            android:progress="86"
+                            android:progressDrawable="@drawable/bg_circular_progress_green"
+                            android:layout_gravity="center" />
+
+                        <TextView
+                            android:id="@+id/tvOverallPercent"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="86%"
+                            android:textSize="18sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_dark"
+                            android:fontFamily="@font/inter" />
+
+                    </FrameLayout>
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- ===== Your Targets Header ===== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="28dp"
+                android:layout_marginBottom="16dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Your Targets"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_dark"
+                    android:fontFamily="@font/inter"
+                    android:drawableStart="@drawable/ic_marker"
+                    android:drawablePadding="8dp"
+                    app:drawableTint="@color/progress_calories" />
+
+                <FrameLayout
+                android:id="@+id/btnEditTargets"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:background="@drawable/bg_edit_button_green"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:text="Edit"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/white"
+                        android:fontFamily="@font/inter" />
+
+                </FrameLayout>
+
+            </LinearLayout>
+
+            <!-- ===== Calories Card ===== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_target_card"
+                android:padding="16dp"
+                android:layout_marginBottom="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@drawable/ic_fire_orange"
+                        android:importantForAccessibility="no" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginStart="10dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Calories"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_dark"
+                            android:fontFamily="@font/inter" />
+
+                        <TextView
+                            android:id="@+id/tvCaloriesProgress"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="1840 / 2400 kcal"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_secondary"
+                            android:fontFamily="@font/inter" />
+
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvCaloriesPercent"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="76%"
+                        android:textSize="24sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_dark"
+                        android:fontFamily="@font/inter" />
+
+                </LinearLayout>
+
+                <ProgressBar
+                    android:id="@+id/progressCalories"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="10dp"
+                    android:layout_marginTop="12dp"
+                    android:max="100"
+                    android:progress="76"
+                    android:progressDrawable="@drawable/bg_progress_calories" />
+
+                <TextView
+                    android:id="@+id/tvCaloriesRemaining"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="560 kcal remaining"
+                    android:textSize="12sp"
+                    android:textColor="@color/progress_calories"
+                    android:fontFamily="@font/inter"
+                    android:layout_marginTop="6dp" />
+
+            </LinearLayout>
+
+            <!-- ===== Water Card ===== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_target_card"
+                android:padding="16dp"
+                android:layout_marginBottom="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@drawable/ic_water_glass_filled"
+                        app:tint="@color/progress_water"
+                        android:importantForAccessibility="no" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginStart="10dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Water"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_dark"
+                            android:fontFamily="@font/inter" />
+
+                        <TextView
+                            android:id="@+id/tvWaterProgress"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="6 / 8 glasses"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_secondary"
+                            android:fontFamily="@font/inter" />
+
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvWaterPercent"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="75%"
+                        android:textSize="24sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_dark"
+                        android:fontFamily="@font/inter" />
+
+                </LinearLayout>
+
+                <ProgressBar
+                    android:id="@+id/progressWater"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="10dp"
+                    android:layout_marginTop="12dp"
+                    android:max="100"
+                    android:progress="75"
+                    android:progressDrawable="@drawable/bg_progress_water" />
+
+                <TextView
+                    android:id="@+id/tvWaterRemaining"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="2 glasses to go"
+                    android:textSize="12sp"
+                    android:textColor="@color/progress_water"
+                    android:fontFamily="@font/inter"
+                    android:layout_marginTop="6dp" />
+
+            </LinearLayout>
+
+            <!-- ===== Sleep Card ===== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_target_card"
+                android:padding="16dp"
+                android:layout_marginBottom="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@drawable/ic_moon_stars"
+                        app:tint="@color/progress_sleep"
+                        android:importantForAccessibility="no" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginStart="10dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Sleep"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_dark"
+                            android:fontFamily="@font/inter" />
+
+                        <TextView
+                            android:id="@+id/tvSleepProgress"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="7.42 / 8 hours"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_secondary"
+                            android:fontFamily="@font/inter" />
+
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvSleepPercent"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="94%"
+                        android:textSize="24sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_dark"
+                        android:fontFamily="@font/inter" />
+
+                </LinearLayout>
+
+                <ProgressBar
+                    android:id="@+id/progressSleep"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="10dp"
+                    android:layout_marginTop="12dp"
+                    android:max="100"
+                    android:progress="94"
+                    android:progressDrawable="@drawable/bg_progress_sleep" />
+
+                <TextView
+                    android:id="@+id/tvSleepRemaining"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="34.8 minutes to go"
+                    android:textSize="12sp"
+                    android:textColor="@color/progress_sleep"
+                    android:fontFamily="@font/inter"
+                    android:layout_marginTop="6dp" />
+
+            </LinearLayout>
+
+            <!-- ===== Activity Card ===== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_target_card"
+                android:padding="16dp"
+                android:layout_marginBottom="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@drawable/ic_running"
+                        app:tint="@color/progress_activity"
+                        android:importantForAccessibility="no" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginStart="10dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Activity"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_dark"
+                            android:fontFamily="@font/inter" />
+
+                        <TextView
+                            android:id="@+id/tvActivityProgress"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="1 hour / 1 hour"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_secondary"
+                            android:fontFamily="@font/inter" />
+
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvActivityPercent"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="100%"
+                        android:textSize="24sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_dark"
+                        android:fontFamily="@font/inter" />
+
+                </LinearLayout>
+
+                <ProgressBar
+                    android:id="@+id/progressActivity"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="10dp"
+                    android:layout_marginTop="12dp"
+                    android:max="100"
+                    android:progress="100"
+                    android:progressDrawable="@drawable/bg_progress_activity" />
+
+                <TextView
+                    android:id="@+id/tvActivityRemaining"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="34.8 minutes to go"
+                    android:textSize="12sp"
+                    android:textColor="@color/progress_activity"
+                    android:fontFamily="@font/inter"
+                    android:layout_marginTop="6dp" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </androidx.core.widget.NestedScrollView>
+
+</LinearLayout>

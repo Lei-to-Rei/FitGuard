@@ -2,7 +2,6 @@ package com.example.fitguard.features.profile
 
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import com.example.fitguard.MainActivity
@@ -100,7 +99,7 @@ class UserHomeActivity : AppCompatActivity() {
         }
 
         binding.menuGoals.setOnClickListener {
-            Toast.makeText(this, "Goals coming soon", Toast.LENGTH_SHORT).show()
+            startActivity(Intent(this, GoalsActivity::class.java))
         }
 
         binding.menuConnectedDevices.setOnClickListener {
