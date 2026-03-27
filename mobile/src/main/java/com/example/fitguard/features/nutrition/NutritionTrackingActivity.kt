@@ -91,10 +91,17 @@ class NutritionTrackingActivity : AppCompatActivity() {
     private fun buildWaterGlasses(filled: Int, total: Int) {
         val container = binding.waterGlassesContainer
 
-        // If child count matches, update in-place to avoid scroll jump
-        if (container.childCount == total && total > 0) {
+        // If total glasses matches, update in-place to avoid scroll jump
+        val existingGlasses = mutableListOf<ImageView>()
+        for (r in 0 until container.childCount) {
+            val row = container.getChildAt(r) as? LinearLayout ?: continue
+            for (g in 0 until row.childCount) {
+                (row.getChildAt(g) as? ImageView)?.let { existingGlasses.add(it) }
+            }
+        }
+        if (existingGlasses.size == total && total > 0) {
             for (i in 0 until total) {
-                val glass = container.getChildAt(i) as ImageView
+                val glass = existingGlasses[i]
                 if (i < filled) {
                     glass.setImageResource(R.drawable.ic_water_glass_filled)
                     glass.contentDescription = "Filled glass"
@@ -110,24 +117,36 @@ class NutritionTrackingActivity : AppCompatActivity() {
 
         // Full rebuild only when glass count changes
         val marginPerGlass = dpToPx(4) * 2
-        val minSize = dpToPx(24)
-        val maxSize = dpToPx(40)
+        val glassSize = dpToPx(40)
 
         container.post {
             container.removeAllViews()
             val availableWidth = container.width
-            val sizePerGlass = if (total > 0) {
-                ((availableWidth - (marginPerGlass * total)) / total).coerceIn(minSize, maxSize)
-            } else maxSize
+            val glassesPerRow = if (availableWidth > 0) {
+                maxOf(1, availableWidth / (glassSize + marginPerGlass))
+            } else 8
 
+            var currentRow: LinearLayout? = null
             for (i in 0 until total) {
+                if (i % glassesPerRow == 0) {
+                    currentRow = LinearLayout(this).apply {
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            if (i > 0) topMargin = dpToPx(4)
+                        }
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER
+                    }
+                    container.addView(currentRow)
+                }
                 val glass = ImageView(this).apply {
-                    layoutParams = LinearLayout.LayoutParams(sizePerGlass, sizePerGlass).apply {
+                    layoutParams = LinearLayout.LayoutParams(glassSize, glassSize).apply {
                         marginEnd = dpToPx(4)
                         marginStart = dpToPx(4)
                     }
                     scaleType = ImageView.ScaleType.FIT_CENTER
-
                     if (i < filled) {
                         setImageResource(R.drawable.ic_water_glass_filled)
                         contentDescription = "Filled glass"
@@ -138,7 +157,7 @@ class NutritionTrackingActivity : AppCompatActivity() {
                         setOnClickListener { viewModel.setWaterCount(i + 1) }
                     }
                 }
-                container.addView(glass)
+                currentRow!!.addView(glass)
             }
         }
     }

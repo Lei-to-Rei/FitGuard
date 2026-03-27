@@ -35,8 +35,9 @@ object ActivityHistoryRepository {
             val activityType = name.substring(17).replace('_', ' ')
             val startTimeMillis = DIR_DATE_FORMAT.parse(datePart)?.time ?: return null
 
-            val durationMillis = parseDurationFromCsv(File(dir, "features.csv"))
-            val (distance, pace) = parseRouteSummary(dir)
+            val (distance, pace, routeDuration) = parseRouteSummary(dir)
+            val durationMillis = if (routeDuration > 0) routeDuration
+                                 else parseDurationFromCsv(File(dir, "features.csv"))
 
             ActivityHistoryItem(
                 activityType = activityType,
@@ -52,23 +53,25 @@ object ActivityHistoryRepository {
         }
     }
 
-    private fun parseRouteSummary(dir: File): Pair<Float, Double> {
+    private fun parseRouteSummary(dir: File): Triple<Float, Double, Long> {
         return try {
             val file = File(dir, "route_summary.csv")
-            if (!file.exists()) return Pair(0f, 0.0)
+            if (!file.exists()) return Triple(0f, 0.0, 0L)
             val lines = file.readLines()
-            if (lines.size < 2) return Pair(0f, 0.0)
+            if (lines.size < 2) return Triple(0f, 0.0, 0L)
             val cols = lines[0].split(",")
             val distIdx = cols.indexOf("total_distance_m")
             val paceIdx = cols.indexOf("avg_pace_min_per_km")
-            if (distIdx < 0 || paceIdx < 0) return Pair(0f, 0.0)
+            val durIdx = cols.indexOf("duration_ms")
+            if (distIdx < 0 || paceIdx < 0) return Triple(0f, 0.0, 0L)
             val parts = lines[1].split(",")
             val dist = parts.getOrNull(distIdx)?.toFloatOrNull() ?: 0f
             val pace = parts.getOrNull(paceIdx)?.toDoubleOrNull() ?: 0.0
-            Pair(dist, pace)
+            val dur = if (durIdx >= 0) parts.getOrNull(durIdx)?.toLongOrNull() ?: 0L else 0L
+            Triple(dist, pace, dur)
         } catch (e: Exception) {
             Log.w(TAG, "Failed to parse route summary: ${e.message}")
-            Pair(0f, 0.0)
+            Triple(0f, 0.0, 0L)
         }
     }
 

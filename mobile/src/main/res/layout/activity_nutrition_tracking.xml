@@ -712,8 +712,8 @@
                     android:id="@+id/waterGlassesContainer"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:gravity="center_horizontal"
                     android:layout_marginVertical="12dp" />
 
                 <!-- Goal Text -->
