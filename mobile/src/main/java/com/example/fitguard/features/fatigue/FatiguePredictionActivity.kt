@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
-import android.os.Build
+import androidx.core.content.ContextCompat
 import android.os.Bundle
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -37,11 +37,7 @@ class FatiguePredictionActivity : AppCompatActivity() {
         observeViewModel()
 
         val filter = IntentFilter(SequenceProcessor.ACTION_SEQUENCE_PROCESSED)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(sequenceReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(sequenceReceiver, filter)
-        }
+        ContextCompat.registerReceiver(this, sequenceReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
     override fun onResume() {
