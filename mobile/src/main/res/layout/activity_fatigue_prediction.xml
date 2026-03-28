@@ -6,11 +6,64 @@
     android:layout_height="match_parent"
     android:background="#F5F5F5">
 
+    <!-- ===== No Active Session Overlay ===== -->
+    <LinearLayout
+        android:id="@+id/layoutNoSession"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="32dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/bottomNavigation">
+
+        <ImageView
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:src="@drawable/ic_activity"
+            android:contentDescription="No session"
+            app:tint="@color/text_secondary"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="No Active Session"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_dark"
+            android:fontFamily="@font/inter"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Start an activity session to see real-time fatigue predictions."
+            android:textSize="14sp"
+            android:textColor="@color/text_secondary"
+            android:fontFamily="@font/inter"
+            android:gravity="center"
+            android:layout_marginBottom="24dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnStartSession"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Start Session"
+            android:textAllCaps="false"
+            app:cornerRadius="8dp"
+            android:backgroundTint="@color/green_primary" />
+
+    </LinearLayout>
+
     <!-- ===== Scrollable Content ===== -->
     <androidx.core.widget.NestedScrollView
+        android:id="@+id/scrollContent"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:overScrollMode="never"
+        android:visibility="visible"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toTopOf="@id/bottomNavigation">
 
@@ -84,10 +137,28 @@
                             android:id="@+id/tvFatigueStatus"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Caution Needed"
+                            android:text="Waiting for data..."
                             android:textSize="14sp"
                             android:textStyle="bold"
-                            android:textColor="#FF8C00"
+                            android:textColor="#999999"
+                            android:fontFamily="@font/inter" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="HR:"
+                            android:textSize="12sp"
+                            android:textColor="@color/text_secondary"
+                            android:fontFamily="@font/inter"
+                            android:layout_marginTop="8dp" />
+
+                        <TextView
+                            android:id="@+id/tvHrValue"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Establishing baseline..."
+                            android:textSize="14sp"
+                            android:textColor="@color/text_dark"
                             android:fontFamily="@font/inter" />
 
                         <TextView
@@ -97,13 +168,13 @@
                             android:textSize="12sp"
                             android:textColor="@color/text_secondary"
                             android:fontFamily="@font/inter"
-                            android:layout_marginTop="8dp" />
+                            android:layout_marginTop="4dp" />
 
                         <TextView
                             android:id="@+id/tvHrvValue"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="34.2% below baseline"
+                            android:text="Establishing baseline..."
                             android:textSize="14sp"
                             android:textColor="@color/text_dark"
                             android:fontFamily="@font/inter" />
@@ -116,6 +187,52 @@
                         android:layout_width="120dp"
                         android:layout_height="120dp"
                         android:layout_marginStart="8dp" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ===== Session Fatigue Trend Card ===== -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardSessionTrend"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:strokeWidth="0dp"
+                app:cardBackgroundColor="@color/white">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Session Fatigue Trend"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_dark"
+                        android:fontFamily="@font/inter" />
+
+                    <TextView
+                        android:id="@+id/tvTrendSubtitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Dashed line shows 5-min prediction"
+                        android:textSize="11sp"
+                        android:textColor="@color/text_secondary"
+                        android:fontFamily="@font/inter"
+                        android:layout_marginTop="2dp" />
+
+                    <com.example.fitguard.ui.chart.SessionFatigueTrendChartView
+                        android:id="@+id/chartSessionTrend"
+                        android:layout_width="match_parent"
+                        android:layout_height="200dp"
+                        android:layout_marginTop="8dp" />
 
                 </LinearLayout>
 
@@ -423,42 +540,6 @@
                         </LinearLayout>
 
                     </LinearLayout>
-
-                </LinearLayout>
-
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- ===== 7-Day Fatigue Trend Card ===== -->
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:layout_marginBottom="8dp"
-                app:cardCornerRadius="12dp"
-                app:cardElevation="2dp"
-                app:strokeWidth="0dp"
-                app:cardBackgroundColor="@color/white">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="7-Day Fatigue Trend"
-                        android:textSize="16sp"
-                        android:textStyle="bold"
-                        android:textColor="@color/text_dark"
-                        android:fontFamily="@font/inter" />
-
-                    <com.example.fitguard.ui.chart.FatigueWeekChartView
-                        android:id="@+id/chartFatigueWeek"
-                        android:layout_width="match_parent"
-                        android:layout_height="200dp"
-                        android:layout_marginTop="8dp" />
 
                 </LinearLayout>
 

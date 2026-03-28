@@ -1,14 +1,17 @@
 package com.example.fitguard.features.fatigue
 
 import android.app.Application
+import android.content.Context
 import android.os.Environment
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
+import com.example.fitguard.data.db.AppDatabase
 import com.example.fitguard.data.processing.FatigueDetector
 import com.example.fitguard.data.processing.FatigueResult
+import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -17,10 +20,26 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
+data class FatigueTrendPoint(val timeMs: Long, val fatiguePercent: Float)
+
+data class BaselineComparison(
+    val currentHr: Double,
+    val baselineHr: Double,
+    val hrDiffPercent: Double,
+    val currentRmssd: Double,
+    val baselineRmssd: Double,
+    val rmssdDiffPercent: Double
+)
+
 class FatigueViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val TAG = "FatigueViewModel"
         private const val DIR_NAME = "FitGuard_Data"
+        private const val BASELINE_WINDOW_COUNT = 3
+        private const val PREDICTION_MINUTES = 5
+        private const val PREDICTION_STEP_MS = 30_000L
+        private const val MIN_POINTS_FOR_PREDICTION = 3
+        private const val MAX_REGRESSION_POINTS = 10
     }
 
     private val detector = FatigueDetector(application)
@@ -37,6 +56,33 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
     private val _windowCount = MutableLiveData(0)
     val windowCount: LiveData<Int> = _windowCount
 
+    // Session-active gating
+    private val _isSessionActive = MutableLiveData(false)
+    val isSessionActive: LiveData<Boolean> = _isSessionActive
+
+    // Baseline HR/HRV comparison
+    private val _baselineComparison = MutableLiveData<BaselineComparison?>()
+    val baselineComparison: LiveData<BaselineComparison?> = _baselineComparison
+
+    private val _baselineWindowsCollected = MutableLiveData(0)
+    val baselineWindowsCollected: LiveData<Int> = _baselineWindowsCollected
+
+    // Session fatigue trend
+    private val sessionTrendPoints = mutableListOf<FatigueTrendPoint>()
+    private val _sessionTrend = MutableLiveData<List<FatigueTrendPoint>>()
+    val sessionTrend: LiveData<List<FatigueTrendPoint>> = _sessionTrend
+
+    // 5-minute prediction
+    private val _predictionTrend = MutableLiveData<List<FatigueTrendPoint>>()
+    val predictionTrend: LiveData<List<FatigueTrendPoint>> = _predictionTrend
+
+    // Baseline accumulation
+    private val baselineHrValues = mutableListOf<Double>()
+    private val baselineRmssdValues = mutableListOf<Double>()
+    private var baselineEstablished = false
+    private var baselineHr = 0.0
+    private var baselineRmssd = 0.0
+
     init {
         viewModelScope.launch(Dispatchers.IO) {
             val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
@@ -52,19 +98,156 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
             } else {
                 Log.e(TAG, "Failed to initialize fatigue detector")
             }
+
+            // Load static baselines from UserProfile
+            if (userId.isNotEmpty()) {
+                loadStaticBaselines(userId)
+            }
+        }
+
+        checkSessionActive()
+    }
+
+    fun refreshSessionState() {
+        checkSessionActive()
+    }
+
+    private fun checkSessionActive() {
+        val staticActive = ActivityTrackingViewModel.activeSessionId != null
+        if (staticActive) {
+            _isSessionActive.postValue(true)
+            return
+        }
+        // Fallback: check SharedPreferences for process death recovery
+        val prefs = getApplication<Application>().getSharedPreferences("workout_session", Context.MODE_PRIVATE)
+        val prefsActive = prefs.getBoolean("is_active", false)
+        _isSessionActive.postValue(prefsActive)
+    }
+
+    private suspend fun loadStaticBaselines(userId: String) {
+        try {
+            val db = AppDatabase.getInstance(getApplication())
+            val profile = db.userProfileDao().getByUid(userId) ?: return
+            if (profile.restingHeartRateBpm > 0) {
+                baselineHr = profile.restingHeartRateBpm.toDouble()
+            }
+            if (profile.restingHrvRmssd > 0.0) {
+                baselineRmssd = profile.restingHrvRmssd
+            }
+            if (baselineHr > 0.0 && baselineRmssd > 0.0) {
+                baselineEstablished = true
+                _baselineWindowsCollected.postValue(BASELINE_WINDOW_COUNT)
+                Log.d(TAG, "Static baselines loaded: HR=$baselineHr, RMSSD=$baselineRmssd")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load static baselines: ${e.message}")
         }
     }
 
     fun onNewFeatureWindow(features: FloatArray) {
         if (!detector.isReady) return
+
+        // Receiving a broadcast implies session is active
+        _isSessionActive.postValue(true)
+
+        // Extract HR and RMSSD from feature array (index 0 = mean_hr_bpm, index 8 = rmssd_ms)
+        val currentHr = features.getOrElse(0) { 0f }.toDouble()
+        val currentRmssd = features.getOrElse(8) { 0f }.toDouble()
+
+        // Baseline accumulation
+        if (!baselineEstablished) {
+            baselineHrValues.add(currentHr)
+            baselineRmssdValues.add(currentRmssd)
+            _baselineWindowsCollected.postValue(baselineHrValues.size)
+
+            if (baselineHrValues.size >= BASELINE_WINDOW_COUNT) {
+                if (baselineHr <= 0.0) {
+                    baselineHr = baselineHrValues.average()
+                }
+                if (baselineRmssd <= 0.0) {
+                    baselineRmssd = baselineRmssdValues.average()
+                }
+                baselineEstablished = true
+                Log.d(TAG, "Baseline established: HR=$baselineHr, RMSSD=$baselineRmssd")
+            }
+        }
+
+        // Post baseline comparison
+        if (baselineEstablished && baselineHr > 0.0 && baselineRmssd > 0.0) {
+            val hrDiff = ((currentHr - baselineHr) / baselineHr) * 100.0
+            val rmssdDiff = ((currentRmssd - baselineRmssd) / baselineRmssd) * 100.0
+            _baselineComparison.postValue(
+                BaselineComparison(
+                    currentHr = currentHr,
+                    baselineHr = baselineHr,
+                    hrDiffPercent = hrDiff,
+                    currentRmssd = currentRmssd,
+                    baselineRmssd = baselineRmssd,
+                    rmssdDiffPercent = rmssdDiff
+                )
+            )
+        }
+
         viewModelScope.launch(Dispatchers.Default) {
             val result = detector.addWindowAndPredict(features)
             _windowCount.postValue(detector.bufferedWindows)
             if (result != null) {
                 _currentResult.postValue(result)
                 Log.d(TAG, "Prediction: ${result.level} (P(High)=${String.format("%.2f", result.pHigh)}, ${result.percentDisplay}%)")
+
+                // Add to session trend
+                val point = FatigueTrendPoint(System.currentTimeMillis(), result.percentDisplay.toFloat())
+                sessionTrendPoints.add(point)
+                _sessionTrend.postValue(sessionTrendPoints.toList())
+
+                // Compute 5-minute prediction
+                computePrediction()
             }
         }
+    }
+
+    private fun computePrediction() {
+        if (sessionTrendPoints.size < MIN_POINTS_FOR_PREDICTION) {
+            _predictionTrend.postValue(emptyList())
+            return
+        }
+
+        val recentPoints = sessionTrendPoints.takeLast(MAX_REGRESSION_POINTS)
+
+        // Linear regression: y = slope * x + intercept
+        val n = recentPoints.size
+        val t0 = recentPoints.first().timeMs
+        val xs = recentPoints.map { (it.timeMs - t0).toDouble() }
+        val ys = recentPoints.map { it.fatiguePercent.toDouble() }
+
+        val sumX = xs.sum()
+        val sumY = ys.sum()
+        val sumXY = xs.zip(ys) { x, y -> x * y }.sum()
+        val sumX2 = xs.sumOf { it * it }
+
+        val denom = n * sumX2 - sumX * sumX
+        if (denom == 0.0) {
+            _predictionTrend.postValue(emptyList())
+            return
+        }
+
+        val slope = (n * sumXY - sumX * sumY) / denom
+        val intercept = (sumY - slope * sumX) / n
+
+        // Project forward from the last point
+        val lastTimeMs = recentPoints.last().timeMs
+        val lastX = (lastTimeMs - t0).toDouble()
+        val predictionSteps = (PREDICTION_MINUTES * 60_000L) / PREDICTION_STEP_MS
+
+        val predictions = mutableListOf<FatigueTrendPoint>()
+        for (i in 1..predictionSteps) {
+            val futureX = lastX + i * PREDICTION_STEP_MS
+            val futureY = (slope * futureX + intercept).toFloat().coerceIn(0f, 100f)
+            val futureTimeMs = lastTimeMs + i * PREDICTION_STEP_MS
+            predictions.add(FatigueTrendPoint(futureTimeMs, futureY))
+        }
+
+        _predictionTrend.postValue(predictions)
     }
 
     private fun loadWeeklyHistory(userId: String) {
@@ -84,8 +267,6 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
 
                 // Collect all JSONL feature windows from session dirs in the last 7 days
                 val dailyScores = mutableMapOf<Long, MutableList<Float>>()
-                val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-
                 val sessionDirs = baseDir.listFiles { f -> f.isDirectory } ?: return@launch
                 for (dir in sessionDirs) {
                     val jsonlFile = File(dir, "features.jsonl")
