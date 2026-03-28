@@ -11,9 +11,10 @@ class RecoveryGaugeView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
-    private var recoveryPercent = 70f
-    private var statusText = "Moderate"
-    private var gaugeColor = Color.parseColor("#FF8C00")
+    private var hasData = false
+    private var recoveryPercent = 0f
+    private var statusText = "--"
+    private var gaugeColor = Color.parseColor("#999999")
 
     // Arc: starts at 135° (bottom-left), sweeps 270° clockwise (gap at bottom)
     private val startAngle = 135f
@@ -27,7 +28,7 @@ class RecoveryGaugeView @JvmOverloads constructor(
     }
 
     private val fgArcPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#FF8C00")
+        color = Color.parseColor("#999999")
         style = Paint.Style.STROKE
         strokeWidth = 22f
         strokeCap = Paint.Cap.ROUND
@@ -41,12 +42,13 @@ class RecoveryGaugeView @JvmOverloads constructor(
     }
 
     private val statusTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#FF8C00")
+        color = Color.parseColor("#999999")
         textSize = 26f
         textAlign = Paint.Align.CENTER
     }
 
     fun setRecovery(percent: Float, status: String, color: Int = Color.parseColor("#FF8C00")) {
+        hasData = true
         recoveryPercent = percent.coerceIn(0f, 100f)
         statusText = status
         gaugeColor = color
@@ -68,13 +70,16 @@ class RecoveryGaugeView @JvmOverloads constructor(
         canvas.drawArc(oval, startAngle, sweepTotal, false, bgArcPaint)
 
         // Foreground arc
-        val sweep = sweepTotal * (recoveryPercent / 100f)
-        canvas.drawArc(oval, startAngle, sweep, false, fgArcPaint)
+        if (hasData) {
+            val sweep = sweepTotal * (recoveryPercent / 100f)
+            canvas.drawArc(oval, startAngle, sweep, false, fgArcPaint)
+        }
 
         // Centered text
         val cx = width / 2f
         val cy = height / 2f
-        canvas.drawText("${recoveryPercent.toInt()}%", cx, cy + 16f, percentTextPaint)
+        val displayText = if (hasData) "${recoveryPercent.toInt()}%" else "--"
+        canvas.drawText(displayText, cx, cy + 16f, percentTextPaint)
         canvas.drawText(statusText, cx, cy + 46f, statusTextPaint)
     }
 }

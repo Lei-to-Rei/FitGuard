@@ -94,6 +94,7 @@ class FatiguePredictionActivity : AppCompatActivity() {
             }
             binding.tvFatigueStatus.text = result.level
             binding.tvFatigueStatus.setTextColor(color)
+            binding.tvFatigueClassification.text = String.format("%.2f", result.pHigh)
             binding.gaugeFatigue.setRecovery(
                 result.percentDisplay.toFloat(),
                 result.level,
