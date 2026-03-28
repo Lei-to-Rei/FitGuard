@@ -14,6 +14,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.example.fitguard.data.processing.CsvWriter
+import com.example.fitguard.data.processing.FatigueDetector
 import com.example.fitguard.data.processing.RpeState
 import com.example.fitguard.data.processing.SequenceProcessor
 import com.google.firebase.auth.FirebaseAuth
@@ -326,6 +327,18 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         _state.value = SessionState.IDLE
         clearSavedSession()
         Log.d(TAG, "Session stopped: reason=$reason sequences=$sequenceCount")
+
+        // Generate personalized scaler from accumulated session data
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+        if (userId.isNotEmpty()) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val detector = FatigueDetector(getApplication())
+                val generated = detector.generatePersonalizedScaler(userId)
+                if (generated) {
+                    Log.d(TAG, "Personalized scaler updated for user $userId")
+                }
+            }
+        }
     }
 
     fun onHeartbeat(hbSessionId: String, sequenceCount: Int, elapsedS: Int) {
