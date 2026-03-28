@@ -61,12 +61,12 @@ class FatigueDetector(private val context: Context) {
     }
 
     fun initializePersonalized(userId: String): Boolean {
-        val baseDir = File(
+        val dataDir = File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            "FitGuard_Data/$userId/personalized"
+            "FitGuard_Data/$userId"
         )
-        val modelFile = File(baseDir, "fatigue_model.tflite")
-        val scalerFile = File(baseDir, "scaler_params.json")
+        val modelFile = File(dataDir, "personalized/user_${userId}_model.tflite")
+        val scalerFile = File(dataDir, "personalized/user_${userId}_scaler.json")
 
         if (!modelFile.exists() || !scalerFile.exists()) return false
 
