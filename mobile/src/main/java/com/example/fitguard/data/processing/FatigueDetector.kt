@@ -37,7 +37,7 @@ class FatigueDetector(private val context: Context) {
         private const val NUM_FEATURES = 30
         private const val DEFAULT_MODEL = "fatigue_model.tflite"
         private const val DEFAULT_SCALER = "scaler_params.json"
-        private const val MIN_SESSIONS_FOR_SCALER = 5
+        private const val MIN_SESSIONS_FOR_SCALER = 1
     }
 
     private var interpreter: InterpreterApi? = null
@@ -115,6 +115,21 @@ class FatigueDetector(private val context: Context) {
         val recent = windows.takeLast(SEQ_LENGTH)
         val input = arrayOf(recent.map { normalize(it) }.toTypedArray())
         return runInferenceOn(input)
+    }
+
+    fun initializeWithScalerFile(scalerFile: File): Boolean {
+        if (!scalerFile.exists()) return false
+        return try {
+            Tasks.await(TfLite.initialize(context))
+            scaler = loadScalerFromFile(scalerFile)
+            val options = InterpreterApi.Options().setRuntime(TfLiteRuntime.FROM_SYSTEM_ONLY)
+            interpreter = InterpreterApi.create(loadModelFromAssets(DEFAULT_MODEL), options)
+            Log.d(TAG, "Initialized with base model + scaler from ${scalerFile.name}")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize with scaler ${scalerFile.name}: ${e.message}", e)
+            false
+        }
     }
 
     fun clearBuffer() {
@@ -213,10 +228,10 @@ class FatigueDetector(private val context: Context) {
         )
         if (!userDir.exists()) return false
 
-        // Don't overwrite an externally trained scaler
-        val scalerFile = File(userDir, "personalized/user_${userId}_scaler.json")
+        // Skip if on-device generated scaler already exists
+        val scalerFile = File(userDir, "personalized/user_${userId}_scaler_generated.json")
         if (scalerFile.exists()) {
-            Log.d(TAG, "Personalized scaler already exists, skipping generation")
+            Log.d(TAG, "On-device generated scaler already exists, skipping generation")
             return false
         }
 
@@ -280,7 +295,7 @@ class FatigueDetector(private val context: Context) {
         // Write personalized scaler JSON
         val outputDir = File(userDir, "personalized")
         outputDir.mkdirs()
-        val outputFile = File(outputDir, "user_${userId}_scaler.json")
+        val outputFile = File(outputDir, "user_${userId}_scaler_generated.json")
 
         val json = JSONObject().apply {
             put("mean", JSONArray(mean.toList()))

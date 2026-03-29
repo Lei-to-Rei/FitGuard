@@ -96,9 +96,9 @@ object CsvWriter {
 
             Log.d(TAG, "Feature vector written to ${file.absolutePath}")
 
-            // Backup to Firestore
-            if (userId.isNotEmpty()) {
-                pushToFirestore(fv, userId)
+            // Backup to Firestore under session-scoped path
+            if (userId.isNotEmpty() && sessionDir.isNotEmpty()) {
+                pushToFirestore(fv, userId, sessionDir)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to write features CSV: ${e.message}", e)
@@ -152,9 +152,10 @@ object CsvWriter {
         }
     }
 
-    private fun pushToFirestore(fv: FeatureVector, userId: String) {
+    private fun pushToFirestore(fv: FeatureVector, userId: String, sessionDir: String) {
         FirebaseFirestore.getInstance()
             .collection("users").document(userId)
+            .collection("workout_history").document(sessionDir)
             .collection("feature_vectors").document(fv.sequenceId)
             .set(fv.toFirestoreMap())
             .addOnFailureListener { e ->
@@ -200,6 +201,99 @@ object CsvWriter {
         "fatigueLevel" to fatigueLevel,
         "rpeRaw" to rpeRaw
     )
+
+    fun pushSessionMetadata(
+        userId: String,
+        sessionDir: String,
+        activityType: String,
+        startTimeMillis: Long,
+        durationMillis: Long,
+        totalDistanceMeters: Float,
+        avgPaceMinPerKm: Double,
+        pointCount: Int
+    ) {
+        if (userId.isEmpty() || sessionDir.isEmpty()) return
+        FirebaseFirestore.getInstance()
+            .collection("users").document(userId)
+            .collection("workout_history").document(sessionDir)
+            .set(mapOf(
+                "activityType" to activityType,
+                "startTimeMillis" to startTimeMillis,
+                "durationMillis" to durationMillis,
+                "totalDistanceMeters" to totalDistanceMeters,
+                "avgPaceMinPerKm" to avgPaceMinPerKm,
+                "pointCount" to pointCount,
+                "sessionDirName" to sessionDir
+            ))
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Firestore session metadata failed: ${e.message}", e)
+            }
+    }
+
+    fun pushRouteToFirestore(points: List<LocationPoint>, userId: String, sessionDir: String) {
+        if (userId.isEmpty() || sessionDir.isEmpty() || points.isEmpty()) return
+        val db = FirebaseFirestore.getInstance()
+        val routeRef = db.collection("users").document(userId)
+            .collection("workout_history").document(sessionDir)
+            .collection("route_points")
+
+        var cumDist = 0.0
+        points.chunked(500).forEachIndexed { chunkIdx, chunk ->
+            val batch = db.batch()
+            chunk.forEachIndexed { i, p ->
+                val idx = chunkIdx * 500 + i
+                if (idx > 0) {
+                    val prev = points[idx - 1]
+                    val results = FloatArray(1)
+                    Location.distanceBetween(prev.lat, prev.lng, p.lat, p.lng, results)
+                    cumDist += results[0]
+                }
+                batch.set(
+                    routeRef.document(idx.toString().padStart(6, '0')),
+                    mapOf(
+                        "latitude" to p.lat,
+                        "longitude" to p.lng,
+                        "timestamp_ms" to p.timeMs,
+                        "cumulative_distance_m" to cumDist,
+                        "index" to idx
+                    )
+                )
+            }
+            batch.commit().addOnFailureListener { e ->
+                Log.e(TAG, "Firestore route batch failed: ${e.message}", e)
+            }
+        }
+    }
+
+    private fun pushFatigueHistoryToFirestore(row: FatigueHistoryRow, userId: String, sessionDir: String) {
+        FirebaseFirestore.getInstance()
+            .collection("users").document(userId)
+            .collection("workout_history").document(sessionDir)
+            .collection("fatigue_history").document(row.timestamp.toString())
+            .set(mapOf(
+                "timestamp" to row.timestamp,
+                "fatiguePercent" to row.fatiguePercent,
+                "globalPLow" to (row.global?.pLow ?: 0f),
+                "globalPHigh" to (row.global?.pHigh ?: 0f),
+                "globalLevel" to (row.global?.level ?: ""),
+                "globalLevelIndex" to (row.global?.levelIndex ?: -1),
+                "extPLow" to (row.external?.pLow ?: 0f),
+                "extPHigh" to (row.external?.pHigh ?: 0f),
+                "extLevel" to (row.external?.level ?: ""),
+                "extLevelIndex" to (row.external?.levelIndex ?: -1),
+                "ondevPLow" to (row.onDevice?.pLow ?: 0f),
+                "ondevPHigh" to (row.onDevice?.pHigh ?: 0f),
+                "ondevLevel" to (row.onDevice?.level ?: ""),
+                "ondevLevelIndex" to (row.onDevice?.levelIndex ?: -1),
+                "currentHr" to row.currentHr,
+                "currentRmssd" to row.currentRmssd,
+                "baselineHr" to row.baselineHr,
+                "baselineRmssd" to row.baselineRmssd
+            ))
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Firestore fatigue history failed: ${e.message}", e)
+            }
+    }
 
     fun writeRouteCsv(points: List<LocationPoint>, userId: String = "", sessionDir: String = "") {
         try {
@@ -286,6 +380,140 @@ object CsvWriter {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to write profile CSV: ${e.message}", e)
         }
+    }
+
+    fun writeComparisonRow(
+        timestamp: Long,
+        windowIndex: Int,
+        global: FatigueResult?,
+        external: FatigueResult?,
+        onDevice: FatigueResult?,
+        userId: String,
+        sessionDir: String
+    ) {
+        try {
+            val dir = getOutputDir(userId, sessionDir)
+            val file = File(dir, "scaler_comparison.csv")
+            val needsHeader = !file.exists() || file.length() == 0L
+
+            val header = "timestamp,window_index," +
+                "global_pLow,global_pHigh,global_level,global_percent," +
+                "external_pLow,external_pHigh,external_level,external_percent," +
+                "ondevice_pLow,ondevice_pHigh,ondevice_level,ondevice_percent"
+
+            fun resultCols(r: FatigueResult?): String {
+                return if (r != null) {
+                    "${fmt(r.pLow.toDouble())},${fmt(r.pHigh.toDouble())},${r.level},${r.percentDisplay}"
+                } else {
+                    ",,,"
+                }
+            }
+
+            val row = "$timestamp,$windowIndex,${resultCols(global)},${resultCols(external)},${resultCols(onDevice)}"
+            val content = buildString {
+                if (needsHeader) appendLine(header)
+                appendLine(row)
+            }
+            file.appendText(content)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to write comparison CSV: ${e.message}", e)
+        }
+    }
+
+    data class FatigueHistoryRow(
+        val timestamp: Long,
+        val fatiguePercent: Float,
+        val global: FatigueResult?,
+        val external: FatigueResult?,
+        val onDevice: FatigueResult?,
+        val currentHr: Double,
+        val currentRmssd: Double,
+        val baselineHr: Double,
+        val baselineRmssd: Double
+    )
+
+    private const val HISTORY_FILE = "fatigue_history.csv"
+    private const val HISTORY_HEADER = "timestamp,fatigue_percent," +
+        "global_pLow,global_pHigh,global_level,global_levelIndex," +
+        "ext_pLow,ext_pHigh,ext_level,ext_levelIndex," +
+        "ondev_pLow,ondev_pHigh,ondev_level,ondev_levelIndex," +
+        "current_hr,current_rmssd,baseline_hr,baseline_rmssd"
+
+    fun writeFatigueHistoryRow(
+        row: FatigueHistoryRow,
+        userId: String,
+        sessionDir: String
+    ) {
+        try {
+            val dir = getOutputDir(userId, sessionDir)
+            val file = File(dir, HISTORY_FILE)
+            val needsHeader = !file.exists() || file.length() == 0L
+
+            fun resCols(r: FatigueResult?): String {
+                return if (r != null) {
+                    "${fmt(r.pLow.toDouble())},${fmt(r.pHigh.toDouble())},${r.level},${r.levelIndex}"
+                } else {
+                    ",,,"
+                }
+            }
+
+            val line = "${row.timestamp},${fmt(row.fatiguePercent.toDouble())}," +
+                "${resCols(row.global)},${resCols(row.external)},${resCols(row.onDevice)}," +
+                "${fmt(row.currentHr)},${fmt(row.currentRmssd)},${fmt(row.baselineHr)},${fmt(row.baselineRmssd)}"
+
+            val content = buildString {
+                if (needsHeader) appendLine(HISTORY_HEADER)
+                appendLine(line)
+            }
+            file.appendText(content)
+
+            // Backup to Firestore
+            if (userId.isNotEmpty() && sessionDir.isNotEmpty()) {
+                pushFatigueHistoryToFirestore(row, userId, sessionDir)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to write fatigue history: ${e.message}", e)
+        }
+    }
+
+    fun readFatigueHistory(userId: String, sessionDir: String): List<FatigueHistoryRow> {
+        val dir = getOutputDir(userId, sessionDir)
+        val file = File(dir, HISTORY_FILE)
+        if (!file.exists() || file.length() == 0L) return emptyList()
+
+        val rows = mutableListOf<FatigueHistoryRow>()
+        try {
+            val lines = file.readLines()
+            // Skip header
+            for (i in 1 until lines.size) {
+                val cols = lines[i].split(",")
+                if (cols.size < 18) continue
+
+                fun parseResult(offset: Int): FatigueResult? {
+                    val pLow = cols.getOrNull(offset)?.toFloatOrNull() ?: return null
+                    val pHigh = cols.getOrNull(offset + 1)?.toFloatOrNull() ?: return null
+                    val level = cols.getOrNull(offset + 2)?.takeIf { it.isNotEmpty() } ?: return null
+                    val levelIndex = cols.getOrNull(offset + 3)?.toIntOrNull() ?: return null
+                    val percentDisplay = (pHigh * 100).toInt().coerceIn(0, 100)
+                    return FatigueResult(pLow, pHigh, level, levelIndex, percentDisplay)
+                }
+
+                rows.add(FatigueHistoryRow(
+                    timestamp = cols[0].toLongOrNull() ?: continue,
+                    fatiguePercent = cols[1].toFloatOrNull() ?: continue,
+                    global = parseResult(2),
+                    external = parseResult(6),
+                    onDevice = parseResult(10),
+                    currentHr = cols.getOrNull(14)?.toDoubleOrNull() ?: 0.0,
+                    currentRmssd = cols.getOrNull(15)?.toDoubleOrNull() ?: 0.0,
+                    baselineHr = cols.getOrNull(16)?.toDoubleOrNull() ?: 0.0,
+                    baselineRmssd = cols.getOrNull(17)?.toDoubleOrNull() ?: 0.0
+                ))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read fatigue history: ${e.message}", e)
+        }
+        return rows
     }
 
     private fun csvEscape(value: String): String {

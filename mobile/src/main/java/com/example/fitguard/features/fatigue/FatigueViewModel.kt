@@ -9,6 +9,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.example.fitguard.data.db.AppDatabase
+import com.example.fitguard.data.processing.CsvWriter
 import com.example.fitguard.data.processing.FatigueDetector
 import com.example.fitguard.data.processing.FatigueResult
 import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
@@ -31,6 +32,15 @@ data class BaselineComparison(
     val rmssdDiffPercent: Double
 )
 
+data class ScalerComparisonResult(
+    val global: FatigueResult?,
+    val external: FatigueResult?,
+    val onDevice: FatigueResult?,
+    val globalReady: Boolean,
+    val externalReady: Boolean,
+    val onDeviceReady: Boolean
+)
+
 class FatigueViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val TAG = "FatigueViewModel"
@@ -42,7 +52,9 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
         private const val MAX_REGRESSION_POINTS = 10
     }
 
-    private val detector = FatigueDetector(application)
+    private val globalDetector = FatigueDetector(application)
+    private val externalDetector = FatigueDetector(application)
+    private val onDeviceDetector = FatigueDetector(application)
 
     private val _currentResult = MutableLiveData<FatigueResult?>()
     val currentResult: LiveData<FatigueResult?> = _currentResult
@@ -76,6 +88,11 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
     private val _predictionTrend = MutableLiveData<List<FatigueTrendPoint>>()
     val predictionTrend: LiveData<List<FatigueTrendPoint>> = _predictionTrend
 
+    // Scaler comparison
+    private val _comparisonResult = MutableLiveData<ScalerComparisonResult?>()
+    val comparisonResult: LiveData<ScalerComparisonResult?> = _comparisonResult
+    private var comparisonWindowIndex = 0
+
     // Baseline accumulation
     private val baselineHrValues = mutableListOf<Double>()
     private val baselineRmssdValues = mutableListOf<Double>()
@@ -86,22 +103,46 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
     init {
         viewModelScope.launch(Dispatchers.IO) {
             val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
-            // Try personalized model first, fall back to base model
-            val personalized = if (userId.isNotEmpty()) detector.initializePersonalized(userId) else false
-            if (!personalized) {
-                detector.initialize()
+
+            // 1. Global detector — always available
+            globalDetector.initialize()
+
+            if (userId.isNotEmpty()) {
+                val personalizedDir = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    "$DIR_NAME/$userId/personalized"
+                )
+
+                // 2. External detector — from Python training pipeline
+                val extScalerFile = File(personalizedDir, "user_${userId}_scaler.json")
+                externalDetector.initializeWithScalerFile(extScalerFile)
+
+                // 3. On-device detector — generate scaler if needed, then load
+                val generator = FatigueDetector(getApplication())
+                generator.generatePersonalizedScaler(userId)
+                generator.close()
+
+                val genScalerFile = File(personalizedDir, "user_${userId}_scaler_generated.json")
+                onDeviceDetector.initializeWithScalerFile(genScalerFile)
             }
-            _isModelReady.postValue(detector.isReady)
-            if (detector.isReady) {
-                Log.d(TAG, "Model ready (personalized=$personalized)")
+
+            _isModelReady.postValue(globalDetector.isReady)
+            Log.d(TAG, "Detectors ready: global=${globalDetector.isReady}, " +
+                "external=${externalDetector.isReady}, onDevice=${onDeviceDetector.isReady}")
+
+            if (globalDetector.isReady) {
                 loadWeeklyHistory(userId)
-            } else {
-                Log.e(TAG, "Failed to initialize fatigue detector")
             }
 
             // Load static baselines from UserProfile
             if (userId.isNotEmpty()) {
                 loadStaticBaselines(userId)
+            }
+
+            // Restore fatigue history if session is active
+            val sessionDir = ActivityTrackingViewModel.activeSessionDir ?: ""
+            if (userId.isNotEmpty() && sessionDir.isNotEmpty()) {
+                restoreFatigueHistory(userId, sessionDir)
             }
         }
 
@@ -145,7 +186,7 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun onNewFeatureWindow(features: FloatArray) {
-        if (!detector.isReady) return
+        if (!globalDetector.isReady) return
 
         // Receiving a broadcast implies session is active
         _isSessionActive.postValue(true)
@@ -189,21 +230,133 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
         }
 
         viewModelScope.launch(Dispatchers.Default) {
-            val result = detector.addWindowAndPredict(features)
-            _windowCount.postValue(detector.bufferedWindows)
-            if (result != null) {
-                _currentResult.postValue(result)
-                Log.d(TAG, "Prediction: ${result.level} (P(High)=${String.format("%.2f", result.pHigh)}, ${result.percentDisplay}%)")
+            val globalResult = globalDetector.addWindowAndPredict(features)
+            val externalResult = if (externalDetector.isReady) externalDetector.addWindowAndPredict(features) else null
+            val onDeviceResult = if (onDeviceDetector.isReady) onDeviceDetector.addWindowAndPredict(features) else null
+
+            _windowCount.postValue(globalDetector.bufferedWindows)
+
+            // Use global as primary for existing UI
+            if (globalResult != null) {
+                _currentResult.postValue(globalResult)
+                Log.d(TAG, "Prediction: ${globalResult.level} (P(High)=${String.format("%.2f", globalResult.pHigh)}, ${globalResult.percentDisplay}%)")
 
                 // Add to session trend
-                val point = FatigueTrendPoint(System.currentTimeMillis(), result.percentDisplay.toFloat())
+                val point = FatigueTrendPoint(System.currentTimeMillis(), globalResult.percentDisplay.toFloat())
                 sessionTrendPoints.add(point)
                 _sessionTrend.postValue(sessionTrendPoints.toList())
 
                 // Compute 5-minute prediction
                 computePrediction()
             }
+
+            // Post comparison result
+            _comparisonResult.postValue(
+                ScalerComparisonResult(
+                    global = globalResult,
+                    external = externalResult,
+                    onDevice = onDeviceResult,
+                    globalReady = globalDetector.isReady,
+                    externalReady = externalDetector.isReady,
+                    onDeviceReady = onDeviceDetector.isReady
+                )
+            )
+
+            // Write comparison CSV
+            if (globalResult != null || externalResult != null || onDeviceResult != null) {
+                writeComparisonCsvRow(globalResult, externalResult, onDeviceResult)
+            }
+
+            // Write fatigue history for persistence across activity re-entry
+            if (globalResult != null) {
+                val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                val sessionDir = ActivityTrackingViewModel.activeSessionDir ?: ""
+                if (userId.isNotEmpty() && sessionDir.isNotEmpty()) {
+                    CsvWriter.writeFatigueHistoryRow(
+                        CsvWriter.FatigueHistoryRow(
+                            timestamp = System.currentTimeMillis(),
+                            fatiguePercent = globalResult.percentDisplay.toFloat(),
+                            global = globalResult,
+                            external = externalResult,
+                            onDevice = onDeviceResult,
+                            currentHr = currentHr,
+                            currentRmssd = currentRmssd,
+                            baselineHr = baselineHr,
+                            baselineRmssd = baselineRmssd
+                        ),
+                        userId, sessionDir
+                    )
+                }
+            }
         }
+    }
+
+    private fun writeComparisonCsvRow(
+        global: FatigueResult?,
+        external: FatigueResult?,
+        onDevice: FatigueResult?
+    ) {
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+        val sessionDir = ActivityTrackingViewModel.activeSessionDir ?: ""
+        if (userId.isEmpty() || sessionDir.isEmpty()) return
+        CsvWriter.writeComparisonRow(
+            System.currentTimeMillis(),
+            comparisonWindowIndex++,
+            global, external, onDevice,
+            userId, sessionDir
+        )
+    }
+
+    private fun restoreFatigueHistory(userId: String, sessionDir: String) {
+        val rows = CsvWriter.readFatigueHistory(userId, sessionDir)
+        if (rows.isEmpty()) return
+
+        Log.d(TAG, "Restoring ${rows.size} fatigue history rows")
+
+        // Restore trend points
+        for (row in rows) {
+            sessionTrendPoints.add(FatigueTrendPoint(row.timestamp, row.fatiguePercent))
+        }
+        _sessionTrend.postValue(sessionTrendPoints.toList())
+
+        // Restore latest results
+        val last = rows.last()
+        if (last.global != null) {
+            _currentResult.postValue(last.global)
+        }
+        _comparisonResult.postValue(
+            ScalerComparisonResult(
+                global = last.global,
+                external = last.external,
+                onDevice = last.onDevice,
+                globalReady = globalDetector.isReady,
+                externalReady = externalDetector.isReady,
+                onDeviceReady = onDeviceDetector.isReady
+            )
+        )
+
+        // Restore baseline
+        if (last.baselineHr > 0.0 && last.baselineRmssd > 0.0) {
+            baselineHr = last.baselineHr
+            baselineRmssd = last.baselineRmssd
+            baselineEstablished = true
+            _baselineWindowsCollected.postValue(BASELINE_WINDOW_COUNT)
+            val hrDiff = ((last.currentHr - baselineHr) / baselineHr) * 100.0
+            val rmssdDiff = ((last.currentRmssd - baselineRmssd) / baselineRmssd) * 100.0
+            _baselineComparison.postValue(
+                BaselineComparison(
+                    currentHr = last.currentHr,
+                    baselineHr = baselineHr,
+                    hrDiffPercent = hrDiff,
+                    currentRmssd = last.currentRmssd,
+                    baselineRmssd = baselineRmssd,
+                    rmssdDiffPercent = rmssdDiff
+                )
+            )
+        }
+
+        comparisonWindowIndex = rows.size
+        computePrediction()
     }
 
     private fun computePrediction() {
@@ -297,7 +450,7 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
 
                     // Run batch inference on this session's windows
                     if (windows.size >= 5 && sessionDay != null) {
-                        val result = detector.predictBatch(windows)
+                        val result = globalDetector.predictBatch(windows)
                         if (result != null) {
                             dailyScores.getOrPut(sessionDay!!) { mutableListOf() }
                                 .add(result.pHigh * 100f)
@@ -355,6 +508,8 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
 
     override fun onCleared() {
         super.onCleared()
-        detector.close()
+        globalDetector.close()
+        externalDetector.close()
+        onDeviceDetector.close()
     }
 }

@@ -258,7 +258,23 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         viewModelScope.launch(Dispatchers.IO) {
             CsvWriter.writeRouteCsv(points, userId, dir)
             CsvWriter.writeRouteSummary(distance, pace, duration, points.size, userId, dir)
+            // Backup route to Firestore
+            if (userId.isNotEmpty()) {
+                CsvWriter.pushRouteToFirestore(points, userId, dir)
+            }
         }
+    }
+
+    private fun pushSessionToFirestore() {
+        val dir = activeSessionDir ?: return
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        val activity = _activityType.value ?: "Unknown"
+        val duration = if (sessionStartTime > 0) System.currentTimeMillis() - sessionStartTime else 0L
+
+        CsvWriter.pushSessionMetadata(
+            userId, dir, activity, sessionStartTime, duration,
+            totalDistanceMeters, _paceMinPerKm.value ?: 0.0, routePointsList.size
+        )
     }
 
     fun stopSession() {
@@ -269,6 +285,7 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         saveRouteData()
         stopLocationTracking()
         SequenceProcessor.flushRemainingAndClear()
+        pushSessionToFirestore()
         activeSessionId = null
         activeSessionDir = null
         SessionForegroundService.stop(getApplication())
@@ -319,6 +336,7 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         stopTimer()
         stopLocationTracking()
         SequenceProcessor.flushRemainingAndClear()
+        pushSessionToFirestore()
         RpeState.reset()
         activeSessionId = null
         activeSessionDir = null

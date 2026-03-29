@@ -12,6 +12,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.example.fitguard.MainActivity
 import com.example.fitguard.R
+import android.widget.TextView
+import com.example.fitguard.data.processing.FatigueResult
 import com.example.fitguard.data.processing.SequenceProcessor
 import com.example.fitguard.databinding.ActivityFatiguePredictionBinding
 import com.example.fitguard.features.profile.UserHomeActivity
@@ -147,6 +149,54 @@ class FatiguePredictionActivity : AppCompatActivity() {
             }
             binding.chartSessionTrend.setPrediction(chartPoints)
         }
+
+        // Scaler comparison
+        viewModel.comparisonResult.observe(this) { comp ->
+            if (comp == null) return@observe
+            updateComparisonColumn(comp.global, comp.globalReady,
+                binding.tvCompGlobalLevel, binding.tvCompGlobalPHigh, binding.tvCompGlobalStatus)
+            updateComparisonColumn(comp.external, comp.externalReady,
+                binding.tvCompExternalLevel, binding.tvCompExternalPHigh, binding.tvCompExternalStatus)
+            updateComparisonColumn(comp.onDevice, comp.onDeviceReady,
+                binding.tvCompOnDeviceLevel, binding.tvCompOnDevicePHigh, binding.tvCompOnDeviceStatus)
+        }
+    }
+
+    private fun updateComparisonColumn(
+        result: FatigueResult?,
+        ready: Boolean,
+        levelView: TextView,
+        pHighView: TextView,
+        statusView: TextView
+    ) {
+        if (!ready) {
+            levelView.text = "N/A"
+            levelView.setTextColor(Color.parseColor("#999999"))
+            pHighView.text = "P(H): N/A"
+            statusView.text = "Not available"
+            statusView.setTextColor(Color.parseColor("#999999"))
+            return
+        }
+        if (result == null) {
+            levelView.text = "..."
+            levelView.setTextColor(Color.parseColor("#999999"))
+            pHighView.text = "P(H): ..."
+            statusView.text = "Buffering"
+            statusView.setTextColor(Color.parseColor("#999999"))
+            return
+        }
+        val color = when (result.levelIndex) {
+            0 -> Color.parseColor("#4CAF50")
+            1 -> Color.parseColor("#FF8C00")
+            2 -> Color.parseColor("#FF5722")
+            3 -> Color.parseColor("#D32F2F")
+            else -> Color.parseColor("#FF8C00")
+        }
+        levelView.text = result.level
+        levelView.setTextColor(color)
+        pHighView.text = "P(H): ${String.format("%.3f", result.pHigh)}"
+        statusView.text = "${result.percentDisplay}%"
+        statusView.setTextColor(color)
     }
 
     private fun setupBottomNavigation() {
