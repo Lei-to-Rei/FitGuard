@@ -27,6 +27,240 @@ object ActivityHistoryRepository {
     }
 
     /**
+     * Uploads local-only sessions to Firestore.
+     * Scans local session directories and pushes any that don't exist in Firestore yet.
+     */
+    suspend fun syncToFirestore(userId: String) {
+        try {
+            val db = FirebaseFirestore.getInstance()
+
+            // Fetch existing Firestore session IDs in one query
+            val existingSessionIds = db.collection("users").document(userId)
+                .collection("workout_history")
+                .get().await()
+                .documents.map { it.id }.toSet()
+
+            val userDir = CsvWriter.getOutputDir(userId)
+            if (!userDir.exists() || !userDir.isDirectory) return
+
+            val localSessionDirs = userDir.listFiles()
+                ?.filter { it.isDirectory && File(it, "features.csv").exists() }
+                ?: return
+
+            var uploaded = 0
+            for (dir in localSessionDirs) {
+                if (dir.name in existingSessionIds) continue
+                uploadSession(db, userId, dir)
+                uploaded++
+            }
+            if (uploaded > 0) {
+                Log.d(TAG, "Uploaded $uploaded local sessions to Firestore")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to upload local sessions to Firestore: ${e.message}")
+        }
+    }
+
+    private suspend fun uploadSession(db: FirebaseFirestore, userId: String, dir: File) {
+        val sessionDirName = dir.name
+        try {
+            val item = parseSessionDir(dir) ?: return
+
+            val (distance, pace, routeDuration) = parseRouteSummary(dir)
+            val durationMillis = if (routeDuration > 0) routeDuration
+                                 else parseDurationFromCsv(File(dir, "features.csv"))
+
+            // Count route points
+            val routeFile = File(dir, "route.csv")
+            val pointCount = if (routeFile.exists()) {
+                maxOf(0, routeFile.readLines().size - 1)
+            } else 0
+
+            // Upload metadata doc first
+            db.collection("users").document(userId)
+                .collection("workout_history").document(sessionDirName)
+                .set(mapOf(
+                    "activityType" to item.activityType,
+                    "startTimeMillis" to item.startTimeMillis,
+                    "durationMillis" to durationMillis,
+                    "totalDistanceMeters" to distance,
+                    "avgPaceMinPerKm" to pace,
+                    "pointCount" to pointCount,
+                    "sessionDirName" to sessionDirName
+                )).await()
+
+            // Upload subcollections
+            uploadFeatureVectors(db, userId, sessionDirName, dir)
+            uploadRoutePoints(db, userId, sessionDirName, dir)
+            uploadFatigueHistory(db, userId, sessionDirName, dir)
+
+            Log.d(TAG, "Uploaded session $sessionDirName")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to upload session $sessionDirName: ${e.message}")
+        }
+    }
+
+    private suspend fun uploadFeatureVectors(
+        db: FirebaseFirestore, userId: String, sessionDirName: String, dir: File
+    ) {
+        val file = File(dir, "features.csv")
+        if (!file.exists()) return
+        val lines = file.readLines()
+        if (lines.size < 2) return
+
+        val columns = lines[0].split(",")
+        val colIdx = columns.withIndex().associate { (i, name) -> name.trim() to i }
+
+        val collRef = db.collection("users").document(userId)
+            .collection("workout_history").document(sessionDirName)
+            .collection("feature_vectors")
+
+        lines.drop(1).chunked(500).forEach { chunk ->
+            val batch = db.batch()
+            for (line in chunk) {
+                val parts = line.split(",")
+                val seqId = parts.getOrNull(colIdx["sequence_id"] ?: -1)?.trim() ?: continue
+                if (seqId.isEmpty()) continue
+                batch.set(collRef.document(seqId), buildFeatureVectorMap(parts, colIdx))
+            }
+            batch.commit().await()
+        }
+    }
+
+    private fun buildFeatureVectorMap(parts: List<String>, colIdx: Map<String, Int>): Map<String, Any> {
+        fun str(col: String) = parts.getOrNull(colIdx[col] ?: -1)?.trim() ?: ""
+        fun long(col: String) = str(col).toLongOrNull() ?: 0L
+        fun double(col: String) = str(col).toDoubleOrNull() ?: 0.0
+        fun int(col: String) = str(col).toIntOrNull() ?: 0
+
+        return mapOf(
+            "timestamp" to long("timestamp"),
+            "timestampEnd" to long("timestamp_end"),
+            "sequenceId" to str("sequence_id"),
+            "meanHrBpm" to double("mean_hr_bpm"),
+            "hrStdBpm" to double("hr_std_bpm"),
+            "hrMinBpm" to double("hr_min_bpm"),
+            "hrMaxBpm" to double("hr_max_bpm"),
+            "hrRangeBpm" to double("hr_range_bpm"),
+            "hrSlopeBpmPerS" to double("hr_slope_bpm_per_s"),
+            "nnQualityRatio" to double("nn_quality_ratio"),
+            "sdnnMs" to double("sdnn_ms"),
+            "rmssdMs" to double("rmssd_ms"),
+            "pnn50Pct" to double("pnn50_pct"),
+            "meanNnMs" to double("mean_nn_ms"),
+            "cvNn" to double("cv_nn"),
+            "lfPowerMs2" to double("lf_power_ms2"),
+            "hfPowerMs2" to double("hf_power_ms2"),
+            "lfHfRatio" to double("lf_hf_ratio"),
+            "totalPowerMs2" to double("total_power_ms2"),
+            "spo2MeanPct" to double("spo2_mean_pct"),
+            "spo2MinPct" to double("spo2_min_pct"),
+            "spo2StdPct" to double("spo2_std_pct"),
+            "accelXMean" to double("accel_x_mean"),
+            "accelYMean" to double("accel_y_mean"),
+            "accelZMean" to double("accel_z_mean"),
+            "accelXVar" to double("accel_x_var"),
+            "accelYVar" to double("accel_y_var"),
+            "accelZVar" to double("accel_z_var"),
+            "accelMagMean" to double("accel_mag_mean"),
+            "accelMagVar" to double("accel_mag_var"),
+            "accelPeak" to double("accel_peak"),
+            "totalSteps" to int("total_steps"),
+            "cadenceSpm" to double("cadence_spm"),
+            "activityLabel" to str("activity_label")
+        )
+    }
+
+    private suspend fun uploadRoutePoints(
+        db: FirebaseFirestore, userId: String, sessionDirName: String, dir: File
+    ) {
+        val file = File(dir, "route.csv")
+        if (!file.exists()) return
+        val lines = file.readLines()
+        if (lines.size < 2) return
+
+        val columns = lines[0].split(",")
+        val colIdx = columns.withIndex().associate { (i, name) -> name.trim() to i }
+
+        val collRef = db.collection("users").document(userId)
+            .collection("workout_history").document(sessionDirName)
+            .collection("route_points")
+
+        lines.drop(1).chunked(500).forEachIndexed { chunkIdx, chunk ->
+            val batch = db.batch()
+            chunk.forEachIndexed { i, line ->
+                val parts = line.split(",")
+                val idx = chunkIdx * 500 + i
+                batch.set(
+                    collRef.document(idx.toString().padStart(6, '0')),
+                    mapOf(
+                        "latitude" to (parts.getOrNull(colIdx["latitude"] ?: -1)?.toDoubleOrNull() ?: 0.0),
+                        "longitude" to (parts.getOrNull(colIdx["longitude"] ?: -1)?.toDoubleOrNull() ?: 0.0),
+                        "timestamp_ms" to (parts.getOrNull(colIdx["timestamp_ms"] ?: -1)?.toLongOrNull() ?: 0L),
+                        "cumulative_distance_m" to (parts.getOrNull(colIdx["cumulative_distance_m"] ?: -1)?.toDoubleOrNull() ?: 0.0),
+                        "index" to idx
+                    )
+                )
+            }
+            batch.commit().await()
+        }
+    }
+
+    private suspend fun uploadFatigueHistory(
+        db: FirebaseFirestore, userId: String, sessionDirName: String, dir: File
+    ) {
+        val file = File(dir, "fatigue_history.csv")
+        if (!file.exists()) return
+        val lines = file.readLines()
+        if (lines.size < 2) return
+
+        val columns = lines[0].split(",")
+        val colIdx = columns.withIndex().associate { (i, name) -> name.trim() to i }
+
+        val collRef = db.collection("users").document(userId)
+            .collection("workout_history").document(sessionDirName)
+            .collection("fatigue_history")
+
+        lines.drop(1).chunked(500).forEach { chunk ->
+            val batch = db.batch()
+            for (line in chunk) {
+                val parts = line.split(",")
+                fun str(col: String) = parts.getOrNull(colIdx[col] ?: -1)?.trim() ?: ""
+                fun double(col: String) = str(col).toDoubleOrNull() ?: 0.0
+                fun long(col: String) = str(col).toLongOrNull() ?: -1L
+
+                val ts = long("timestamp")
+                if (ts <= 0) continue
+
+                batch.set(
+                    collRef.document(ts.toString()),
+                    mapOf(
+                        "timestamp" to ts,
+                        "fatiguePercent" to double("fatigue_percent"),
+                        "globalPLow" to double("global_pLow"),
+                        "globalPHigh" to double("global_pHigh"),
+                        "globalLevel" to str("global_level"),
+                        "globalLevelIndex" to long("global_levelIndex"),
+                        "extPLow" to double("ext_pLow"),
+                        "extPHigh" to double("ext_pHigh"),
+                        "extLevel" to str("ext_level"),
+                        "extLevelIndex" to long("ext_levelIndex"),
+                        "ondevPLow" to double("ondev_pLow"),
+                        "ondevPHigh" to double("ondev_pHigh"),
+                        "ondevLevel" to str("ondev_level"),
+                        "ondevLevelIndex" to long("ondev_levelIndex"),
+                        "currentHr" to double("current_hr"),
+                        "currentRmssd" to double("current_rmssd"),
+                        "baselineHr" to double("baseline_hr"),
+                        "baselineRmssd" to double("baseline_rmssd")
+                    )
+                )
+            }
+            batch.commit().await()
+        }
+    }
+
+    /**
      * Syncs workout history from Firestore to local storage.
      * Downloads session data and reconstructs local CSV files so the existing
      * local reading code works unchanged. Skips sessions that already exist locally.

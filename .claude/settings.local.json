@@ -66,7 +66,8 @@
       "Bash(cp \"C:/Users/claud/Downloads/scaler_params.json\" \"C:/Users/claud/AndroidStudioProjects/FitGuard/mobile/src/main/assets/\")",
       "Bash(echo \"exit: $?\")",
       "Bash(.h5 \")",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(find /c/Users/claud/AndroidStudioProjects/FitGuard/wear/src -type f \\\\\\(-name *.kt -o -name *.xml -o -name *.java \\\\\\))"
     ]
   }
 }
