@@ -15,7 +15,6 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.example.fitguard.data.processing.CsvWriter
 import com.example.fitguard.data.processing.FatigueDetector
-import com.example.fitguard.data.processing.RpeState
 import com.example.fitguard.data.processing.SequenceProcessor
 import com.google.firebase.auth.FirebaseAuth
 import com.example.fitguard.services.SessionForegroundService
@@ -51,8 +50,6 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         private const val KEY_START_TIME = "start_time"
         private const val KEY_IS_ACTIVE = "is_active"
         private const val KEY_SEQUENCE_COUNT = "sequence_count"
-        private const val KEY_RPE_INTERVAL = "rpe_interval"
-        private const val KEY_LAST_RPE = "last_rpe"
         private const val KEY_SESSION_DIR = "session_dir"
 
         /** Current active session ID, readable by WearableDataListenerService to filter stale batches. */
@@ -82,12 +79,6 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
 
     private val _error = MutableLiveData<String?>(null)
     val error: LiveData<String?> = _error
-
-    private val _rpeIntervalMinutes = MutableLiveData(10)
-    val rpeIntervalMinutes: LiveData<Int> = _rpeIntervalMinutes
-
-    private val _lastRpe = MutableLiveData(-1)
-    val lastRpe: LiveData<Int> = _lastRpe
 
     // Location tracking
     private val _routePoints = MutableLiveData<List<LocationPoint>>(emptyList())
@@ -145,28 +136,6 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         _activityType.value = type
     }
 
-    fun setRpeInterval(minutes: Int) {
-        _rpeIntervalMinutes.value = minutes.coerceIn(1, 15)
-    }
-
-    fun onRpeReceived(sessionId: String, rpeValue: Int) {
-        if (sessionId != this.sessionId) return
-        _lastRpe.value = rpeValue
-        if (rpeValue >= 0) {
-            RpeState.update(rpeValue)
-        }
-        saveSession()
-        Log.d(TAG, "RPE received: $rpeValue for session $sessionId")
-    }
-
-    fun onPhoneRpeAnswered(sessionId: String, rpeValue: Int) {
-        if (sessionId != this.sessionId) return
-        _lastRpe.value = rpeValue
-        // RpeState and SequenceProcessor already updated by RpePromptActivity
-        saveSession()
-        Log.d(TAG, "Phone RPE answered: $rpeValue for session $sessionId")
-    }
-
     private fun buildSessionDirName(activityType: String, startTime: Long): String {
         val sdf = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US)
         return "${sdf.format(Date(startTime))}_${activityType.replace(' ', '_')}"
@@ -182,8 +151,6 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         _error.value = null
         _elapsedSeconds.value = 0
         _sequenceCount.value = 0
-        _lastRpe.value = -1
-        RpeState.reset()
         SequenceProcessor.clearBuffer()
         activeSessionId = sessionId
         activeSessionDir = buildSessionDirName(activityType, sessionStartTime)
@@ -227,7 +194,6 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
                 val payload = JSONObject().apply {
                     put("activity_type", activityType)
                     put("session_id", sessionId)
-                    put("rpe_interval_minutes", _rpeIntervalMinutes.value ?: 10)
                 }
                 val data = payload.toString().toByteArray(Charsets.UTF_8)
 
@@ -337,7 +303,6 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         stopLocationTracking()
         SequenceProcessor.flushRemainingAndClear()
         pushSessionToFirestore()
-        RpeState.reset()
         activeSessionId = null
         activeSessionDir = null
         SessionForegroundService.stop(getApplication())
@@ -345,18 +310,6 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         _state.value = SessionState.IDLE
         clearSavedSession()
         Log.d(TAG, "Session stopped: reason=$reason sequences=$sequenceCount")
-
-        // Generate personalized scaler from accumulated session data
-        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
-        if (userId.isNotEmpty()) {
-            viewModelScope.launch(Dispatchers.IO) {
-                val detector = FatigueDetector(getApplication())
-                val generated = detector.generatePersonalizedScaler(userId)
-                if (generated) {
-                    Log.d(TAG, "Personalized scaler updated for user $userId")
-                }
-            }
-        }
     }
 
     fun onHeartbeat(hbSessionId: String, sequenceCount: Int, elapsedS: Int) {
@@ -406,8 +359,6 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
             .putLong(KEY_START_TIME, sessionStartTime)
             .putBoolean(KEY_IS_ACTIVE, true)
             .putInt(KEY_SEQUENCE_COUNT, _sequenceCount.value ?: 0)
-            .putInt(KEY_RPE_INTERVAL, _rpeIntervalMinutes.value ?: 10)
-            .putInt(KEY_LAST_RPE, _lastRpe.value ?: -1)
             .putString(KEY_SESSION_DIR, activeSessionDir ?: "")
             .apply()
     }
@@ -427,8 +378,6 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         sessionStartTime = savedStartTime
         _activityType.value = prefs.getString(KEY_ACTIVITY_TYPE, "Walking")
         _sequenceCount.value = prefs.getInt(KEY_SEQUENCE_COUNT, 0)
-        _rpeIntervalMinutes.value = prefs.getInt(KEY_RPE_INTERVAL, 10)
-        _lastRpe.value = prefs.getInt(KEY_LAST_RPE, -1)
 
         // Calculate elapsed from saved start time
         val elapsedMs = System.currentTimeMillis() - savedStartTime

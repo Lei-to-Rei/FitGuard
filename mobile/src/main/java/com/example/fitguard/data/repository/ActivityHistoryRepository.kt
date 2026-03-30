@@ -328,7 +328,7 @@ object ActivityHistoryRepository {
             "accel_x_var", "accel_y_var", "accel_z_var",
             "accel_mag_mean", "accel_mag_var", "accel_peak",
             "total_steps", "cadence_spm",
-            "activity_label", "fatigue_level", "rpe_raw"
+            "activity_label"
         )
 
         val csvHeader = "user_id,timestamp,timestamp_end,sequence_id," +
@@ -341,7 +341,7 @@ object ActivityHistoryRepository {
             "accel_x_var,accel_y_var,accel_z_var," +
             "accel_mag_mean,accel_mag_var,accel_peak," +
             "total_steps,cadence_spm," +
-            "activity_label,fatigue_level,rpe_raw"
+            "activity_label"
 
         val csvSb = StringBuilder()
         csvSb.appendLine(csvHeader)
@@ -355,15 +355,12 @@ object ActivityHistoryRepository {
             val totalSteps = d.getLong("totalSteps") ?: 0
             val cadence = d.getDouble("cadenceSpm") ?: 0.0
             val actLabel = d.getString("activityLabel") ?: ""
-            val fatLevel = d.getString("fatigueLevel") ?: ""
-            val rpe = d.getLong("rpeRaw") ?: -1
 
             // Build CSV row
             val numericValues = numericKeys.joinToString(",") { key ->
                 fmt(d.getDouble(key) ?: 0.0)
             }
-            val rpeStr = if (rpe >= 0) rpe.toString() else ""
-            csvSb.appendLine("$userId,$ts,$tsEnd,$seqId,$numericValues,$totalSteps,${fmt(cadence)},$actLabel,$fatLevel,$rpeStr")
+            csvSb.appendLine("$userId,$ts,$tsEnd,$seqId,$numericValues,$totalSteps,${fmt(cadence)},$actLabel")
 
             // Build JSONL row
             val json = JSONObject()
@@ -375,8 +372,6 @@ object ActivityHistoryRepository {
             json.put("total_steps", totalSteps)
             json.put("cadence_spm", cadence)
             json.put("activity_label", actLabel)
-            json.put("fatigue_level", fatLevel)
-            json.put("rpe_raw", rpe)
             jsonlSb.appendLine(json.toString())
         }
 

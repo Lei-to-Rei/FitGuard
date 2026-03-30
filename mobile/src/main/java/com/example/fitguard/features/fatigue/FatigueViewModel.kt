@@ -117,13 +117,6 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
                 val extScalerFile = File(personalizedDir, "user_${userId}_scaler.json")
                 externalDetector.initializeWithScalerFile(extScalerFile)
 
-                // 3. On-device detector — generate scaler if needed, then load
-                val generator = FatigueDetector(getApplication())
-                generator.generatePersonalizedScaler(userId)
-                generator.close()
-
-                val genScalerFile = File(personalizedDir, "user_${userId}_scaler_generated.json")
-                onDeviceDetector.initializeWithScalerFile(genScalerFile)
             }
 
             _isModelReady.postValue(globalDetector.isReady)

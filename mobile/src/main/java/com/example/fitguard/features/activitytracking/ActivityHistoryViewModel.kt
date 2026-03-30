@@ -29,7 +29,9 @@ class ActivityHistoryViewModel(application: Application) : AndroidViewModel(appl
 
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
-                // Sync from Firestore first (downloads sessions missing locally, e.g. new device)
+                // Upload local-only sessions to Firestore first
+                ActivityHistoryRepository.syncToFirestore(userId)
+                // Then download any sessions missing locally (e.g. new device)
                 ActivityHistoryRepository.syncFromFirestore(userId)
             }
             val result = withContext(Dispatchers.IO) {

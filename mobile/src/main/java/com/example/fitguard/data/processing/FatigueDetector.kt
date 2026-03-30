@@ -34,10 +34,8 @@ class FatigueDetector(private val context: Context) {
     companion object {
         private const val TAG = "FatigueDetector"
         private const val SEQ_LENGTH = 5
-        private const val NUM_FEATURES = 30
         private const val DEFAULT_MODEL = "fatigue_model.tflite"
         private const val DEFAULT_SCALER = "scaler_params.json"
-        private const val MIN_SESSIONS_FOR_SCALER = 1
     }
 
     private var interpreter: InterpreterApi? = null
@@ -46,7 +44,6 @@ class FatigueDetector(private val context: Context) {
 
     val isReady: Boolean get() = interpreter != null && scaler != null
     val bufferedWindows: Int get() = windowBuffer.size
-    val needsMoreWindows: Boolean get() = windowBuffer.size < SEQ_LENGTH
 
     fun initialize(): Boolean {
         return try {
@@ -215,99 +212,6 @@ class FatigueDetector(private val context: Context) {
         val inputStream = FileInputStream(file)
         val channel = inputStream.channel
         return channel.map(FileChannel.MapMode.READ_ONLY, 0, file.length())
-    }
-
-    /**
-     * Reads all features.jsonl across user sessions, computes per-feature mean/std,
-     * and saves as a personalized scaler. Returns true if scaler was generated.
-     */
-    fun generatePersonalizedScaler(userId: String): Boolean {
-        val userDir = File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            "FitGuard_Data/$userId"
-        )
-        if (!userDir.exists()) return false
-
-        // Skip if on-device generated scaler already exists
-        val scalerFile = File(userDir, "personalized/user_${userId}_scaler_generated.json")
-        if (scalerFile.exists()) {
-            Log.d(TAG, "On-device generated scaler already exists, skipping generation")
-            return false
-        }
-
-        val sessionDirs = userDir.listFiles { f -> f.isDirectory && f.name != "personalized" } ?: return false
-        val jsonlFiles = sessionDirs.mapNotNull { dir ->
-            val f = File(dir, "features.jsonl")
-            if (f.exists()) f else null
-        }
-
-        if (jsonlFiles.size < MIN_SESSIONS_FOR_SCALER) {
-            Log.d(TAG, "Not enough sessions for personalized scaler (${jsonlFiles.size}/$MIN_SESSIONS_FOR_SCALER)")
-            return false
-        }
-
-        // Collect all feature windows
-        val allWindows = mutableListOf<FloatArray>()
-        val featureKeys = listOf(
-            "mean_hr_bpm", "hr_std_bpm", "hr_min_bpm", "hr_max_bpm", "hr_range_bpm",
-            "hr_slope_bpm_per_s", "nn_quality_ratio",
-            "sdnn_ms", "rmssd_ms", "pnn50_pct", "mean_nn_ms", "cv_nn",
-            "lf_power_ms2", "hf_power_ms2", "lf_hf_ratio", "total_power_ms2",
-            "spo2_mean_pct", "spo2_min_pct", "spo2_std_pct",
-            "accel_x_mean", "accel_y_mean", "accel_z_mean",
-            "accel_x_var", "accel_y_var", "accel_z_var",
-            "accel_mag_mean", "accel_mag_var", "accel_peak",
-            "total_steps", "cadence_spm"
-        )
-
-        for (file in jsonlFiles) {
-            file.forEachLine { line ->
-                if (line.isBlank()) return@forEachLine
-                try {
-                    val obj = JSONObject(line)
-                    val features = FloatArray(featureKeys.size) { i ->
-                        obj.optDouble(featureKeys[i], 0.0).toFloat()
-                    }
-                    allWindows.add(features)
-                } catch (_: Exception) { }
-            }
-        }
-
-        if (allWindows.size < NUM_FEATURES) {
-            Log.d(TAG, "Not enough data points for scaler (${allWindows.size})")
-            return false
-        }
-
-        // Compute mean and std for each feature
-        val n = allWindows.size.toDouble()
-        val mean = FloatArray(NUM_FEATURES) { i ->
-            allWindows.sumOf { it[i].toDouble() }.toFloat() / n.toFloat()
-        }
-        val std = FloatArray(NUM_FEATURES) { i ->
-            val m = mean[i].toDouble()
-            val variance = allWindows.sumOf { (it[i].toDouble() - m).let { d -> d * d } } / n
-            kotlin.math.sqrt(variance).toFloat().let { if (it == 0f) 1f else it }
-        }
-
-        // Load global scaler to copy thresholds and level names
-        val globalScaler = loadScalerFromAssets(DEFAULT_SCALER)
-
-        // Write personalized scaler JSON
-        val outputDir = File(userDir, "personalized")
-        outputDir.mkdirs()
-        val outputFile = File(outputDir, "user_${userId}_scaler_generated.json")
-
-        val json = JSONObject().apply {
-            put("mean", JSONArray(mean.toList()))
-            put("std", JSONArray(std.toList()))
-            put("feature_names", JSONArray(featureKeys))
-            put("num_classes", 2)
-            put("fatigue_thresholds", JSONObject(globalScaler.fatigueThresholds))
-            put("fatigue_level_names", JSONArray(globalScaler.fatigueLevelNames))
-        }
-        outputFile.writeText(json.toString(2))
-        Log.d(TAG, "Personalized scaler generated for $userId (${allWindows.size} windows from ${jsonlFiles.size} sessions)")
-        return true
     }
 
     fun close() {

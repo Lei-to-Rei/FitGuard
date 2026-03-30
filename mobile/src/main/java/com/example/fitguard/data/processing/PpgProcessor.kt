@@ -45,9 +45,7 @@ data class FeatureVector(
     val accelPeak: Double,
     val totalSteps: Int,
     val cadenceSpm: Double,
-    val activityLabel: String = "",
-    val fatigueLevel: String = "",
-    val rpeRaw: Int = -1
+    val activityLabel: String = ""
 ) {
     /** Extract 30 model features in scaler_params.json order. */
     fun toFeatureFloatArray(): FloatArray = floatArrayOf(

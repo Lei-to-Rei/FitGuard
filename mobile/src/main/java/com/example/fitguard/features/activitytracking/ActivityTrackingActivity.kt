@@ -1,10 +1,7 @@
 package com.example.fitguard.features.activitytracking
 
 import android.Manifest
-import android.content.BroadcastReceiver
-import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -12,7 +9,6 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.View
-import android.widget.SeekBar
 import android.widget.Toast
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -45,7 +41,6 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
     private val viewModel: ActivityTrackingViewModel by viewModels()
     private var routePolyline: Polyline? = null
     private lateinit var myLocationOverlay: MyLocationNewOverlay
-    private var phoneRpeReceiver: BroadcastReceiver? = null
 
     companion object {
         private const val TAG = "ActivityTrackingActivity"
@@ -92,13 +87,11 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
         requestMapLocationPermission()
         setupActivityTypeSelection()
         setupStartStopButton()
-        setupRpeIntervalSlider()
         setupBottomNavigation()
         observeViewModel()
         observeRoute()
 
         Wearable.getMessageClient(this).addListener(this)
-        registerPhoneRpeReceiver()
     }
 
     override fun onResume() {
@@ -169,12 +162,6 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
                     hbSessionId = json.optString("session_id", ""),
                     sequenceCount = json.optInt("sequence_count", 0),
                     elapsedS = json.optInt("elapsed_s", 0)
-                )
-            }
-            "/fitguard/activity/rpe" -> runOnUiThread {
-                viewModel.onRpeReceived(
-                    sessionId = json.optString("session_id", ""),
-                    rpeValue = json.optInt("rpe_value", -1)
                 )
             }
         }
@@ -252,19 +239,6 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
         }
     }
 
-    private fun setupRpeIntervalSlider() {
-        binding.seekRpeInterval.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                binding.tvRpeIntervalValue.text = "$progress min"
-                if (fromUser) {
-                    viewModel.setRpeInterval(progress)
-                }
-            }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-        })
-    }
-
     private fun observeViewModel() {
         viewModel.state.observe(this) { state ->
             when (state) {
@@ -275,7 +249,6 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
                     binding.tvSessionStatus.text = "Idle"
                     binding.rgActivityType.isEnabled = true
                     setRadioGroupEnabled(true)
-                    binding.seekRpeInterval.isEnabled = true
                     if (::myLocationOverlay.isInitialized) {
                         myLocationOverlay.enableFollowLocation()
                     }
@@ -285,7 +258,6 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
                     binding.btnStartStop.isEnabled = false
                     binding.tvSessionStatus.text = "Connecting to watch..."
                     setRadioGroupEnabled(false)
-                    binding.seekRpeInterval.isEnabled = false
                 }
                 ActivityTrackingViewModel.SessionState.ACTIVE -> {
                     binding.btnStartStop.text = "Stop Session"
@@ -293,7 +265,6 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
                     binding.btnStartStop.setBackgroundColor(getColor(R.color.red_stop))
                     binding.tvSessionStatus.text = "Active - ${viewModel.activityType.value}"
                     setRadioGroupEnabled(false)
-                    binding.seekRpeInterval.isEnabled = false
                     if (::myLocationOverlay.isInitialized) {
                         myLocationOverlay.disableFollowLocation()
                     }
@@ -302,7 +273,6 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
                     binding.btnStartStop.text = "Stopping..."
                     binding.btnStartStop.isEnabled = false
                     binding.tvSessionStatus.text = "Stopping session..."
-                    binding.seekRpeInterval.isEnabled = false
                 }
                 null -> {}
             }
@@ -326,15 +296,6 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
             } else {
                 binding.tvError.visibility = View.GONE
             }
-        }
-
-        viewModel.lastRpe.observe(this) { rpe ->
-            binding.tvLastRpe.text = if (rpe >= 0) "RPE: $rpe" else "RPE: --"
-        }
-
-        viewModel.rpeIntervalMinutes.observe(this) { minutes ->
-            binding.seekRpeInterval.progress = minutes
-            binding.tvRpeIntervalValue.text = "$minutes min"
         }
 
         viewModel.activityType.observe(this) { type ->
@@ -473,26 +434,8 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
         }
     }
 
-    private fun registerPhoneRpeReceiver() {
-        phoneRpeReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                intent ?: return
-                if (intent.action == RpePromptActivity.ACTION_PHONE_RPE_RESPONSE) {
-                    val sessionId = intent.getStringExtra("session_id") ?: ""
-                    val rpeValue = intent.getIntExtra("rpe_value", -1)
-                    viewModel.onPhoneRpeAnswered(sessionId, rpeValue)
-                }
-            }
-        }
-        val filter = IntentFilter(RpePromptActivity.ACTION_PHONE_RPE_RESPONSE)
-        registerReceiver(phoneRpeReceiver, filter, RECEIVER_NOT_EXPORTED)
-    }
-
     override fun onDestroy() {
         Wearable.getMessageClient(this).removeListener(this)
-        phoneRpeReceiver?.let {
-            try { unregisterReceiver(it) } catch (_: Exception) {}
-        }
         if (::myLocationOverlay.isInitialized) {
             myLocationOverlay.disableMyLocation()
         }

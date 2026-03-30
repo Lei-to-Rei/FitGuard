@@ -160,43 +160,6 @@
                             android:textSize="14sp"
                             android:textColor="@color/text_dark"
                             android:fontFamily="@font/inter" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="HR:"
-                            android:textSize="12sp"
-                            android:textColor="@color/text_secondary"
-                            android:fontFamily="@font/inter"
-                            android:layout_marginTop="8dp" />
-
-                        <TextView
-                            android:id="@+id/tvHrValue"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Establishing baseline..."
-                            android:textSize="14sp"
-                            android:textColor="@color/text_dark"
-                            android:fontFamily="@font/inter" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="HRV:"
-                            android:textSize="12sp"
-                            android:textColor="@color/text_secondary"
-                            android:fontFamily="@font/inter"
-                            android:layout_marginTop="4dp" />
-
-                        <TextView
-                            android:id="@+id/tvHrvValue"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Establishing baseline..."
-                            android:textSize="14sp"
-                            android:textColor="@color/text_dark"
-                            android:fontFamily="@font/inter" />
-
                     </LinearLayout>
 
                     <!-- Right: circular gauge -->
@@ -274,17 +237,6 @@
                             android:gravity="center"
                             android:fontFamily="@font/inter" />
 
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="On-Device"
-                            android:textSize="12sp"
-                            android:textStyle="bold"
-                            android:textColor="@color/text_dark"
-                            android:gravity="center"
-                            android:fontFamily="@font/inter" />
-
                     </LinearLayout>
 
                     <View
@@ -313,17 +265,6 @@
 
                         <TextView
                             android:id="@+id/tvCompExternalLevel"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="--"
-                            android:textSize="14sp"
-                            android:textStyle="bold"
-                            android:gravity="center"
-                            android:fontFamily="@font/inter" />
-
-                        <TextView
-                            android:id="@+id/tvCompOnDeviceLevel"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
@@ -364,17 +305,6 @@
                             android:gravity="center"
                             android:fontFamily="@font/inter" />
 
-                        <TextView
-                            android:id="@+id/tvCompOnDevicePHigh"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="P(H): --"
-                            android:textSize="12sp"
-                            android:textColor="@color/text_secondary"
-                            android:gravity="center"
-                            android:fontFamily="@font/inter" />
-
                     </LinearLayout>
 
                     <!-- Status row -->
@@ -396,17 +326,6 @@
 
                         <TextView
                             android:id="@+id/tvCompExternalStatus"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="Loading..."
-                            android:textSize="10sp"
-                            android:textColor="@color/text_secondary"
-                            android:gravity="center"
-                            android:fontFamily="@font/inter" />
-
-                        <TextView
-                            android:id="@+id/tvCompOnDeviceStatus"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"

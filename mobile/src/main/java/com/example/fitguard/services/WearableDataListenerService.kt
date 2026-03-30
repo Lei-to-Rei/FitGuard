@@ -1,15 +1,12 @@
 package com.example.fitguard.services
 
-import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.example.fitguard.data.processing.AccelSample
 import com.example.fitguard.data.processing.PpgSample
-import com.example.fitguard.data.processing.RpeState
 import com.example.fitguard.data.processing.SequenceProcessor
 import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
-import com.example.fitguard.features.activitytracking.RpeNotificationHelper
 import android.net.Uri
 import com.google.android.gms.wearable.*
 import com.google.firebase.auth.FirebaseAuth
@@ -24,7 +21,6 @@ class WearableDataListenerService : WearableListenerService() {
         const val ACTION_ACTIVITY_ACK = "com.example.fitguard.ACTIVITY_ACK"
         const val ACTION_ACTIVITY_STOPPED = "com.example.fitguard.ACTIVITY_STOPPED"
         const val ACTION_ACTIVITY_HEARTBEAT = "com.example.fitguard.ACTIVITY_HEARTBEAT"
-        const val ACTION_RPE_RECEIVED = "com.example.fitguard.RPE_RECEIVED"
         const val ACTION_WATCH_BATTERY_RESPONSE = "com.example.fitguard.WATCH_BATTERY_RESPONSE"
     }
 
@@ -95,40 +91,6 @@ class WearableDataListenerService : WearableListenerService() {
                         putExtra("sequence_count", json.optInt("sequence_count", 0))
                         putExtra("elapsed_s", json.optInt("elapsed_s", 0))
                     })
-                }
-                "/fitguard/activity/rpe" -> {
-                    val rpeValue = json.optInt("rpe_value", -1)
-                    val sessionId = json.optString("session_id", "")
-                    Log.d(TAG, "RPE received: $rpeValue for session $sessionId")
-                    if (rpeValue >= 0) {
-                        RpeState.update(rpeValue)
-                    }
-                    sequenceProcessor.onRpeReceived(rpeValue)
-
-                    // Cancel phone RPE notification/activity (watch answered first)
-                    val nm = getSystemService(NotificationManager::class.java)
-                    nm.cancel(RpeNotificationHelper.NOTIFICATION_ID)
-
-                    sendBroadcast(Intent(ACTION_RPE_RECEIVED).apply {
-                        setPackage(packageName)
-                        putExtra("session_id", sessionId)
-                        putExtra("rpe_value", rpeValue)
-                    })
-                }
-                "/fitguard/activity/rpe_prompt" -> {
-                    val sessionId = json.optString("session_id", "")
-                    val lastRpe = json.optInt("last_rpe", -1)
-                    val isEndOfSession = json.optBoolean("is_end_of_session", false)
-                    Log.d(TAG, "RPE prompt from watch: session=$sessionId isEnd=$isEndOfSession")
-
-                    // Validate session matches active session
-                    val activeSession = ActivityTrackingViewModel.activeSessionId
-                    if (activeSession != null && sessionId.isNotEmpty() && sessionId != activeSession) {
-                        Log.w(TAG, "Ignoring RPE prompt for stale session $sessionId (active=$activeSession)")
-                        return
-                    }
-
-                    RpeNotificationHelper(this).showRpePrompt(lastRpe, isEndOfSession, sessionId)
                 }
             }
         } catch (e: Exception) {

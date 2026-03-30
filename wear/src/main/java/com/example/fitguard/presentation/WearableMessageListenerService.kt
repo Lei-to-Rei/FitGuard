@@ -36,13 +36,11 @@ class WearableMessageListenerService : WearableListenerService() {
                 "/fitguard/activity/start" -> {
                     val activityType = json.optString("activity_type", "")
                     val sessionId = json.optString("session_id", "")
-                    val rpeIntervalMinutes = json.optInt("rpe_interval_minutes", 10)
-                    Log.d(TAG, "Start command: activity=$activityType session=$sessionId rpeInterval=${rpeIntervalMinutes}min")
+                    Log.d(TAG, "Start command: activity=$activityType session=$sessionId")
                     sendBroadcast(Intent(ACTION_START_ACTIVITY).apply {
                         setPackage(packageName)
                         putExtra("activity_type", activityType)
                         putExtra("session_id", sessionId)
-                        putExtra("rpe_interval_minutes", rpeIntervalMinutes)
                     })
                 }
                 "/fitguard/activity/stop" -> {
@@ -51,16 +49,6 @@ class WearableMessageListenerService : WearableListenerService() {
                     sendBroadcast(Intent(ACTION_STOP_ACTIVITY).apply {
                         setPackage(packageName)
                         putExtra("session_id", sessionId)
-                    })
-                }
-                "/fitguard/activity/rpe_dismiss" -> {
-                    val rpeValue = json.optInt("rpe_value", -1)
-                    val sessionId = json.optString("session_id", "")
-                    Log.d(TAG, "RPE dismiss from phone: rpe=$rpeValue session=$sessionId")
-                    sendBroadcast(Intent(RpePromptActivity.ACTION_RPE_DISMISS).apply {
-                        setPackage(packageName)
-                        putExtra(RpePromptActivity.EXTRA_RPE_VALUE, rpeValue)
-                        putExtra(RpePromptActivity.EXTRA_SESSION_ID, sessionId)
                     })
                 }
                 "/fitguard/tracker/start" -> {

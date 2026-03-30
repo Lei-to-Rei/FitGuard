@@ -104,34 +104,6 @@ class FatiguePredictionActivity : AppCompatActivity() {
             )
         }
 
-        viewModel.windowCount.observe(this) { count ->
-            if (viewModel.currentResult.value == null && count > 0) {
-                binding.tvHrvValue.text = "Collecting data ($count/5 windows)"
-            }
-        }
-
-        // Baseline HR/HRV comparison
-        viewModel.baselineWindowsCollected.observe(this) { collected ->
-            if (viewModel.baselineComparison.value == null && collected < 3) {
-                binding.tvHrValue.text = "Establishing baseline ($collected/3)..."
-                binding.tvHrvValue.text = "Establishing baseline ($collected/3)..."
-            }
-        }
-
-        viewModel.baselineComparison.observe(this) { comparison ->
-            if (comparison == null) return@observe
-
-            // HR comparison
-            val hrDirection = if (comparison.hrDiffPercent >= 0) "above" else "below"
-            val hrDiffAbs = String.format("%.1f", kotlin.math.abs(comparison.hrDiffPercent))
-            binding.tvHrValue.text = "$hrDiffAbs% $hrDirection baseline (${String.format("%.0f", comparison.currentHr)} bpm)"
-
-            // HRV (RMSSD) comparison
-            val rmssdDirection = if (comparison.rmssdDiffPercent >= 0) "above" else "below"
-            val rmssdDiffAbs = String.format("%.1f", kotlin.math.abs(comparison.rmssdDiffPercent))
-            binding.tvHrvValue.text = "$rmssdDiffAbs% $rmssdDirection baseline (${String.format("%.1f", comparison.currentRmssd)} ms)"
-        }
-
         // Session fatigue trend chart
         viewModel.sessionTrend.observe(this) { points ->
             if (points.isNotEmpty()) {
@@ -157,8 +129,6 @@ class FatiguePredictionActivity : AppCompatActivity() {
                 binding.tvCompGlobalLevel, binding.tvCompGlobalPHigh, binding.tvCompGlobalStatus)
             updateComparisonColumn(comp.external, comp.externalReady,
                 binding.tvCompExternalLevel, binding.tvCompExternalPHigh, binding.tvCompExternalStatus)
-            updateComparisonColumn(comp.onDevice, comp.onDeviceReady,
-                binding.tvCompOnDeviceLevel, binding.tvCompOnDevicePHigh, binding.tvCompOnDeviceStatus)
         }
     }
 

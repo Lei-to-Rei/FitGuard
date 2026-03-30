@@ -61,9 +61,8 @@ class ActivityDetailViewModel(application: Application) : AndroidViewModel(appli
                     val hr = SessionDetailRepository.loadHeartRateData(userId, sessionDirName)
                     Log.d(TAG, "HR points: ${hr.size}")
                     val fatigue = SessionDetailRepository.loadFatigueData(userId, sessionDirName)
-                    val fLevel = SessionDetailRepository.loadOverallFatigueLevel(userId, sessionDirName)
                     val avg = if (hr.isNotEmpty()) hr.map { it.hrBpm }.average().toFloat() else 0f
-                    DetailResult(route, sum, splits, hr, avg, fatigue, fLevel)
+                    DetailResult(route, sum, splits, hr, avg, fatigue)
                 }
                 _routePoints.value = result.route
                 _summary.value = result.summary
@@ -71,7 +70,6 @@ class ActivityDetailViewModel(application: Application) : AndroidViewModel(appli
                 _hrData.value = result.hr
                 _avgHr.value = result.avgHr
                 _fatigueData.value = result.fatigue
-                _fatigueLevel.value = result.fatigueLevel
             } catch (e: Exception) {
                 Log.e(TAG, "loadDetail FAILED: ${e.message}", e)
             }
@@ -84,7 +82,6 @@ class ActivityDetailViewModel(application: Application) : AndroidViewModel(appli
         val splits: List<SplitData>,
         val hr: List<HrDataPoint>,
         val avgHr: Float,
-        val fatigue: List<FatigueDataPoint>,
-        val fatigueLevel: String
+        val fatigue: List<FatigueDataPoint>
     )
 }

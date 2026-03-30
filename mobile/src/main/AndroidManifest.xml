@@ -149,17 +149,6 @@
             android:windowSoftInputMode="adjustResize" />
 
         <!-- ========================================== -->
-        <!-- RPE PROMPT (phone-side, cross-device) -->
-        <!-- ========================================== -->
-        <activity
-            android:name=".features.activitytracking.RpePromptActivity"
-            android:exported="false"
-            android:turnScreenOn="true"
-            android:showWhenLocked="true"
-            android:screenOrientation="portrait"
-            android:theme="@style/Theme.FitGuard" />
-
-        <!-- ========================================== -->
         <!-- ACTIVITY HISTORY -->
         <!-- ========================================== -->
         <activity

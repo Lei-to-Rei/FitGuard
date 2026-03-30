@@ -33,10 +33,6 @@ class SensorSequenceManager(
     var onProgress: ((elapsedSeconds: Int, totalSeconds: Int) -> Unit)? = null
     var onComplete: (() -> Unit)? = null
     var onSequenceLoopComplete: ((sequenceCount: Int) -> Unit)? = null
-    var onRpePromptNeeded: ((sequenceCount: Int) -> Unit)? = null
-
-    var rpeIntervalSequences: Int = 8  // default ~10 min at 77s/seq
-
     private var sequenceJob: Job? = null
     private var currentPhase = SequencePhase.IDLE
     private var sequenceId: String = ""
@@ -114,14 +110,6 @@ class SensorSequenceManager(
                     runSequence()   // Only does 60s collection in continuous mode
                     sequenceCount++
                     Log.d(TAG, "=== Sequence #$sequenceCount collection complete, sending data ===")
-
-                    // RPE check BEFORE sending — defer via Handler.post so batch send isn't blocked
-                    if (sequenceCount > 0 && sequenceCount % rpeIntervalSequences == 0) {
-                        val count = sequenceCount
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            onRpePromptNeeded?.invoke(count)
-                        }
-                    }
 
                     setPhase(SequencePhase.SENDING)
                     batchSendAllData()

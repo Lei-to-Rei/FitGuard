@@ -28,7 +28,7 @@ object CsvWriter {
         "accel_x_var", "accel_y_var", "accel_z_var",
         "accel_mag_mean", "accel_mag_var", "accel_peak",
         "total_steps", "cadence_spm",
-        "activity_label", "fatigue_level", "rpe_raw"
+        "activity_label"
     ).joinToString(",")
 
     fun getOutputDir(userId: String = "", sessionDir: String = ""): File {
@@ -83,9 +83,7 @@ object CsvWriter {
                 fmt(fv.accelPeak),
                 fv.totalSteps.toString(),
                 fmt(fv.cadenceSpm),
-                fv.activityLabel,
-                fv.fatigueLevel,
-                if (fv.rpeRaw >= 0) fv.rpeRaw.toString() else ""
+                fv.activityLabel
             ).joinToString(",")
 
             val content = buildString {
@@ -143,8 +141,6 @@ object CsvWriter {
                 put("total_steps", fv.totalSteps)
                 put("cadence_spm", fv.cadenceSpm)
                 put("activity_label", fv.activityLabel)
-                put("fatigue_level", fv.fatigueLevel)
-                put("rpe_raw", fv.rpeRaw)
             }
             file.appendText(json.toString() + "\n")
         } catch (e: Exception) {
@@ -197,9 +193,7 @@ object CsvWriter {
         "accelPeak" to accelPeak,
         "totalSteps" to totalSteps,
         "cadenceSpm" to cadenceSpm,
-        "activityLabel" to activityLabel,
-        "fatigueLevel" to fatigueLevel,
-        "rpeRaw" to rpeRaw
+        "activityLabel" to activityLabel
     )
 
     fun pushSessionMetadata(

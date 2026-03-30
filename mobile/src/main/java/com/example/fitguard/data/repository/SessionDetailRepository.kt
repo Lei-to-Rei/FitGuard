@@ -106,36 +106,6 @@ object SessionDetailRepository {
         }
     }
 
-    fun loadOverallFatigueLevel(userId: String, sessionDir: String): String {
-        return try {
-            val file = File(CsvWriter.getOutputDir(userId, sessionDir), "features.csv")
-            if (!file.exists()) return "--"
-            val lines = file.readLines()
-            if (lines.size < 2) return "--"
-            val cols = lines[0].split(",")
-            val flIdx = cols.indexOf("fatigue_level")
-            if (flIdx < 0) return "--"
-
-            val levels = lines.drop(1).mapNotNull { line ->
-                val parts = line.split(",")
-                parts.getOrNull(flIdx)?.trim()?.ifEmpty { null }
-            }
-            if (levels.isEmpty()) return "--"
-
-            val mostCommon = levels.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: "--"
-            when (mostCommon) {
-                "0" -> "Very Light"
-                "1" -> "Light"
-                "2" -> "Moderate"
-                "3" -> "Heavy"
-                else -> mostCommon
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to load fatigue level: ${e.message}")
-            "--"
-        }
-    }
-
     fun computeSplits(routePoints: List<RoutePoint>): List<SplitData> {
         if (routePoints.size < 2) return emptyList()
         val splits = mutableListOf<SplitData>()
