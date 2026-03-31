@@ -254,12 +254,6 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
-        <!-- Health Monitor Foreground Service (persistent metrics tracking) -->
-        <service
-            android:name=".services.HealthMonitorService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
     </application>
 
 </manifest>

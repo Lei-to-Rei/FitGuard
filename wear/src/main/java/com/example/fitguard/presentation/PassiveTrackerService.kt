@@ -5,11 +5,13 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Build
-           import android.os.Handler
+import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
@@ -18,11 +20,12 @@ import androidx.core.app.NotificationCompat
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import com.samsung.android.service.health.tracking.data.HealthTrackerType
+import org.json.JSONObject
 
 /**
- * Foreground service for passive health tracker measurements (HR, SpO2, SkinTemp).
- * Keeps sensors alive when the watch screen is off via wake lock + foreground notification.
- * Manages its own PassiveHealthTrackerManager independent of MainActivity.
+ * Foreground service for passive health tracker measurements (HR, SpO2, SkinTemp, Accel).
+ * Supports both manual start/stop commands and schedule-based automatic measurements.
+ * Queues on-demand sensors (SpO2, SkinTemp) to prevent overlap.
  */
 class PassiveTrackerService : Service() {
 
@@ -33,6 +36,16 @@ class PassiveTrackerService : Service() {
         private const val EXTRA_ACTION = "action"
         private const val EXTRA_TRACKER_TYPE = "tracker_type"
         private const val IDLE_STOP_DELAY_MS = 60_000L
+
+        // Measurement timeouts
+        private const val HR_MEASUREMENT_DURATION_MS = 15_000L
+        private const val SPO2_TIMEOUT_MS = 90_000L
+        private const val SKIN_TEMP_TIMEOUT_MS = 30_000L
+        private const val AUTO_INTERVAL_10_MIN_MS = 10 * 60 * 1000L
+        private const val AUTO_INTERVAL_15_MIN_MS = 15 * 60 * 1000L
+        private const val MAX_HR_RETRIES = 2
+
+        private const val SCHEDULE_PREFS = "passive_tracker_schedule"
 
         fun startTracker(context: Context, trackerType: String) {
             context.startForegroundService(Intent(context, PassiveTrackerService::class.java).apply {
@@ -47,6 +60,19 @@ class PassiveTrackerService : Service() {
                 putExtra(EXTRA_TRACKER_TYPE, trackerType)
             })
         }
+
+        fun setSchedule(context: Context, scheduleJson: String) {
+            context.startForegroundService(Intent(context, PassiveTrackerService::class.java).apply {
+                putExtra(EXTRA_ACTION, "set_schedule")
+                putExtra("schedule_json", scheduleJson)
+            })
+        }
+
+        fun clearSchedule(context: Context) {
+            context.startForegroundService(Intent(context, PassiveTrackerService::class.java).apply {
+                putExtra(EXTRA_ACTION, "clear_schedule")
+            })
+        }
     }
 
     private var passiveTrackerManager: PassiveHealthTrackerManager? = null
@@ -58,6 +84,32 @@ class PassiveTrackerService : Service() {
     // Delayed stop — keep SDK connection alive between measurements
     private val handler = Handler(Looper.getMainLooper())
     private var stopDelayRunnable: Runnable? = null
+
+    // Schedule state
+    private var scheduleConfig: JSONObject? = null
+    private var intervalRunnable: Runnable? = null
+    private val measurementQueue = ArrayDeque<String>()
+    private var isQueueProcessing = false
+    private val scheduledActiveTrackers = mutableSetOf<String>()
+    private val trackerTimeoutRunnables = mutableMapOf<String, Runnable>()
+    private var hrRetryCount = 0
+    private var hrReceivedValid = false
+
+    // Activity conflict — pause scheduled measurements during workouts
+    private val activityReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                WearableMessageListenerService.ACTION_START_ACTIVITY -> {
+                    Log.d(TAG, "Workout started — pausing scheduled measurements")
+                    stopAllScheduledMeasurements()
+                }
+                WearableMessageListenerService.ACTION_STOP_ACTIVITY -> {
+                    Log.d(TAG, "Workout stopped — resuming schedule")
+                    scheduleConfig?.let { reconcileSchedule(it) }
+                }
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -72,19 +124,65 @@ class PassiveTrackerService : Service() {
 
         acquireWakeLock()
         initializeHealthSdk()
+
+        // Register for activity start/stop
+        val filter = IntentFilter().apply {
+            addAction(WearableMessageListenerService.ACTION_START_ACTIVITY)
+            addAction(WearableMessageListenerService.ACTION_STOP_ACTIVITY)
+        }
+        registerReceiver(activityReceiver, filter, RECEIVER_NOT_EXPORTED)
+
+        // Restore persisted schedule
+        val savedSchedule = getSharedPreferences(SCHEDULE_PREFS, MODE_PRIVATE)
+            .getString("config", null)
+        if (savedSchedule != null) {
+            try {
+                scheduleConfig = JSONObject(savedSchedule)
+                Log.d(TAG, "Restored persisted schedule")
+            } catch (_: Exception) {}
+        }
+
         Log.d(TAG, "Passive tracker service created")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.getStringExtra(EXTRA_ACTION) ?: return START_STICKY
-        val trackerType = intent.getStringExtra(EXTRA_TRACKER_TYPE) ?: return START_STICKY
 
-        Log.d(TAG, "Command: $action $trackerType (sdkReady=$isHealthSdkReady)")
-
-        if (isHealthSdkReady) {
-            executeCommand(action, trackerType)
-        } else {
-            pendingCommands.add(action to trackerType)
+        when (action) {
+            "set_schedule" -> {
+                val json = intent.getStringExtra("schedule_json") ?: return START_STICKY
+                try {
+                    val config = JSONObject(json)
+                    scheduleConfig = config
+                    // Persist
+                    getSharedPreferences(SCHEDULE_PREFS, MODE_PRIVATE).edit()
+                        .putString("config", json).apply()
+                    Log.d(TAG, "Schedule received: $json")
+                    if (isHealthSdkReady) {
+                        reconcileSchedule(config)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Invalid schedule JSON: ${e.message}")
+                }
+            }
+            "clear_schedule" -> {
+                Log.d(TAG, "Schedule cleared")
+                scheduleConfig = null
+                getSharedPreferences(SCHEDULE_PREFS, MODE_PRIVATE).edit().remove("config").apply()
+                stopAllScheduledMeasurements()
+                if (activeTrackerTypes.isEmpty()) {
+                    scheduleDelayedStop()
+                }
+            }
+            "start", "stop" -> {
+                val trackerType = intent.getStringExtra(EXTRA_TRACKER_TYPE) ?: return START_STICKY
+                Log.d(TAG, "Command: $action $trackerType (sdkReady=$isHealthSdkReady)")
+                if (isHealthSdkReady) {
+                    executeCommand(action, trackerType)
+                } else {
+                    pendingCommands.add(action to trackerType)
+                }
+            }
         }
 
         return START_STICKY
@@ -100,10 +198,11 @@ class PassiveTrackerService : Service() {
                 Log.d(TAG, "Health SDK connected")
                 isHealthSdkReady = true
                 processPendingCommands()
+                // Apply persisted schedule
+                scheduleConfig?.let { reconcileSchedule(it) }
             },
             onError = { e ->
                 Log.e(TAG, "Health SDK connection failed: ${e.errorCode}")
-                // Process pending commands as failures — stop commands should still work
                 pendingCommands.clear()
             }
         )
@@ -120,13 +219,13 @@ class PassiveTrackerService : Service() {
     private fun executeCommand(action: String, trackerType: String) {
         when (action) {
             "start" -> {
-                // Cancel any pending service stop — we have a new measurement
                 cancelDelayedStop()
 
                 val started = when (trackerType) {
                     "HeartRate" -> passiveTrackerManager?.startHeartRateContinuous() ?: false
                     "SpO2" -> passiveTrackerManager?.startSpO2OnDemand() ?: false
                     "SkinTemp" -> passiveTrackerManager?.startSkinTemperatureOnDemand() ?: false
+                    "Accelerometer" -> passiveTrackerManager?.startAccelerometerContinuous() ?: false
                     else -> false
                 }
                 if (started) {
@@ -139,12 +238,15 @@ class PassiveTrackerService : Service() {
                     "HeartRate" -> HealthTrackerType.HEART_RATE_CONTINUOUS
                     "SpO2" -> HealthTrackerType.SPO2_ON_DEMAND
                     "SkinTemp" -> HealthTrackerType.SKIN_TEMPERATURE_ON_DEMAND
+                    "Accelerometer" -> HealthTrackerType.ACCELEROMETER_CONTINUOUS
                     else -> null
                 }
                 if (htType != null) {
                     passiveTrackerManager?.stopTracker(htType)
                 }
                 activeTrackerTypes.remove(trackerType)
+                scheduledActiveTrackers.remove(trackerType)
+                trackerTimeoutRunnables.remove(trackerType)?.let { handler.removeCallbacks(it) }
                 Log.d(TAG, "Tracker stopped: $trackerType (active: $activeTrackerTypes)")
 
                 if (activeTrackerTypes.isEmpty()) {
@@ -153,6 +255,186 @@ class PassiveTrackerService : Service() {
             }
         }
     }
+
+    // ===== Schedule-based measurement =====
+
+    private fun reconcileSchedule(config: JSONObject) {
+        // Stop all current scheduled measurements first
+        stopAllScheduledMeasurements()
+
+        val hrEnabled = config.optBoolean("hr_enabled", false)
+        val hrMode = config.optString("hr_mode", "Manual")
+        val spo2Enabled = config.optBoolean("spo2_enabled", false)
+        val spo2Mode = config.optString("spo2_mode", "Manual")
+        val skinTempEnabled = config.optBoolean("skin_temp_enabled", false)
+        val skinTempMode = config.optString("skin_temp_mode", "Manual")
+        val accelEnabled = config.optBoolean("accel_enabled", false)
+        val accelMode = config.optString("accel_mode", "Manual")
+
+        // Start continuous trackers immediately
+        if (hrEnabled && hrMode == "Continuous") {
+            executeCommand("start", "HeartRate")
+            scheduledActiveTrackers.add("HeartRate")
+        }
+        if (accelEnabled && accelMode == "Continuous") {
+            executeCommand("start", "Accelerometer")
+            scheduledActiveTrackers.add("Accelerometer")
+        }
+
+        // Determine interval for periodic measurements
+        val periodicTrackers = mutableListOf<Pair<String, String>>() // trackerType, mode
+        if (hrEnabled && hrMode.startsWith("Every")) {
+            periodicTrackers.add("HeartRate" to hrMode)
+        }
+        if (spo2Enabled && spo2Mode.startsWith("Every")) {
+            periodicTrackers.add("SpO2" to spo2Mode)
+        }
+        if (skinTempEnabled && skinTempMode.startsWith("Every")) {
+            periodicTrackers.add("SkinTemp" to skinTempMode)
+        }
+
+        if (periodicTrackers.isNotEmpty()) {
+            // Use shortest interval among all periodic trackers
+            val intervalMs = periodicTrackers.minOf { (_, mode) -> parseIntervalMs(mode) }
+            startPeriodicMeasurements(periodicTrackers.map { it.first }, intervalMs)
+        }
+
+        Log.d(TAG, "Schedule reconciled: HR=$hrMode, SpO2=$spo2Mode, SkinTemp=$skinTempMode, Accel=$accelMode")
+    }
+
+    private fun parseIntervalMs(mode: String): Long {
+        return when {
+            mode.contains("10") -> AUTO_INTERVAL_10_MIN_MS
+            mode.contains("15") -> AUTO_INTERVAL_15_MIN_MS
+            else -> AUTO_INTERVAL_10_MIN_MS
+        }
+    }
+
+    private fun startPeriodicMeasurements(trackerTypes: List<String>, intervalMs: Long) {
+        // Run first cycle immediately
+        startQueuedMeasurementCycle(trackerTypes)
+
+        // Schedule repeating cycles
+        intervalRunnable = object : Runnable {
+            override fun run() {
+                startQueuedMeasurementCycle(trackerTypes)
+                handler.postDelayed(this, intervalMs)
+            }
+        }
+        handler.postDelayed(intervalRunnable!!, intervalMs)
+        Log.d(TAG, "Periodic measurements started: $trackerTypes every ${intervalMs / 60000}min")
+    }
+
+    private fun startQueuedMeasurementCycle(trackerTypes: List<String>) {
+        measurementQueue.clear()
+        measurementQueue.addAll(trackerTypes)
+        isQueueProcessing = false
+        processNextInQueue()
+    }
+
+    private fun processNextInQueue() {
+        if (measurementQueue.isEmpty()) {
+            isQueueProcessing = false
+            Log.d(TAG, "Measurement queue complete")
+            return
+        }
+
+        isQueueProcessing = true
+        val trackerType = measurementQueue.removeFirst()
+        startScheduledMeasurement(trackerType)
+    }
+
+    private fun startScheduledMeasurement(trackerType: String) {
+        Log.d(TAG, "Starting scheduled measurement: $trackerType")
+        executeCommand("start", trackerType)
+        scheduledActiveTrackers.add(trackerType)
+
+        // Set timeout for auto-stop
+        val timeoutMs = when (trackerType) {
+            "HeartRate" -> HR_MEASUREMENT_DURATION_MS
+            "SpO2" -> SPO2_TIMEOUT_MS
+            "SkinTemp" -> SKIN_TEMP_TIMEOUT_MS
+            else -> 30_000L
+        }
+
+        if (trackerType == "HeartRate") {
+            hrReceivedValid = false
+            hrRetryCount = 0
+        }
+
+        val timeoutRunnable = Runnable {
+            if (trackerType == "HeartRate" && !hrReceivedValid && hrRetryCount < MAX_HR_RETRIES) {
+                hrRetryCount++
+                Log.d(TAG, "HR retry $hrRetryCount — no valid data yet")
+                val retryRunnable = Runnable { stopScheduledMeasurement(trackerType) }
+                trackerTimeoutRunnables[trackerType] = retryRunnable
+                handler.postDelayed(retryRunnable, HR_MEASUREMENT_DURATION_MS)
+            } else {
+                stopScheduledMeasurement(trackerType)
+            }
+        }
+        trackerTimeoutRunnables[trackerType] = timeoutRunnable
+        handler.postDelayed(timeoutRunnable, timeoutMs)
+    }
+
+    private fun stopScheduledMeasurement(trackerType: String) {
+        // Don't stop continuous trackers that are also in the schedule
+        val config = scheduleConfig
+        if (config != null) {
+            val mode = when (trackerType) {
+                "HeartRate" -> config.optString("hr_mode", "Manual")
+                "Accelerometer" -> config.optString("accel_mode", "Manual")
+                else -> "Manual"
+            }
+            if (mode == "Continuous") {
+                Log.d(TAG, "Skipping stop for continuous tracker: $trackerType")
+                scheduledActiveTrackers.remove(trackerType)
+                trackerTimeoutRunnables.remove(trackerType)?.let { handler.removeCallbacks(it) }
+                processNextInQueue()
+                return
+            }
+        }
+
+        executeCommand("stop", trackerType)
+        processNextInQueue()
+    }
+
+    /**
+     * Called from sendDataToPhone when valid data is received.
+     * Auto-stops scheduled measurements that have received valid data.
+     */
+    private fun checkScheduledAutoStop(trackerType: String, isValid: Boolean) {
+        if (trackerType !in scheduledActiveTrackers) return
+        if (!isValid) return
+
+        // Don't auto-stop continuous trackers
+        val config = scheduleConfig ?: return
+        val mode = when (trackerType) {
+            "HeartRate" -> config.optString("hr_mode", "Manual")
+            "Accelerometer" -> config.optString("accel_mode", "Manual")
+            else -> "non-continuous"
+        }
+        if (mode == "Continuous") return
+
+        Log.d(TAG, "Auto-stopping $trackerType — valid data received")
+        if (trackerType == "HeartRate") hrReceivedValid = true
+        stopScheduledMeasurement(trackerType)
+    }
+
+    private fun stopAllScheduledMeasurements() {
+        intervalRunnable?.let { handler.removeCallbacks(it) }
+        intervalRunnable = null
+        measurementQueue.clear()
+        isQueueProcessing = false
+
+        for (trackerType in scheduledActiveTrackers.toList()) {
+            trackerTimeoutRunnables.remove(trackerType)?.let { handler.removeCallbacks(it) }
+            executeCommand("stop", trackerType)
+        }
+        scheduledActiveTrackers.clear()
+    }
+
+    // ===== Idle stop =====
 
     private fun scheduleDelayedStop() {
         cancelDelayedStop()
@@ -168,6 +450,8 @@ class PassiveTrackerService : Service() {
         stopDelayRunnable?.let { handler.removeCallbacks(it) }
         stopDelayRunnable = null
     }
+
+    // ===== Data send + auto-stop =====
 
     private fun sendDataToPhone(data: HealthTrackerManager.TrackerData) {
         val request = PutDataMapRequest.create("/health_tracker_data").apply {
@@ -215,8 +499,23 @@ class PassiveTrackerService : Service() {
         val putRequest = request.asPutDataRequest().setUrgent()
 
         Wearable.getDataClient(this).putDataItem(putRequest)
-            .addOnSuccessListener { Log.d(TAG, "✓ $type sent to phone") }
-            .addOnFailureListener { Log.e(TAG, "✗ Failed to send $type: ${it.message}") }
+            .addOnSuccessListener { Log.d(TAG, "Sent $type to phone") }
+            .addOnFailureListener { Log.e(TAG, "Failed to send $type: ${it.message}") }
+
+        // Check for auto-stop on valid data
+        when (data) {
+            is HealthTrackerManager.TrackerData.HeartRateData -> {
+                checkScheduledAutoStop("HeartRate", data.heartRate > 0 && data.status == 1)
+            }
+            is HealthTrackerManager.TrackerData.SpO2Data -> {
+                val valid = (data.spO2 > 0 && data.status == 2) || data.status < 0
+                checkScheduledAutoStop("SpO2", valid)
+            }
+            is HealthTrackerManager.TrackerData.SkinTemperatureData -> {
+                checkScheduledAutoStop("SkinTemp", data.status == 0)
+            }
+            else -> {}
+        }
     }
 
     // ===== Notification =====
@@ -255,7 +554,7 @@ class PassiveTrackerService : Service() {
     private fun acquireWakeLock() {
         val pm = getSystemService(PowerManager::class.java)
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "fitguard:passive_tracker").apply {
-            acquire(4 * 60 * 60 * 1000L) // 4 hours max
+            acquire(24 * 60 * 60 * 1000L) // 24 hours max
         }
         Log.d(TAG, "Wake lock acquired")
     }
@@ -264,6 +563,8 @@ class PassiveTrackerService : Service() {
 
     override fun onDestroy() {
         cancelDelayedStop()
+        stopAllScheduledMeasurements()
+        try { unregisterReceiver(activityReceiver) } catch (_: Exception) {}
         passiveTrackerManager?.disconnect()
         wakeLock?.let {
             if (it.isHeld) {

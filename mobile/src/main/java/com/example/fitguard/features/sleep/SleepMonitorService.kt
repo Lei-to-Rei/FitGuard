@@ -11,17 +11,13 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Build
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
-import com.google.android.gms.wearable.Wearable
+import com.example.fitguard.services.WearableDataListenerService
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.*
-import kotlinx.coroutines.tasks.await
 import org.json.JSONObject
 
 class SleepMonitorService : Service() {
@@ -35,9 +31,6 @@ class SleepMonitorService : Service() {
         private const val PREFS_NAME = "sleep_monitor"
         private const val PREF_IS_ACTIVE = "is_active"
         private const val PREF_START_TIME = "start_time"
-
-        // Restart interval for on-demand trackers (SpO2, SkinTemp)
-        private const val ON_DEMAND_RESTART_INTERVAL_MS = 15 * 60 * 1000L // 15 minutes
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, SleepMonitorService::class.java))
@@ -57,8 +50,6 @@ class SleepMonitorService : Service() {
     private val epochAccumulator = SleepEpochAccumulator()
     private var wakeLock: PowerManager.WakeLock? = null
     private var sessionStartMs: Long = 0L
-    private val handler = Handler(Looper.getMainLooper())
-    private var onDemandRestartRunnable: Runnable? = null
 
     private val healthDataReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -123,92 +114,41 @@ class SleepMonitorService : Service() {
             .putLong(PREF_START_TIME, sessionStartMs)
             .apply()
 
-        // Start all 4 trackers on the watch
-        startAllTrackers()
-
-        // Schedule periodic restart of on-demand trackers
-        scheduleOnDemandRestart()
+        // Send combined schedule to watch (metrics prefs + sleep overrides)
+        val schedule = WearableDataListenerService.buildScheduleJson(this)
+        WearableDataListenerService.sendScheduleToWatch(this, schedule)
 
         Log.d(TAG, "Sleep monitoring started")
         return START_STICKY
     }
 
-    private fun startAllTrackers() {
-        if (ActivityTrackingViewModel.activeSessionId != null) {
-            Log.d(TAG, "Sleep tracker start skipped — workout session active")
-            return
-        }
-        coroutineScope.launch {
-            sendTrackerCommand("start", "HeartRate")
-            sendTrackerCommand("start", "Accelerometer")
-            sendTrackerCommand("start", "SkinTemp")
-            sendTrackerCommand("start", "SpO2")
-        }
-    }
-
-    private fun stopAllTrackers() {
-        coroutineScope.launch {
-            sendTrackerCommand("stop", "HeartRate")
-            sendTrackerCommand("stop", "Accelerometer")
-            sendTrackerCommand("stop", "SkinTemp")
-            sendTrackerCommand("stop", "SpO2")
-        }
-    }
-
-    private fun scheduleOnDemandRestart() {
-        onDemandRestartRunnable = object : Runnable {
-            override fun run() {
-                if (ActivityTrackingViewModel.activeSessionId != null) {
-                    Log.d(TAG, "On-demand restart skipped — workout session active")
-                } else {
-                    coroutineScope.launch {
-                        Log.d(TAG, "Restarting on-demand trackers (SpO2, SkinTemp)")
-                        sendTrackerCommand("start", "SpO2")
-                        sendTrackerCommand("start", "SkinTemp")
-                    }
-                }
-                handler.postDelayed(this, ON_DEMAND_RESTART_INTERVAL_MS)
-            }
-        }
-        handler.postDelayed(onDemandRestartRunnable!!, ON_DEMAND_RESTART_INTERVAL_MS)
-    }
-
-    private suspend fun sendTrackerCommand(command: String, trackerType: String): Boolean {
-        return withContext(Dispatchers.IO) {
-            try {
-                val nodes = Wearable.getNodeClient(this@SleepMonitorService)
-                    .connectedNodes.await()
-                if (nodes.isEmpty()) return@withContext false
-
-                val payload = JSONObject().apply {
-                    put("tracker_type", trackerType)
-                }.toString().toByteArray(Charsets.UTF_8)
-
-                for (node in nodes) {
-                    Wearable.getMessageClient(this@SleepMonitorService)
-                        .sendMessage(node.id, "/fitguard/tracker/$command", payload).await()
-                }
-                Log.d(TAG, "Sent tracker $command for $trackerType")
-                true
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to send tracker command: ${e.message}", e)
-                false
-            }
-        }
-    }
-
     override fun onDestroy() {
-        // Stop tracker restarts
-        onDemandRestartRunnable?.let { handler.removeCallbacks(it) }
-
-        // Stop watch trackers
-        stopAllTrackers()
-
         // Unregister receiver
         try { unregisterReceiver(healthDataReceiver) } catch (_: Exception) {}
 
         // Release wake lock
         wakeLock?.let { if (it.isHeld) it.release() }
+
+        // Clear persisted state BEFORE rebuilding schedule so buildScheduleJson sees sleep=false
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+            .putBoolean(PREF_IS_ACTIVE, false)
+            .remove(PREF_START_TIME)
+            .apply()
+
+        // Restore metrics-only schedule (without sleep overrides)
+        val schedule = WearableDataListenerService.buildScheduleJson(this)
+        val hasActiveSchedule = try {
+            val json = JSONObject(schedule)
+            (json.optBoolean("hr_enabled") && json.optString("hr_mode") != "Manual") ||
+            (json.optBoolean("spo2_enabled") && json.optString("spo2_mode") != "Manual") ||
+            (json.optBoolean("skin_temp_enabled") && json.optString("skin_temp_mode") != "Manual")
+        } catch (_: Exception) { false }
+
+        if (hasActiveSchedule) {
+            WearableDataListenerService.sendScheduleToWatch(this, schedule)
+        } else {
+            WearableDataListenerService.clearWatchSchedule(this)
+        }
 
         // Process accumulated data
         val sessionEndMs = System.currentTimeMillis()
@@ -229,12 +169,6 @@ class SleepMonitorService : Service() {
                 setPackage(packageName)
             })
         }
-
-        // Clear persisted state
-        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
-            .putBoolean(PREF_IS_ACTIVE, false)
-            .remove(PREF_START_TIME)
-            .apply()
 
         coroutineScope.cancel()
         Log.d(TAG, "Sleep monitoring stopped")

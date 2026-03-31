@@ -10,6 +10,10 @@ import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
 import android.net.Uri
 import com.google.android.gms.wearable.*
 import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -22,6 +26,92 @@ class WearableDataListenerService : WearableListenerService() {
         const val ACTION_ACTIVITY_STOPPED = "com.example.fitguard.ACTIVITY_STOPPED"
         const val ACTION_ACTIVITY_HEARTBEAT = "com.example.fitguard.ACTIVITY_HEARTBEAT"
         const val ACTION_WATCH_BATTERY_RESPONSE = "com.example.fitguard.WATCH_BATTERY_RESPONSE"
+
+        fun sendTrackerCommand(context: Context, command: String, trackerType: String) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val nodes = Wearable.getNodeClient(context).connectedNodes.await()
+                    val payload = JSONObject().apply {
+                        put("tracker_type", trackerType)
+                    }.toString().toByteArray(Charsets.UTF_8)
+                    for (node in nodes) {
+                        Wearable.getMessageClient(context)
+                            .sendMessage(node.id, "/fitguard/tracker/$command", payload).await()
+                    }
+                    Log.d(TAG, "Sent tracker $command for $trackerType")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to send tracker command: ${e.message}", e)
+                }
+            }
+        }
+
+        fun sendScheduleToWatch(context: Context, scheduleJson: String) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val nodes = Wearable.getNodeClient(context).connectedNodes.await()
+                    val data = scheduleJson.toByteArray(Charsets.UTF_8)
+                    for (node in nodes) {
+                        Wearable.getMessageClient(context)
+                            .sendMessage(node.id, "/fitguard/tracker/set_schedule", data).await()
+                    }
+                    Log.d(TAG, "Schedule sent to watch")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to send schedule: ${e.message}", e)
+                }
+            }
+        }
+
+        fun clearWatchSchedule(context: Context) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val nodes = Wearable.getNodeClient(context).connectedNodes.await()
+                    val data = "{}".toByteArray(Charsets.UTF_8)
+                    for (node in nodes) {
+                        Wearable.getMessageClient(context)
+                            .sendMessage(node.id, "/fitguard/tracker/clear_schedule", data).await()
+                    }
+                    Log.d(TAG, "Watch schedule cleared")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to clear schedule: ${e.message}", e)
+                }
+            }
+        }
+
+        /**
+         * Builds schedule JSON from current metrics prefs + sleep state.
+         * When sleep is active, forces HR Continuous + Accel Continuous + periodic SpO2/SkinTemp.
+         */
+        fun buildScheduleJson(context: Context): String {
+            val prefs = context.getSharedPreferences("health_tracker_prefs", Context.MODE_PRIVATE)
+            val sleepPrefs = context.getSharedPreferences("sleep_monitor", Context.MODE_PRIVATE)
+            val isSleepActive = sleepPrefs.getBoolean("is_active", false)
+
+            val hrEnabled = prefs.getBoolean("switch_hr", false)
+            val spo2Enabled = prefs.getBoolean("switch_spo2", false)
+            val skinTempEnabled = prefs.getBoolean("switch_skin_temp", false)
+
+            var hrMode = prefs.getString("hr_mode", "Manual") ?: "Manual"
+            val spo2Mode = prefs.getString("spo2_mode", "Manual") ?: "Manual"
+            val skinTempMode = prefs.getString("skin_temp_mode", "Manual") ?: "Manual"
+
+            // Sleep needs continuous HR (for IBI-based sleep staging) + continuous Accel
+            if (isSleepActive) {
+                hrMode = "Continuous"
+            }
+
+            return JSONObject().apply {
+                put("hr_enabled", hrEnabled || isSleepActive)
+                put("hr_mode", hrMode)
+                put("spo2_enabled", spo2Enabled || isSleepActive)
+                put("spo2_mode",
+                    if (isSleepActive && spo2Mode == "Manual") "Every 15 minutes" else spo2Mode)
+                put("skin_temp_enabled", skinTempEnabled || isSleepActive)
+                put("skin_temp_mode",
+                    if (isSleepActive && skinTempMode == "Manual") "Every 15 minutes" else skinTempMode)
+                put("accel_enabled", isSleepActive)
+                put("accel_mode", if (isSleepActive) "Continuous" else "Manual")
+            }.toString()
+        }
     }
 
     private val sequenceProcessor by lazy { SequenceProcessor(this) }

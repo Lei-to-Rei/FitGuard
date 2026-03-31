@@ -12,7 +12,7 @@ import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
 import com.example.fitguard.data.processing.CsvWriter
 import com.example.fitguard.data.processing.SequenceProcessor
 import com.example.fitguard.databinding.ActivityMetricsMonitoringBinding
-import com.example.fitguard.services.HealthMonitorService
+import com.example.fitguard.services.WearableDataListenerService
 import com.google.android.gms.wearable.Wearable
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.*
@@ -104,24 +104,18 @@ class MetricsMonitoringActivity : AppCompatActivity() {
     }
 
     private fun updateServiceState() {
-        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-        val hrEnabled = prefs.getBoolean("switch_hr", false)
-        val spo2Enabled = prefs.getBoolean("switch_spo2", false)
-        val skinTempEnabled = prefs.getBoolean("switch_skin_temp", false)
+        val schedule = WearableDataListenerService.buildScheduleJson(this)
+        val json = JSONObject(schedule)
+        val needsSchedule =
+            (json.optBoolean("hr_enabled") && json.optString("hr_mode") != "Manual") ||
+            (json.optBoolean("spo2_enabled") && json.optString("spo2_mode") != "Manual") ||
+            (json.optBoolean("skin_temp_enabled") && json.optString("skin_temp_mode") != "Manual") ||
+            (json.optBoolean("accel_enabled") && json.optString("accel_mode") != "Manual")
 
-        val hrMode = prefs.getString("hr_mode", "Manual") ?: "Manual"
-        val spo2Mode = prefs.getString("spo2_mode", "Manual") ?: "Manual"
-        val skinTempMode = prefs.getString("skin_temp_mode", "Manual") ?: "Manual"
-
-        // Service needed if any enabled tracker has a non-Manual mode
-        val needsService = (hrEnabled && hrMode != "Manual")
-                || (spo2Enabled && spo2Mode != "Manual")
-                || (skinTempEnabled && skinTempMode != "Manual")
-
-        if (needsService) {
-            HealthMonitorService.start(this)
+        if (needsSchedule) {
+            WearableDataListenerService.sendScheduleToWatch(this, schedule)
         } else {
-            HealthMonitorService.stop(this)
+            WearableDataListenerService.clearWatchSchedule(this)
         }
     }
 

@@ -8,7 +8,8 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.fitguard.R
 import com.example.fitguard.databinding.ActivitySettingsBinding
-import com.example.fitguard.services.HealthMonitorService
+import com.example.fitguard.services.WearableDataListenerService
+import org.json.JSONObject
 
 class SettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
@@ -124,14 +125,18 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun updateServiceState() {
-        val prefs = getSharedPreferences("health_tracker_prefs", MODE_PRIVATE)
-        val needsService = (prefs.getBoolean("switch_hr", false) && prefs.getString("hr_mode", "Manual") != "Manual")
-                || (prefs.getBoolean("switch_spo2", false) && prefs.getString("spo2_mode", "Manual") != "Manual")
-                || (prefs.getBoolean("switch_skin_temp", false) && prefs.getString("skin_temp_mode", "Manual") != "Manual")
-        if (needsService) {
-            HealthMonitorService.start(this)
+        val schedule = WearableDataListenerService.buildScheduleJson(this)
+        val json = JSONObject(schedule)
+        val needsSchedule =
+            (json.optBoolean("hr_enabled") && json.optString("hr_mode") != "Manual") ||
+            (json.optBoolean("spo2_enabled") && json.optString("spo2_mode") != "Manual") ||
+            (json.optBoolean("skin_temp_enabled") && json.optString("skin_temp_mode") != "Manual") ||
+            (json.optBoolean("accel_enabled") && json.optString("accel_mode") != "Manual")
+
+        if (needsSchedule) {
+            WearableDataListenerService.sendScheduleToWatch(this, schedule)
         } else {
-            HealthMonitorService.stop(this)
+            WearableDataListenerService.clearWatchSchedule(this)
         }
     }
 

@@ -13,6 +13,7 @@ import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
 import com.example.fitguard.data.processing.CsvWriter
 import com.example.fitguard.data.processing.StressCalculator
 import com.example.fitguard.databinding.ActivitySleepStressBinding
+import com.example.fitguard.services.WearableDataListenerService
 import com.google.android.gms.wearable.Wearable
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.*
@@ -125,47 +126,15 @@ class SleepStressActivity : AppCompatActivity() {
             Log.d(TAG, "HR measurement skipped — workout session active")
             return
         }
-        coroutineScope.launch {
-            val sent = sendTrackerCommand("start", "HeartRate")
-            if (sent) {
-                isHrMeasuring = true
-                Log.d(TAG, "HR measurement started for stress calculation")
-            }
-        }
+        WearableDataListenerService.sendTrackerCommand(this, "start", "HeartRate")
+        isHrMeasuring = true
+        Log.d(TAG, "HR measurement started for stress calculation")
     }
 
     private fun stopHrMeasurement() {
         if (isHrMeasuring) {
-            coroutineScope.launch { sendTrackerCommand("stop", "HeartRate") }
+            WearableDataListenerService.sendTrackerCommand(this, "stop", "HeartRate")
             isHrMeasuring = false
-        }
-    }
-
-    private suspend fun sendTrackerCommand(command: String, trackerType: String): Boolean {
-        return withContext(Dispatchers.IO) {
-            try {
-                val nodes = Wearable.getNodeClient(this@SleepStressActivity)
-                    .connectedNodes.await()
-                if (nodes.isEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@SleepStressActivity,
-                            "No watch connected", Toast.LENGTH_SHORT).show()
-                    }
-                    return@withContext false
-                }
-                val payload = JSONObject().apply {
-                    put("tracker_type", trackerType)
-                }.toString().toByteArray(Charsets.UTF_8)
-
-                for (node in nodes) {
-                    Wearable.getMessageClient(this@SleepStressActivity)
-                        .sendMessage(node.id, "/fitguard/tracker/$command", payload).await()
-                }
-                true
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to send tracker command: ${e.message}", e)
-                false
-            }
         }
     }
 
