@@ -229,13 +229,35 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
 
             _windowCount.postValue(globalDetector.bufferedWindows)
 
-            // Use global as primary for existing UI
+            // Use global as primary for existing UI, with EMA smoothing
             if (globalResult != null) {
-                _currentResult.postValue(globalResult)
-                Log.d(TAG, "Prediction: ${globalResult.level} (P(High)=${String.format("%.2f", globalResult.pHigh)}, ${globalResult.percentDisplay}%)")
+                val sPHigh = FatigueAlertManager.smoothedPHigh
+                if (sPHigh >= 0f) {
+                    val smoothedLevelIndex = when {
+                        sPHigh < 0.25f -> 0
+                        sPHigh < 0.50f -> 1
+                        sPHigh < 0.75f -> 2
+                        else -> 3
+                    }
+                    val smoothedResult = FatigueResult(
+                        pLow = 1f - sPHigh,
+                        pHigh = sPHigh,
+                        level = globalResult.level,
+                        levelIndex = smoothedLevelIndex,
+                        percentDisplay = (sPHigh * 100).toInt().coerceIn(0, 100)
+                    )
+                    _currentResult.postValue(smoothedResult)
+                } else {
+                    _currentResult.postValue(globalResult)
+                }
+                Log.d(TAG, "Prediction: raw=${String.format("%.2f", globalResult.pHigh)}, " +
+                        "smoothed=${String.format("%.2f", sPHigh)}, ${globalResult.percentDisplay}%")
 
-                // Add to session trend
-                val point = FatigueTrendPoint(System.currentTimeMillis(), globalResult.percentDisplay.toFloat())
+                // Add smoothed percent to session trend
+                val smoothedPercent = if (sPHigh >= 0f)
+                    (sPHigh * 100f).coerceIn(0f, 100f)
+                else globalResult.percentDisplay.toFloat()
+                val point = FatigueTrendPoint(System.currentTimeMillis(), smoothedPercent)
                 sessionTrendPoints.add(point)
                 _sessionTrend.postValue(sessionTrendPoints.toList())
 
@@ -265,10 +287,13 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
                 val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
                 val sessionDir = ActivityTrackingViewModel.activeSessionDir ?: ""
                 if (userId.isNotEmpty() && sessionDir.isNotEmpty()) {
+                    val csvSmoothedPercent = if (FatigueAlertManager.smoothedPHigh >= 0f)
+                        (FatigueAlertManager.smoothedPHigh * 100f).coerceIn(0f, 100f)
+                    else globalResult.percentDisplay.toFloat()
                     CsvWriter.writeFatigueHistoryRow(
                         CsvWriter.FatigueHistoryRow(
                             timestamp = System.currentTimeMillis(),
-                            fatiguePercent = globalResult.percentDisplay.toFloat(),
+                            fatiguePercent = csvSmoothedPercent,
                             global = globalResult,
                             external = externalResult,
                             onDevice = onDeviceResult,
@@ -309,9 +334,12 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
 
         Log.d(TAG, "Restoring ${rows.size} fatigue history rows")
 
-        // Restore trend points
+        // Restore trend points (prefer smoothed values for backward compat)
         for (row in rows) {
-            sessionTrendPoints.add(FatigueTrendPoint(row.timestamp, row.fatiguePercent))
+            val percent = if (row.alertSmoothedPHigh > 0f)
+                (row.alertSmoothedPHigh * 100f).coerceIn(0f, 100f)
+            else row.fatiguePercent
+            sessionTrendPoints.add(FatigueTrendPoint(row.timestamp, percent))
         }
         _sessionTrend.postValue(sessionTrendPoints.toList())
 
