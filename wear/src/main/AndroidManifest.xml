@@ -158,6 +158,15 @@
             </intent-filter>
         </service>
 
+        <!-- Fatigue Alert Dismiss Receiver -->
+        <receiver
+            android:name=".presentation.FatigueAlertHelper$DismissReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.fitguard.FATIGUE_ALERT_DISMISS_WEAR" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

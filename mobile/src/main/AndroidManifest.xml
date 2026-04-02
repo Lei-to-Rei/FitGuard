@@ -254,6 +254,15 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- Fatigue Alert Dismiss Receiver -->
+        <receiver
+            android:name=".features.fatigue.FatigueAlertManager$DismissReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.fitguard.FATIGUE_ALERT_DISMISS_PHONE" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>
