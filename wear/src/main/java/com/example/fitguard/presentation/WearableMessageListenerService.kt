@@ -68,6 +68,17 @@ class WearableMessageListenerService : WearableListenerService() {
                     Log.d(TAG, "Fatigue alert: $level ($percentDisplay%)")
                     FatigueAlertHelper.showAlert(this, level, levelIndex, percentDisplay)
                 }
+                "/fitguard/recovery/active" -> {
+                    val watchText = json.optString("watchText", "")
+                    val fatigueLevel = json.optInt("fatigueLevel", 1)
+                    Log.d(TAG, "Active recovery: $watchText (level=$fatigueLevel)")
+                    FatigueAlertHelper.showRecoveryAlert(this, watchText, fatigueLevel)
+                }
+                "/fitguard/recovery/passive" -> {
+                    val watchText = json.optString("watchText", "")
+                    Log.d(TAG, "Passive recovery: $watchText")
+                    FatigueAlertHelper.showRecoveryComplete(this, watchText)
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to process message: ${e.message}", e)

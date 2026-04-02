@@ -16,6 +16,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.fitguard.data.processing.CsvWriter
 import com.example.fitguard.data.processing.FatigueDetector
 import com.example.fitguard.data.processing.SequenceProcessor
+import com.example.fitguard.features.fatigue.FatigueAlertManager
+import com.example.fitguard.features.recommendations.RecoveryRecommendationManager
 import com.google.firebase.auth.FirebaseAuth
 import com.example.fitguard.services.SessionForegroundService
 import com.google.android.gms.location.LocationCallback
@@ -94,6 +96,10 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
     private val _currentLocation = MutableLiveData<LocationPoint?>()
     val currentLocation: LiveData<LocationPoint?> = _currentLocation
 
+    // Passive recovery recommendation generated on session stop
+    private val _passiveRecovery = MutableLiveData<RecoveryRecommendationManager.PassiveRecovery?>()
+    val passiveRecovery: LiveData<RecoveryRecommendationManager.PassiveRecovery?> = _passiveRecovery
+
     private val routePointsList = mutableListOf<LocationPoint>()
     private var totalDistanceMeters = 0f
     private var isTrackingLocation = false
@@ -152,6 +158,7 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         _elapsedSeconds.value = 0
         _sequenceCount.value = 0
         SequenceProcessor.clearBuffer()
+        RecoveryRecommendationManager.startSession()
         activeSessionId = sessionId
         activeSessionDir = buildSessionDirName(activityType, sessionStartTime)
 
@@ -248,6 +255,11 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
 
         _state.value = SessionState.STOPPING
         cancelConnectTimeout()
+        // Generate passive recovery before clearing buffers
+        val passiveRec = RecoveryRecommendationManager.generatePassiveRecovery()
+        _passiveRecovery.postValue(passiveRec)
+        FatigueAlertManager.showPassiveRecoveryNotification(getApplication(), passiveRec)
+        FatigueAlertManager.sendPassiveRecoveryToWatch(getApplication(), passiveRec)
         saveRouteData()
         stopLocationTracking()
         SequenceProcessor.flushRemainingAndClear()
@@ -298,6 +310,11 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         if (stoppedSessionId != sessionId) return
 
         cancelConnectTimeout()
+        // Generate passive recovery before clearing buffers
+        val passiveRec = RecoveryRecommendationManager.generatePassiveRecovery()
+        _passiveRecovery.postValue(passiveRec)
+        FatigueAlertManager.showPassiveRecoveryNotification(getApplication(), passiveRec)
+        FatigueAlertManager.sendPassiveRecoveryToWatch(getApplication(), passiveRec)
         saveRouteData()
         stopTimer()
         stopLocationTracking()

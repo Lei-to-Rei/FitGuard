@@ -16,10 +16,14 @@ import androidx.core.app.NotificationCompat
 object FatigueAlertHelper {
     private const val TAG = "FatigueAlertHelper"
     private const val CHANNEL_ID = "fatigue_alert"
+    private const val RECOVERY_CHANNEL_ID = "recovery_alert"
     private const val NOTIFICATION_ID = 1003
+    private const val RECOVERY_NOTIFICATION_ID = 1004
+    private const val PASSIVE_NOTIFICATION_ID = 1005
     private const val ACTION_DISMISS = "com.example.fitguard.FATIGUE_ALERT_DISMISS_WEAR"
 
     private var channelCreated = false
+    private var recoveryChannelCreated = false
     private var vibrator: Vibrator? = null
 
     private fun ensureChannel(context: Context) {
@@ -119,6 +123,75 @@ object FatigueAlertHelper {
         } catch (e: Exception) {
             Log.w(TAG, "Failed to acquire wake lock: ${e.message}")
         }
+    }
+
+    // --- Recovery notifications ---
+
+    private fun ensureRecoveryChannel(context: Context) {
+        if (recoveryChannelCreated) return
+        recoveryChannelCreated = true
+        val channel = NotificationChannel(
+            RECOVERY_CHANNEL_ID,
+            "Recovery Recommendations",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "Recovery recommendations during and after workouts"
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0, 300, 150, 300)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        }
+        val nm = context.getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(channel)
+    }
+
+    fun showRecoveryAlert(context: Context, watchText: String, fatigueLevel: Int) {
+        ensureRecoveryChannel(context)
+        wakeScreen(context)
+
+        val nm = context.getSystemService(NotificationManager::class.java)
+
+        // Single vibration burst — intensity scales with level
+        val vibrationPattern = when (fatigueLevel) {
+            1 -> longArrayOf(0, 300)                          // single short
+            2 -> longArrayOf(0, 300, 200, 300)                // double
+            3 -> longArrayOf(0, 400, 200, 400, 200, 400)     // triple long
+            else -> longArrayOf(0, 300)
+        }
+
+        val notification = NotificationCompat.Builder(context, RECOVERY_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("Recovery")
+            .setContentText(watchText)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setVibrate(vibrationPattern)
+            .setAutoCancel(true)
+            .build()
+
+        nm.notify(RECOVERY_NOTIFICATION_ID, notification)
+        Log.d(TAG, "Recovery alert shown: $watchText (level=$fatigueLevel)")
+    }
+
+    fun showRecoveryComplete(context: Context, watchText: String) {
+        ensureRecoveryChannel(context)
+        wakeScreen(context)
+
+        val nm = context.getSystemService(NotificationManager::class.java)
+
+        val notification = NotificationCompat.Builder(context, RECOVERY_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("Session Complete")
+            .setContentText(watchText)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setVibrate(longArrayOf(0, 200, 100, 200))
+            .setAutoCancel(true)
+            .build()
+
+        nm.notify(PASSIVE_NOTIFICATION_ID, notification)
+        Log.d(TAG, "Session complete shown: $watchText")
     }
 
     fun cancel(context: Context) {
