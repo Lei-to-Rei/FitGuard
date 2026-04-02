@@ -282,7 +282,9 @@ object CsvWriter {
                 "currentHr" to row.currentHr,
                 "currentRmssd" to row.currentRmssd,
                 "baselineHr" to row.baselineHr,
-                "baselineRmssd" to row.baselineRmssd
+                "baselineRmssd" to row.baselineRmssd,
+                "alertRawPHigh" to row.alertRawPHigh,
+                "alertSmoothedPHigh" to row.alertSmoothedPHigh
             ))
             .addOnFailureListener { e ->
                 Log.e(TAG, "Firestore fatigue history failed: ${e.message}", e)
@@ -423,7 +425,9 @@ object CsvWriter {
         val currentHr: Double,
         val currentRmssd: Double,
         val baselineHr: Double,
-        val baselineRmssd: Double
+        val baselineRmssd: Double,
+        val alertRawPHigh: Float = 0f,
+        val alertSmoothedPHigh: Float = 0f
     )
 
     private const val HISTORY_FILE = "fatigue_history.csv"
@@ -431,7 +435,8 @@ object CsvWriter {
         "global_pLow,global_pHigh,global_level,global_levelIndex," +
         "ext_pLow,ext_pHigh,ext_level,ext_levelIndex," +
         "ondev_pLow,ondev_pHigh,ondev_level,ondev_levelIndex," +
-        "current_hr,current_rmssd,baseline_hr,baseline_rmssd"
+        "current_hr,current_rmssd,baseline_hr,baseline_rmssd," +
+        "alert_raw_pHigh,alert_smoothed_pHigh"
 
     fun writeFatigueHistoryRow(
         row: FatigueHistoryRow,
@@ -453,7 +458,8 @@ object CsvWriter {
 
             val line = "${row.timestamp},${fmt(row.fatiguePercent.toDouble())}," +
                 "${resCols(row.global)},${resCols(row.external)},${resCols(row.onDevice)}," +
-                "${fmt(row.currentHr)},${fmt(row.currentRmssd)},${fmt(row.baselineHr)},${fmt(row.baselineRmssd)}"
+                "${fmt(row.currentHr)},${fmt(row.currentRmssd)},${fmt(row.baselineHr)},${fmt(row.baselineRmssd)}," +
+                "${fmt(row.alertRawPHigh.toDouble())},${fmt(row.alertSmoothedPHigh.toDouble())}"
 
             val content = buildString {
                 if (needsHeader) appendLine(HISTORY_HEADER)
@@ -501,7 +507,9 @@ object CsvWriter {
                     currentHr = cols.getOrNull(14)?.toDoubleOrNull() ?: 0.0,
                     currentRmssd = cols.getOrNull(15)?.toDoubleOrNull() ?: 0.0,
                     baselineHr = cols.getOrNull(16)?.toDoubleOrNull() ?: 0.0,
-                    baselineRmssd = cols.getOrNull(17)?.toDoubleOrNull() ?: 0.0
+                    baselineRmssd = cols.getOrNull(17)?.toDoubleOrNull() ?: 0.0,
+                    alertRawPHigh = cols.getOrNull(18)?.toFloatOrNull() ?: 0f,
+                    alertSmoothedPHigh = cols.getOrNull(19)?.toFloatOrNull() ?: 0f
                 ))
             }
         } catch (e: Exception) {

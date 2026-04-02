@@ -20,6 +20,8 @@ class SequenceProcessor(private val context: Context) {
         private const val WINDOW_DURATION_MS = 60_000L
         private const val WINDOW_STEP_MS = 15_000L
         private const val MIN_PPG_SAMPLES = 10
+        // Match training stride: SEQ_LENGTH=5, SEQ_OVERLAP=2 → step=3
+        private const val PREDICTION_STRIDE = 3
 
         // Static so buffer survives WearableListenerService recreation between sequences
         private val ppgBuffer = mutableListOf<PpgSample>()
@@ -28,6 +30,8 @@ class SequenceProcessor(private val context: Context) {
         private var windowIndex: Int = 0
         private var currentActivityType: String = ""
         private val bufferMutex = Mutex()
+        private var totalWindowsProcessed: Int = 0
+        private var windowsSinceLastPrediction: Int = 0
 
         fun clearBuffer() {
             ppgBuffer.clear()
@@ -35,6 +39,8 @@ class SequenceProcessor(private val context: Context) {
             nextWindowStart = -1L
             windowIndex = 0
             currentActivityType = ""
+            totalWindowsProcessed = 0
+            windowsSinceLastPrediction = 0
             SequenceBatchAccumulator.clearAll()
             FatigueAlertManager.reset()
         }
@@ -181,7 +187,21 @@ class SequenceProcessor(private val context: Context) {
             putExtra("feature_array", fv.toFeatureFloatArray())
         }
         context.sendBroadcast(intent)
-        FatigueAlertManager.onFeatureWindow(context, fv.toFeatureFloatArray())
-        Log.d(TAG, "Broadcast SEQUENCE_PROCESSED for ${fv.sequenceId}")
+
+        // Stride control: only run inference every PREDICTION_STRIDE windows,
+        // and only after enough windows have been buffered (SEQ_LENGTH=5)
+        totalWindowsProcessed++
+        windowsSinceLastPrediction++
+        val featureArray = fv.toFeatureFloatArray()
+
+        if (totalWindowsProcessed >= 5 && windowsSinceLastPrediction >= PREDICTION_STRIDE) {
+            FatigueAlertManager.onFeatureWindow(context, featureArray)
+            windowsSinceLastPrediction = 0
+            Log.d(TAG, "Broadcast SEQUENCE_PROCESSED for ${fv.sequenceId} (inference)")
+        } else {
+            FatigueAlertManager.bufferWindowOnly(context, featureArray)
+            Log.d(TAG, "Broadcast SEQUENCE_PROCESSED for ${fv.sequenceId} (buffer only, " +
+                    "total=$totalWindowsProcessed, sincePred=$windowsSinceLastPrediction)")
+        }
     }
 }

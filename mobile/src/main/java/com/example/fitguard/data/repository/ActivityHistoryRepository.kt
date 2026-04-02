@@ -430,7 +430,8 @@ object ActivityHistoryRepository {
             "global_pLow,global_pHigh,global_level,global_levelIndex," +
             "ext_pLow,ext_pHigh,ext_level,ext_levelIndex," +
             "ondev_pLow,ondev_pHigh,ondev_level,ondev_levelIndex," +
-            "current_hr,current_rmssd,baseline_hr,baseline_rmssd"
+            "current_hr,current_rmssd,baseline_hr,baseline_rmssd," +
+            "alert_raw_pHigh,alert_smoothed_pHigh"
 
         val sb = StringBuilder()
         sb.appendLine(header)
@@ -439,7 +440,8 @@ object ActivityHistoryRepository {
                 "${fmt(d.getDouble("globalPLow") ?: 0.0)},${fmt(d.getDouble("globalPHigh") ?: 0.0)},${d.getString("globalLevel") ?: ""},${d.getLong("globalLevelIndex") ?: -1}," +
                 "${fmt(d.getDouble("extPLow") ?: 0.0)},${fmt(d.getDouble("extPHigh") ?: 0.0)},${d.getString("extLevel") ?: ""},${d.getLong("extLevelIndex") ?: -1}," +
                 "${fmt(d.getDouble("ondevPLow") ?: 0.0)},${fmt(d.getDouble("ondevPHigh") ?: 0.0)},${d.getString("ondevLevel") ?: ""},${d.getLong("ondevLevelIndex") ?: -1}," +
-                "${fmt(d.getDouble("currentHr") ?: 0.0)},${fmt(d.getDouble("currentRmssd") ?: 0.0)},${fmt(d.getDouble("baselineHr") ?: 0.0)},${fmt(d.getDouble("baselineRmssd") ?: 0.0)}")
+                "${fmt(d.getDouble("currentHr") ?: 0.0)},${fmt(d.getDouble("currentRmssd") ?: 0.0)},${fmt(d.getDouble("baselineHr") ?: 0.0)},${fmt(d.getDouble("baselineRmssd") ?: 0.0)}," +
+                "${fmt(d.getDouble("alertRawPHigh") ?: 0.0)},${fmt(d.getDouble("alertSmoothedPHigh") ?: 0.0)}")
         }
         File(localDir, "fatigue_history.csv").writeText(sb.toString())
     }

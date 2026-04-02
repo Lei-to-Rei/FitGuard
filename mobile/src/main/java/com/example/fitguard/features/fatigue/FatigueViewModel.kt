@@ -275,7 +275,10 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
                             currentHr = currentHr,
                             currentRmssd = currentRmssd,
                             baselineHr = baselineHr,
-                            baselineRmssd = baselineRmssd
+                            baselineRmssd = baselineRmssd,
+                            alertRawPHigh = FatigueAlertManager.lastRawPHigh,
+                            alertSmoothedPHigh = if (FatigueAlertManager.smoothedPHigh >= 0f)
+                                FatigueAlertManager.smoothedPHigh else 0f
                         ),
                         userId, sessionDir
                     )

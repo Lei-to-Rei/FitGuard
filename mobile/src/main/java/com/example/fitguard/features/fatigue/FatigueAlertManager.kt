@@ -27,12 +27,21 @@ object FatigueAlertManager {
     private const val COOLDOWN_MS = 60_000L
     private const val MESSAGE_PATH = "/fitguard/fatigue/alert"
     private const val ACTION_DISMISS = "com.example.fitguard.FATIGUE_ALERT_DISMISS_PHONE"
+    private const val EMA_ALPHA = 0.4f
+    private const val CONSECUTIVE_HIGH_THRESHOLD = 3
 
     private var detector: FatigueDetector? = null
     private var initialized = false
     private var previousLevelIndex = -1
     private var lastAlertTimeMs = 0L
     private var vibrator: Vibrator? = null
+
+    // EMA smoothing state
+    var smoothedPHigh: Float = -1f
+        private set
+    var lastRawPHigh: Float = 0f
+        private set
+    private var consecutiveHighCount = 0
 
     private fun ensureInitialized(context: Context) {
         if (initialized) return
@@ -60,6 +69,17 @@ object FatigueAlertManager {
         nm.createNotificationChannel(channel)
     }
 
+    /**
+     * Buffer features in the detector WITHOUT running inference.
+     * Called by SequenceProcessor on non-prediction stride windows.
+     */
+    fun bufferWindowOnly(context: Context, features: FloatArray) {
+        ensureInitialized(context)
+        val det = detector ?: return
+        det.bufferWindowOnly(features)
+        Log.d(TAG, "Window buffered (no inference)")
+    }
+
     fun onFeatureWindow(context: Context, features: FloatArray) {
         ensureInitialized(context)
         val det = detector ?: return
@@ -67,30 +87,73 @@ object FatigueAlertManager {
 
         val result = det.addWindowAndPredict(features) ?: return
 
+        // Update raw pHigh
+        lastRawPHigh = result.pHigh
+
+        // Apply EMA smoothing
+        smoothedPHigh = if (smoothedPHigh < 0f) {
+            result.pHigh
+        } else {
+            EMA_ALPHA * result.pHigh + (1f - EMA_ALPHA) * smoothedPHigh
+        }
+
+        // Classify using smoothed pHigh
+        val smoothedLevelIndex = when {
+            smoothedPHigh < 0.25f -> 0
+            smoothedPHigh < 0.50f -> 1
+            smoothedPHigh < 0.75f -> 2
+            else -> 3
+        }
+        val smoothedPercentDisplay = (smoothedPHigh * 100).toInt().coerceIn(0, 100)
+
+        // Track consecutive predictions above High threshold (0.50)
+        if (smoothedPHigh >= 0.50f) {
+            consecutiveHighCount++
+        } else {
+            consecutiveHighCount = 0
+        }
+
+        Log.d(TAG, "Prediction: raw=${String.format("%.3f", lastRawPHigh)}, " +
+                "smoothed=${String.format("%.3f", smoothedPHigh)}, " +
+                "level=$smoothedLevelIndex, consecutiveHigh=$consecutiveHighCount")
+
         if (previousLevelIndex == -1) {
-            previousLevelIndex = result.levelIndex
-            Log.d(TAG, "Baseline set: ${result.level} (${result.percentDisplay}%)")
+            previousLevelIndex = smoothedLevelIndex
+            Log.d(TAG, "Baseline set: level=$smoothedLevelIndex ($smoothedPercentDisplay%)")
             return
         }
 
-        if (result.levelIndex > previousLevelIndex) {
+        // Only fire alert when: level escalated AND sustained high fatigue (3+ consecutive)
+        if (smoothedLevelIndex > previousLevelIndex &&
+            consecutiveHighCount >= CONSECUTIVE_HIGH_THRESHOLD) {
             val now = System.currentTimeMillis()
             if (now - lastAlertTimeMs >= COOLDOWN_MS) {
-                showPhoneNotification(context, result)
-                sendToWatch(context, result)
+                // Build a result using smoothed values for the notification
+                val smoothedResult = FatigueResult(
+                    pLow = 1f - smoothedPHigh,
+                    pHigh = smoothedPHigh,
+                    level = result.level,
+                    levelIndex = smoothedLevelIndex,
+                    percentDisplay = smoothedPercentDisplay
+                )
+                showPhoneNotification(context, smoothedResult)
+                sendToWatch(context, smoothedResult)
                 lastAlertTimeMs = now
-                Log.d(TAG, "Alert fired: ${result.level} (${result.percentDisplay}%)")
+                Log.d(TAG, "Alert fired: level=$smoothedLevelIndex ($smoothedPercentDisplay%)")
             } else {
-                Log.d(TAG, "Alert suppressed (cooldown): ${result.level}")
+                Log.d(TAG, "Alert suppressed (cooldown): level=$smoothedLevelIndex")
             }
         }
 
-        previousLevelIndex = result.levelIndex
+        previousLevelIndex = smoothedLevelIndex
     }
 
     fun reset() {
         previousLevelIndex = -1
         lastAlertTimeMs = 0L
+        smoothedPHigh = -1f
+        lastRawPHigh = 0f
+        consecutiveHighCount = 0
         detector?.clearBuffer()
         Log.d(TAG, "Reset")
     }

@@ -106,6 +106,16 @@ class FatigueDetector(private val context: Context) {
         return runInference()
     }
 
+    /**
+     * Normalize and buffer features WITHOUT running inference.
+     * Keeps the sliding window in sync on non-prediction windows.
+     */
+    fun bufferWindowOnly(rawFeatures: FloatArray) {
+        val normalized = normalize(rawFeatures)
+        windowBuffer.addLast(normalized)
+        if (windowBuffer.size > SEQ_LENGTH) windowBuffer.removeFirst()
+    }
+
     fun predictBatch(windows: List<FloatArray>): FatigueResult? {
         if (windows.size < SEQ_LENGTH) return null
         // Use the last SEQ_LENGTH windows
