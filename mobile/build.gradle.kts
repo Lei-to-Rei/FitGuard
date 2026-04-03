@@ -82,6 +82,9 @@ dependencies {
     // Google Play Services Wearable
     implementation("com.google.android.gms:play-services-wearable:19.0.0")
 
+    // Health Connect
+    implementation("androidx.health.connect:connect-client:1.1.0-alpha11") // 1.2.0-alpha03 when stable
+
     // Location tracking
     implementation("com.google.android.gms:play-services-location:21.0.1")
 

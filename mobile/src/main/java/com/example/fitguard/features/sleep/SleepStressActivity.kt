@@ -1,61 +1,60 @@
 package com.example.fitguard.features.sleep
 
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
+import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
-import com.example.fitguard.data.processing.CsvWriter
-import com.example.fitguard.data.processing.StressCalculator
+import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.PermissionController
+import androidx.lifecycle.lifecycleScope
+import com.example.fitguard.data.health.HealthConnectManager
+import com.example.fitguard.data.health.SleepResult
+import com.example.fitguard.data.health.StressResult
 import com.example.fitguard.databinding.ActivitySleepStressBinding
-import com.example.fitguard.services.WearableDataListenerService
-import com.google.android.gms.wearable.Wearable
-import com.google.firebase.auth.FirebaseAuth
-import kotlinx.coroutines.*
-import kotlinx.coroutines.tasks.await
-import org.json.JSONObject
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.*
+import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 class SleepStressActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivitySleepStressBinding
-    private val stressCalculator = StressCalculator()
-    private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
-    private var isWatchConnected = false
-    private var isHrMeasuring = false
-    private val stressHistory = mutableListOf<Float>()
-    private var isSleepMonitoring = false
-    private var sleepSessionReceiver: BroadcastReceiver? = null
+    private lateinit var healthConnectManager: HealthConnectManager
+
+    private val prefs by lazy { getSharedPreferences("hc_prefs", Context.MODE_PRIVATE) }
+
+    // Track how many times the user has denied permissions (per the HC UI guidelines)
+    private var denyCount: Int
+        get() = prefs.getInt("permission_deny_count", 0)
+        set(v) = prefs.edit().putInt("permission_deny_count", v).apply()
 
     companion object {
-        private const val TAG = "SleepStress"
-        private const val HR_MEASUREMENT_DURATION_MS = 15_000L
+        private const val TAG = "SleepStressActivity"
+        const val ACTION_MANAGE_HEALTH_PERMISSIONS = "androidx.health.ACTION_MANAGE_HEALTH_PERMISSIONS"
     }
 
-    private val healthDataReceiver = object : BroadcastReceiver() {
-        override fun onReceive(ctx: Context?, intent: Intent?) {
-            val type = intent?.getStringExtra("type") ?: return
-            if (type != "HeartRate") return
-            val json = JSONObject(intent.getStringExtra("data") ?: return)
-
-            runOnUiThread {
-                val ibiString = json.optString("ibi_list", "[]")
-                val ibis = ibiString.removeSurrounding("[", "]")
-                    .split(",")
-                    .mapNotNull { it.trim().toIntOrNull() }
-                val timestamp = json.optLong("timestamp", System.currentTimeMillis())
-
-                if (ibis.isNotEmpty()) {
-                    stressCalculator.addIbiValues(ibis, timestamp)
-                    updateStressUI()
-                }
+    private val requestPermissions = registerForActivityResult(
+        PermissionController.createRequestPermissionResultContract()
+    ) { granted ->
+        Log.d(TAG, "Permission result: $granted")
+        if (granted.containsAll(HealthConnectManager.PERMISSIONS)) {
+            denyCount = 0
+            lifecycleScope.launch { fetchAndDisplay() }
+        } else {
+            denyCount++
+            Log.w(TAG, "Permissions denied. denyCount=$denyCount")
+            if (denyCount >= 2) {
+                showPermanentlyDeniedCard()
+            } else {
+                showSetupCard(
+                    "FitGuard needs permission to read Sleep & Stress data from Health Connect.",
+                    showGrantButton = true
+                )
             }
         }
     }
@@ -65,252 +64,201 @@ class SleepStressActivity : AppCompatActivity() {
         binding = ActivitySleepStressBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        binding.btnBack.setOnClickListener {
-            onBackPressedDispatcher.onBackPressed()
+        healthConnectManager = HealthConnectManager(this)
+
+        binding.btnBack.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
+        binding.btnSync.setOnClickListener {
+            Toast.makeText(this, "Syncing…", Toast.LENGTH_SHORT).show()
+            checkAndLoad()
         }
-
-        registerReceiver(
-            healthDataReceiver,
-            IntentFilter("com.example.fitguard.HEALTH_DATA"),
-            RECEIVER_NOT_EXPORTED
-        )
-
-        setupSleepMonitoring()
-        loadSleepData()
-        loadStressHistory()
+        binding.btnGrantPermissions.setOnClickListener {
+            requestPermissions.launch(HealthConnectManager.PERMISSIONS)
+        }
+        binding.btnManageAccess.setOnClickListener {
+            openHealthConnectSettings()
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        checkWatchConnection()
+        checkAndLoad()
     }
 
-    override fun onPause() {
-        super.onPause()
-        stopHrMeasurement()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        stopHrMeasurement()
-        coroutineScope.cancel()
-        try { unregisterReceiver(healthDataReceiver) } catch (_: Exception) {}
-        sleepSessionReceiver?.let { try { unregisterReceiver(it) } catch (_: Exception) {} }
-    }
-
-    private fun checkWatchConnection() {
-        coroutineScope.launch(Dispatchers.IO) {
-            val connected = try {
-                Wearable.getNodeClient(this@SleepStressActivity)
-                    .connectedNodes.await().isNotEmpty()
-            } catch (_: Exception) { false }
-
-            withContext(Dispatchers.Main) {
-                isWatchConnected = connected
-                binding.switchSleepMonitor.isEnabled = connected
-
-                if (!connected && !isSleepMonitoring) {
-                    binding.tvSleepStatus.text = "No watch connected"
-                    binding.tvSleepStatus.visibility = View.VISIBLE
-                }
-
-                if (connected) {
-                    startHrMeasurement()
-                }
-            }
-        }
-    }
-
-    private fun startHrMeasurement() {
-        if (ActivityTrackingViewModel.activeSessionId != null) {
-            Log.d(TAG, "HR measurement skipped — workout session active")
+    private fun checkAndLoad() {
+        val sdkStatus = try {
+            HealthConnectClient.getSdkStatus(this)
+        } catch (e: Exception) {
+            Log.e(TAG, "getSdkStatus threw", e)
+            showSetupCard("Health Connect check failed:\n${e.localizedMessage}", showGrantButton = false)
             return
         }
-        WearableDataListenerService.sendTrackerCommand(this, "start", "HeartRate")
-        isHrMeasuring = true
-        Log.d(TAG, "HR measurement started for stress calculation")
-    }
 
-    private fun stopHrMeasurement() {
-        if (isHrMeasuring) {
-            WearableDataListenerService.sendTrackerCommand(this, "stop", "HeartRate")
-            isHrMeasuring = false
-        }
-    }
+        Log.d(TAG, "SDK status=$sdkStatus, denyCount=$denyCount")
 
-    private fun updateStressUI() {
-        val score = stressCalculator.getStressScore() ?: return
-        val label = stressCalculator.getStressLabel(score)
-        val rmssd = stressCalculator.getRmssd() ?: 0f
-
-        binding.tvStressValue.text = String.format("%.0f", score)
-        binding.tvStressStatus.text = "Status: $label"
-        binding.gaugeStress.setStressValue(score)
-
-        // Save and update chart
-        saveStressReading(score, rmssd, label)
-        stressHistory.add(mapStressToChartLevel(score))
-        if (stressHistory.size > 6) stressHistory.removeAt(0)
-        binding.chartStress.setData(stressHistory.toList())
-    }
-
-    private fun mapStressToChartLevel(score: Float): Float {
-        // StressChartView uses 1.0=Relaxed, 2.0=Average, 3.0=High
-        return when {
-            score < 33f -> 1.0f
-            score < 66f -> 2.0f
-            else -> 3.0f
-        }
-    }
-
-    private fun saveStressReading(score: Float, rmssd: Float, label: String) {
-        coroutineScope.launch(Dispatchers.IO) {
-            try {
-                val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
-                val dateFolder = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-                val baseDir = CsvWriter.getOutputDir(userId, "")
-                val dir = File(baseDir, dateFolder)
-                dir.mkdirs()
-                val json = JSONObject().apply {
-                    put("timestamp", System.currentTimeMillis())
-                    put("stress_score", score.toDouble())
-                    put("rmssd", rmssd.toDouble())
-                    put("label", label)
-                }
-                File(dir, "Stress.jsonl").appendText(json.toString() + "\n")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to save stress reading: ${e.message}")
-            }
-        }
-    }
-
-    // ===== Sleep Monitoring =====
-
-    private fun setupSleepMonitoring() {
-        isSleepMonitoring = SleepMonitorService.isRunning(this)
-        binding.switchSleepMonitor.isChecked = isSleepMonitoring
-
-        binding.switchSleepMonitor.setOnCheckedChangeListener { _, isChecked ->
-            if (!isWatchConnected && isChecked) {
-                binding.switchSleepMonitor.isChecked = false
-                Toast.makeText(this, "No watch connected", Toast.LENGTH_SHORT).show()
-                return@setOnCheckedChangeListener
-            }
-            if (ActivityTrackingViewModel.activeSessionId != null && isChecked) {
-                binding.switchSleepMonitor.isChecked = false
-                Toast.makeText(this, "Workout active — sleep monitoring unavailable", Toast.LENGTH_SHORT).show()
-                return@setOnCheckedChangeListener
-            }
-            if (isChecked) {
-                SleepMonitorService.start(this)
-                isSleepMonitoring = true
-                binding.tvSleepStatus.text = "Monitoring active — tracking sleep"
-                binding.tvSleepStatus.visibility = View.VISIBLE
-            } else {
-                SleepMonitorService.stop(this)
-                isSleepMonitoring = false
-                binding.tvSleepStatus.text = "Processing sleep data..."
-                binding.tvSleepStatus.visibility = View.VISIBLE
-            }
-        }
-
-        // Listen for session completion to refresh UI
-        sleepSessionReceiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context?, intent: Intent?) {
-                runOnUiThread {
-                    binding.tvSleepStatus.text = "Sleep session complete"
-                    loadSleepData()
-                }
-            }
-        }
-        registerReceiver(
-            sleepSessionReceiver,
-            IntentFilter(SleepMonitorService.ACTION_SLEEP_SESSION_COMPLETE),
-            RECEIVER_NOT_EXPORTED
-        )
-    }
-
-    private fun loadSleepData() {
-        coroutineScope.launch(Dispatchers.IO) {
-            try {
-                val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
-                val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-                val session = SleepDataLoader.loadLatestSession(userId, today) ?: return@launch
-
-                val chartPoints = SleepDataLoader.sessionToChartPoints(session)
-
-                withContext(Dispatchers.Main) {
-                    binding.tvSleepDuration.text =
-                        "Sleep Duration: ${SleepDataLoader.formatDuration(session.totalSleepDurationMs)}"
-                    binding.tvSleepQuality.text = "Quality: ${session.qualityLabel}"
-
-                    if (chartPoints.isNotEmpty()) {
-                        binding.chartSleep.setData(chartPoints)
-                    }
-
-                    // SpO2 warning
-                    if (session.minSpO2 in 1..89) {
-                        binding.tvSpO2Warning.text = "Low SpO2 detected: ${session.minSpO2}%"
-                        binding.tvSpO2Warning.visibility = View.VISIBLE
-                    } else {
-                        binding.tvSpO2Warning.visibility = View.GONE
-                    }
-
-                    binding.tvSleepStatus.visibility = View.GONE
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to load sleep data: ${e.message}")
-            }
-        }
-    }
-
-    // ===== Stress =====
-
-    private fun loadStressHistory() {
-        coroutineScope.launch(Dispatchers.IO) {
-            try {
-                val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
-                val dateFolder = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-                val baseDir = CsvWriter.getOutputDir(userId, "")
-                val file = File(File(baseDir, dateFolder), "Stress.jsonl")
-                if (!file.exists()) return@launch
-
-                val readings = file.readLines()
-                    .filter { it.isNotBlank() }
-                    .mapNotNull {
-                        try {
-                            val json = JSONObject(it)
-                            json.optDouble("stress_score", -1.0).toFloat()
-                        } catch (_: Exception) { null }
-                    }
-                    .filter { it >= 0f }
-                    .takeLast(6)
-                    .map { mapStressToChartLevel(it) }
-
-                if (readings.isNotEmpty()) {
-                    val lastScore = file.readLines()
-                        .filter { it.isNotBlank() }
-                        .lastOrNull()?.let {
-                            try { JSONObject(it).optDouble("stress_score", -1.0).toFloat() }
-                            catch (_: Exception) { null }
+        when (sdkStatus) {
+            HealthConnectClient.SDK_AVAILABLE -> {
+                lifecycleScope.launch {
+                    try {
+                        val hasPermissions = healthConnectManager.checkPermissions()
+                        Log.d(TAG, "hasPermissions=$hasPermissions")
+                        when {
+                            hasPermissions -> fetchAndDisplay()
+                            denyCount >= 2 -> showPermanentlyDeniedCard()
+                            else -> showSetupCard(
+                                "FitGuard needs permission to read Sleep & Stress data from Health Connect.",
+                                showGrantButton = true
+                            )
                         }
-
-                    withContext(Dispatchers.Main) {
-                        stressHistory.clear()
-                        stressHistory.addAll(readings)
-                        binding.chartStress.setData(stressHistory.toList())
-                        lastScore?.let { score ->
-                            if (score >= 0f) {
-                                binding.tvStressValue.text = String.format("%.0f", score)
-                                binding.tvStressStatus.text = "Status: ${stressCalculator.getStressLabel(score)}"
-                                binding.gaugeStress.setStressValue(score)
-                            }
-                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "checkPermissions threw", e)
+                        showSetupCard(
+                            "Health Connect error (${e.javaClass.simpleName}):\n${e.localizedMessage}",
+                            showGrantButton = false
+                        )
                     }
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to load stress history: ${e.message}")
+            }
+            HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> {
+                showSetupCard("Health Connect needs to be updated.", showGrantButton = false)
+                binding.btnGrantPermissions.text = "Update Health Connect"
+                binding.btnGrantPermissions.visibility = View.VISIBLE
+                binding.btnGrantPermissions.setOnClickListener {
+                    startActivity(Intent(Intent.ACTION_VIEW,
+                        Uri.parse("market://details?id=com.google.android.apps.healthdata")))
+                }
+            }
+            else -> {
+                showSetupCard("Health Connect is not available (status=$sdkStatus).\nPlease install it from Play Store.", showGrantButton = false)
+                binding.btnGrantPermissions.text = "Install Health Connect"
+                binding.btnGrantPermissions.visibility = View.VISIBLE
+                binding.btnGrantPermissions.setOnClickListener {
+                    startActivity(Intent(Intent.ACTION_VIEW,
+                        Uri.parse("market://details?id=com.google.android.apps.healthdata")))
+                }
             }
         }
     }
+
+    private suspend fun fetchAndDisplay() {
+        hideSetupCard()
+        showStatus("Syncing from Samsung Health…")
+        try {
+            val sleep = healthConnectManager.readLatestSleep()
+            val stress = healthConnectManager.readLatestStress()
+            Log.d(TAG, "sleep=${sleep != null}, stress=${stress != null}")
+            updateSleepUI(sleep)
+            updateStressUI(stress)
+            hideStatus()
+            binding.btnManageAccess.visibility = View.VISIBLE
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchAndDisplay error", e)
+            showStatus("Failed to load: ${e.localizedMessage ?: e.javaClass.simpleName}")
+        }
+    }
+
+    // ===== Setup cards =====
+
+    private fun showSetupCard(message: String, showGrantButton: Boolean) {
+        binding.cardSetup.visibility = View.VISIBLE
+        binding.tvSetupMessage.text = message
+        binding.tvSetupTitle.text = "Health Connect"
+        binding.btnGrantPermissions.text = "Connect Health Connect"
+        binding.btnGrantPermissions.visibility = if (showGrantButton) View.VISIBLE else View.GONE
+        binding.btnManageAccess.visibility = View.GONE
+        hideStatus()
+    }
+
+    private fun showPermanentlyDeniedCard() {
+        binding.cardSetup.visibility = View.VISIBLE
+        binding.tvSetupTitle.text = "Permissions Required"
+        binding.tvSetupMessage.text =
+            "You've declined permissions twice.\nPlease open Health Connect Settings to grant access to FitGuard."
+        binding.btnGrantPermissions.visibility = View.GONE
+        binding.btnManageAccess.visibility = View.VISIBLE
+        binding.btnManageAccess.text = "Open Health Connect Settings"
+        hideStatus()
+    }
+
+    private fun hideSetupCard() {
+        binding.cardSetup.visibility = View.GONE
+    }
+
+    private fun openHealthConnectSettings() {
+        try {
+            startActivity(Intent(ACTION_MANAGE_HEALTH_PERMISSIONS).apply {
+                putExtra(Intent.EXTRA_PACKAGE_NAME, packageName)
+            })
+        } catch (e: Exception) {
+            // Fallback: open Health Connect main settings
+            startActivity(Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS))
+        }
+    }
+
+    // ===== Status banner =====
+
+    private fun showStatus(message: String) {
+        binding.tvHealthConnectStatus.text = message
+        binding.tvHealthConnectStatus.visibility = View.VISIBLE
+    }
+
+    private fun hideStatus() {
+        binding.tvHealthConnectStatus.visibility = View.GONE
+    }
+
+    // ===== Data UI =====
+
+    private fun updateSleepUI(sleep: SleepResult?) {
+        if (sleep == null) {
+            binding.tvSleepQuality.text = "Quality: --"
+            binding.tvSleepDuration.text = "No sleep data — open Samsung Health to track sleep"
+            binding.tvSleepSource.visibility = View.GONE
+            return
+        }
+        val qualityColor = when (sleep.qualityLabel) {
+            "Excellent" -> Color.parseColor("#4CAF50")
+            "Good"      -> Color.parseColor("#6EDB34")
+            "Fair"      -> Color.parseColor("#FFC107")
+            else        -> Color.parseColor("#F44336")
+        }
+        binding.tvSleepQuality.text = "Quality: ${sleep.qualityLabel}"
+        binding.tvSleepQuality.setTextColor(qualityColor)
+        binding.tvSleepDuration.text = "Duration: ${formatDuration(sleep.durationMs)}"
+        if (sleep.chartPoints.isNotEmpty()) binding.chartSleep.setData(sleep.chartPoints)
+        binding.tvSleepStatus.visibility = View.GONE
+        binding.tvSleepSource.text = "Samsung Health · ended ${formatTime(sleep.endTime)}"
+        binding.tvSleepSource.visibility = View.VISIBLE
+    }
+
+    private fun updateStressUI(stress: StressResult?) {
+        if (stress == null) {
+            binding.tvStressValue.text = "--"
+            binding.tvStressStatus.text = "No HRV data — open Samsung Health to measure stress"
+            binding.tvStressSource.visibility = View.GONE
+            return
+        }
+        val stressColor = when {
+            stress.score < 33f -> Color.parseColor("#6EDB34")
+            stress.score < 66f -> Color.parseColor("#FFC107")
+            else               -> Color.parseColor("#F44336")
+        }
+        binding.tvStressValue.text = String.format("%.0f", stress.score)
+        binding.tvStressValue.setTextColor(stressColor)
+        binding.tvStressStatus.text = "Status: ${stress.label}"
+        binding.tvStressStatus.setTextColor(stressColor)
+        binding.gaugeStress.setStressValue(stress.score)
+        if (stress.history.isNotEmpty()) binding.chartStress.setData(stress.history)
+        binding.tvStressSource.text = "Samsung Health · HRV-based"
+        binding.tvStressSource.visibility = View.VISIBLE
+    }
+
+    private fun formatDuration(durationMs: Long): String {
+        val hours = durationMs / 3_600_000
+        val minutes = (durationMs % 3_600_000) / 60_000
+        return "${hours}hr ${minutes}min"
+    }
+
+    private fun formatTime(instant: Instant): String =
+        DateTimeFormatter.ofPattern("MMM d, h:mm a")
+            .withZone(ZoneId.systemDefault())
+            .format(instant)
 }

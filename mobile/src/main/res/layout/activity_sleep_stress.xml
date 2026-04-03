@@ -30,16 +30,103 @@
             android:contentDescription="Back" />
 
         <TextView
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="Sleep &amp; Stress Monitoring"
+            android:layout_weight="1"
+            android:text="Sleep &amp; Stress"
             android:textSize="20sp"
             android:textStyle="bold"
             android:textColor="@color/text_dark"
             android:fontFamily="@font/inter"
             android:layout_marginStart="12dp" />
 
+        <TextView
+            android:id="@+id/btnSync"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Sync"
+            android:textSize="14sp"
+            android:textColor="#1565C0"
+            android:fontFamily="@font/inter"
+            android:textStyle="bold"
+            android:paddingStart="8dp"
+            android:paddingEnd="4dp"
+            android:clickable="true"
+            android:focusable="true" />
+
     </LinearLayout>
+
+    <!-- ===== Loading / Error Status Banner ===== -->
+    <TextView
+        android:id="@+id/tvHealthConnectStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="10dp"
+        android:textSize="13sp"
+        android:textColor="@color/white"
+        android:background="#1565C0"
+        android:gravity="center"
+        android:fontFamily="@font/inter"
+        android:visibility="gone" />
+
+    <!-- ===== Health Connect Setup Card (shown until permissions granted) ===== -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardSetup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="12dp"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="2dp"
+        app:strokeWidth="1dp"
+        app:strokeColor="#1565C0"
+        app:cardBackgroundColor="#EFF6FF"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp"
+            android:gravity="center">
+
+            <TextView
+                android:id="@+id/tvSetupTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Health Connect"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="#1565C0"
+                android:fontFamily="@font/inter"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/tvSetupMessage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="14sp"
+                android:textColor="@color/text_dark"
+                android:fontFamily="@font/inter"
+                android:gravity="center"
+                android:layout_marginBottom="16dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnGrantPermissions"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Connect Health Connect"
+                android:textSize="14sp"
+                android:fontFamily="@font/inter"
+                app:backgroundTint="#1565C0"
+                android:visibility="gone" />
+
+
+        </LinearLayout>
+
+    </com.google.android.material.card.MaterialCardView>
 
     <!-- ===== Scrollable Content ===== -->
     <androidx.core.widget.NestedScrollView
@@ -54,7 +141,7 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <!-- ===== Sleep Monitoring Card ===== -->
+            <!-- ===== Sleep Card ===== -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -69,37 +156,20 @@
                     android:orientation="vertical"
                     android:padding="16dp">
 
-                    <LinearLayout
-                        android:layout_width="match_parent"
+                    <TextView
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="Sleep Monitoring"
-                            android:textSize="16sp"
-                            android:textStyle="bold"
-                            android:textColor="@color/text_dark"
-                            android:fontFamily="@font/inter" />
-
-                        <com.google.android.material.switchmaterial.SwitchMaterial
-                            android:id="@+id/switchSleepMonitor"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            app:trackTint="@color/switch_track_color"
-                            app:thumbTint="@color/white"
-                            android:checked="true" />
-
-                    </LinearLayout>
+                        android:text="Sleep"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_dark"
+                        android:fontFamily="@font/inter" />
 
                     <TextView
                         android:id="@+id/tvSleepQuality"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Quality: Good"
+                        android:text="Quality: --"
                         android:textSize="14sp"
                         android:textStyle="bold"
                         android:textColor="#6EDB34"
@@ -110,7 +180,7 @@
                         android:id="@+id/tvSleepDuration"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Sleep Duration: 7hr 42min"
+                        android:text="Duration: --"
                         android:textSize="14sp"
                         android:textColor="@color/text_secondary"
                         android:fontFamily="@font/inter"
@@ -134,21 +204,21 @@
                         android:gravity="center" />
 
                     <TextView
-                        android:id="@+id/tvSpO2Warning"
+                        android:id="@+id/tvSleepSource"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:textSize="12sp"
-                        android:textColor="#F44336"
+                        android:layout_marginTop="6dp"
+                        android:textSize="11sp"
+                        android:textColor="#9E9E9E"
                         android:fontFamily="@font/inter"
                         android:visibility="gone"
-                        android:gravity="center" />
+                        android:gravity="end" />
 
                 </LinearLayout>
 
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- ===== Stress Monitoring Card ===== -->
+            <!-- ===== Stress Card ===== -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -175,7 +245,7 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:text="Stress Monitoring"
+                            android:text="Stress"
                             android:textSize="16sp"
                             android:textStyle="bold"
                             android:textColor="@color/text_dark"
@@ -185,7 +255,7 @@
                             android:id="@+id/tvStressValue"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="52"
+                            android:text="--"
                             android:textSize="28sp"
                             android:textStyle="bold"
                             android:textColor="@color/goal_yellow"
@@ -197,7 +267,7 @@
                         android:id="@+id/tvStressStatus"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Status: Average"
+                        android:text="Status: --"
                         android:textSize="14sp"
                         android:textStyle="bold"
                         android:textColor="@color/goal_yellow"
@@ -216,9 +286,36 @@
                         android:layout_height="70dp"
                         android:layout_marginTop="8dp" />
 
+                    <TextView
+                        android:id="@+id/tvStressSource"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:textSize="11sp"
+                        android:textColor="#9E9E9E"
+                        android:fontFamily="@font/inter"
+                        android:visibility="gone"
+                        android:gravity="end" />
+
                 </LinearLayout>
 
             </com.google.android.material.card.MaterialCardView>
+
+            <!-- Manage Access link (shown after permissions granted) -->
+            <TextView
+                android:id="@+id/btnManageAccess"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Manage Health Connect access"
+                android:textSize="12sp"
+                android:textColor="#1565C0"
+                android:fontFamily="@font/inter"
+                android:gravity="center"
+                android:paddingVertical="8dp"
+                android:layout_marginBottom="8dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:visibility="gone" />
 
         </LinearLayout>
 

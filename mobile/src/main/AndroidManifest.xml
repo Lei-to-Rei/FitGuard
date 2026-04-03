@@ -28,6 +28,36 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
+    <!-- Health Connect permissions -->
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY" />
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_DISTANCE" />
+    <uses-permission android:name="android.permission.health.READ_FLOORS_CLIMBED" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_OXYGEN_SATURATION" />
+    <uses-permission android:name="android.permission.health.READ_RESPIRATORY_RATE" />
+    <uses-permission android:name="android.permission.health.READ_BODY_TEMPERATURE" />
+    <uses-permission android:name="android.permission.health.READ_BLOOD_PRESSURE" />
+    <uses-permission android:name="android.permission.health.READ_BLOOD_GLUCOSE" />
+    <uses-permission android:name="android.permission.health.READ_WEIGHT" />
+    <uses-permission android:name="android.permission.health.READ_HEIGHT" />
+    <uses-permission android:name="android.permission.health.READ_BODY_FAT" />
+    <uses-permission android:name="android.permission.health.READ_LEAN_BODY_MASS" />
+    <uses-permission android:name="android.permission.health.READ_BASAL_METABOLIC_RATE" />
+    <uses-permission android:name="android.permission.health.READ_VO2_MAX" />
+
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+        <intent>
+            <action android:name="androidx.health.ACTION_HEALTH_CONNECT_SETTINGS" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -135,9 +165,61 @@
         <!-- ========================================== -->
         <activity
             android:name=".features.sleep.SleepStressActivity"
-            android:exported="false"
+            android:exported="true"
             android:screenOrientation="portrait"
-            android:windowSoftInputMode="adjustResize" />
+            android:windowSoftInputMode="adjustResize">
+            <!-- Pre-Android 14: permission rationale -->
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+            <meta-data
+                android:name="health_permissions_privacy_policy_url"
+                android:value="https://fitguard.app/privacy" />
+        </activity>
+
+        <!-- Android 14+: required alias for Health Connect to show permission usage screen -->
+        <activity-alias
+            android:name=".features.sleep.ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".features.sleep.SleepStressActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- ========================================== -->
+        <!-- SAMSUNG HEALTH DASHBOARD -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.health.SamsungHealthActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <!-- ========================================== -->
+        <!-- HEALTH CONNECT ONBOARDING (pre-Android 14) -->
+        <!-- ========================================== -->
+        <activity
+            android:name=".features.sleep.HealthConnectOnboardingActivity"
+            android:exported="true"
+            android:permission="com.google.android.apps.healthdata.permission.START_ONBOARDING"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_ONBOARDING" />
+            </intent-filter>
+        </activity>
+
+        <!-- Health Connect Onboarding alias (Android 14+) -->
+        <activity-alias
+            android:name=".features.sleep.UAndAboveHealthConnectOnboardingActivity"
+            android:exported="true"
+            android:targetActivity=".features.sleep.HealthConnectOnboardingActivity"
+            android:permission="android.permission.health.START_ONBOARDING">
+            <intent-filter>
+                <action android:name="android.health.connect.action.SHOW_ONBOARDING" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- ========================================== -->
         <!-- ACTIVITY TRACKING -->
@@ -247,12 +329,6 @@
             android:name=".services.SessionForegroundService"
             android:exported="false"
             android:foregroundServiceType="dataSync|location" />
-
-        <!-- Sleep Monitor Foreground Service -->
-        <service
-            android:name=".features.sleep.SleepMonitorService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
 
         <!-- Fatigue Alert Dismiss Receiver -->
         <receiver
