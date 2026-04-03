@@ -30,9 +30,6 @@ class PersonalBaselineActivity : AppCompatActivity() {
             profileLoaded = true
 
             // Populate fields
-            if (profile.restingHeartRateBpm > 0) {
-                binding.etHeartRate.setText(profile.restingHeartRateBpm.toString())
-            }
             if (profile.currentWeightKg > 0) {
                 binding.etWeight.setText(String.format(Locale.US, "%.1f", profile.currentWeightKg))
             }
@@ -61,14 +58,12 @@ class PersonalBaselineActivity : AppCompatActivity() {
         binding.btnSave.setOnClickListener {
             val currentProfile = viewModel.profile.value ?: return@setOnClickListener
 
-            val hr = binding.etHeartRate.text.toString().trim().toIntOrNull() ?: 0
             val weight = binding.etWeight.text.toString().trim().toFloatOrNull() ?: currentProfile.currentWeightKg
             val height = binding.etHeight.text.toString().trim().toFloatOrNull() ?: currentProfile.heightCm
             val fitnessScore = binding.etFitnessLevel.text.toString().trim().toIntOrNull() ?: 0
             val fitnessLevel = ProfileViewModel.scoreToFitnessLevel(fitnessScore)
 
             val updated = currentProfile.copy(
-                restingHeartRateBpm = hr,
                 currentWeightKg = weight,
                 heightCm = height,
                 fitnessLevel = fitnessLevel

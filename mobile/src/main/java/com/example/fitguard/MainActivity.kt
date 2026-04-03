@@ -92,7 +92,6 @@ class MainActivity : AppCompatActivity() {
         setupHeader()
         setupDashboard()
         setupBottomNavigation()
-        setupIndicatorDots()
         checkStoragePermission()
 
         binding.chartHeartRateMini.showGrid = false
@@ -156,18 +155,6 @@ class MainActivity : AppCompatActivity() {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = dashboardAdapter
             isNestedScrollingEnabled = false
-        }
-    }
-
-    private fun setupIndicatorDots() {
-        // SpO2 dot will be positioned by updateSpO2Dot() once data loads
-
-        // Position stress dot: 54/100 = 54%
-        binding.dotStress.post {
-            val parent = binding.dotStress.parent as android.view.View
-            val barWidth = parent.width - binding.dotStress.width
-            val stressFraction = 54f / 100f
-            binding.dotStress.translationX = barWidth * stressFraction
         }
     }
 

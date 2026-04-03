@@ -37,14 +37,6 @@ class UserHomeActivity : AppCompatActivity() {
         viewModel.observeProfile(uid).observe(this) { profile ->
             profile ?: return@observe
 
-            // Heart Rate
-            if (profile.restingHeartRateBpm > 0) {
-                binding.tvHeartRateValue.text = "${profile.restingHeartRateBpm} bpm"
-            } else {
-                binding.tvHeartRateValue.text = "-- bpm"
-            }
-            binding.tvHeartRateStatus.text = ProfileViewModel.heartRateStatus(profile.restingHeartRateBpm)
-
             // Weight
             if (profile.currentWeightKg > 0) {
                 binding.tvWeightValue.text = String.format(Locale.US, "%.1f kg", profile.currentWeightKg)
