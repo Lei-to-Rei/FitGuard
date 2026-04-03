@@ -169,64 +169,6 @@
                         android:background="@color/border_light"
                         android:layout_marginTop="16dp" />
 
-                    <!-- Resting Heart Rate -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:paddingTop="14dp"
-                        android:paddingBottom="14dp">
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="Resting Heart Rate"
-                                android:textSize="14sp"
-                                android:textColor="@color/text_dark"
-                                android:fontFamily="@font/inter" />
-
-                            <TextView
-                                android:id="@+id/tvHeartRateValue"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="62 bpm"
-                                android:textSize="13sp"
-                                android:textColor="@color/text_secondary"
-                                android:fontFamily="@font/inter"
-                                android:layout_marginTop="2dp" />
-
-                        </LinearLayout>
-
-                        <TextView
-                            android:id="@+id/tvHeartRateStatus"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="EXCELLENT"
-                            android:textSize="11sp"
-                            android:textStyle="bold"
-                            android:textColor="@color/white"
-                            android:fontFamily="@font/inter"
-                            android:background="@drawable/bg_badge_green"
-                            android:paddingStart="12dp"
-                            android:paddingEnd="12dp"
-                            android:paddingTop="4dp"
-                            android:paddingBottom="4dp" />
-
-                    </LinearLayout>
-
-                    <!-- Divider -->
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:background="@color/border_light" />
-
                     <!-- Body Weight -->
                     <LinearLayout
                         android:layout_width="match_parent"
