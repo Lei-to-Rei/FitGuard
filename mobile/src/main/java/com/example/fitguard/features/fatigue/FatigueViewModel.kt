@@ -139,6 +139,12 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
             val sessionDir = ActivityTrackingViewModel.activeSessionDir ?: ""
             if (userId.isNotEmpty() && sessionDir.isNotEmpty()) {
                 restoreFatigueHistory(userId, sessionDir)
+
+                // Restore window count from features.csv so warmup counter survives navigation
+                val featureCount = CsvWriter.countFeatureRows(userId, sessionDir)
+                if (featureCount > 0) {
+                    _windowCount.postValue(featureCount.coerceAtMost(5))
+                }
             }
         }
 

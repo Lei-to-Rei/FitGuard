@@ -42,6 +42,12 @@ object CsvWriter {
         return dir
     }
 
+    fun countFeatureRows(userId: String, sessionDir: String): Int {
+        val file = File(getOutputDir(userId, sessionDir), FILE_NAME)
+        if (!file.exists()) return 0
+        return (file.readLines().size - 1).coerceAtLeast(0)
+    }
+
     fun writeFeatureVector(fv: FeatureVector, userId: String = "", sessionDir: String = "") {
         try {
             val dir = getOutputDir(userId, sessionDir)
