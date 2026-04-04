@@ -193,7 +193,10 @@ class ActivityDetailActivity : AppCompatActivity() {
         viewModel.fatigueData.observe(this) { fatiguePoints ->
             if (fatiguePoints.size >= 2) {
                 binding.cardFatigue.visibility = View.VISIBLE
-                binding.fatigueChart.setData(fatiguePoints)
+                val trendPoints = fatiguePoints.map {
+                    com.example.fitguard.ui.chart.SessionFatigueTrendChartView.TrendPoint(it.timeMs, it.fatiguePercent)
+                }
+                binding.fatigueChart.setData(trendPoints)
             }
         }
     }

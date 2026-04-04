@@ -7,7 +7,7 @@ import java.io.File
 data class RoutePoint(val lat: Double, val lng: Double, val timeMs: Long, val cumulativeDistanceM: Double)
 data class RouteSummary(val totalDistanceM: Float, val avgPaceMinPerKm: Double, val durationMs: Long, val pointCount: Int)
 data class HrDataPoint(val timeMs: Long, val hrBpm: Float)
-data class FatigueDataPoint(val timeMs: Long, val totalPowerMs2: Double)
+data class FatigueDataPoint(val timeMs: Long, val fatiguePercent: Float)
 data class SplitData(val kmIndex: Int, val paceMinPerKm: Double)
 
 object SessionDetailRepository {
@@ -85,20 +85,20 @@ object SessionDetailRepository {
 
     fun loadFatigueData(userId: String, sessionDir: String): List<FatigueDataPoint> {
         return try {
-            val file = File(CsvWriter.getOutputDir(userId, sessionDir), "features.csv")
+            val file = File(CsvWriter.getOutputDir(userId, sessionDir), "fatigue_history.csv")
             if (!file.exists()) return emptyList()
             val lines = file.readLines()
             if (lines.size < 2) return emptyList()
             val cols = lines[0].split(",")
             val tsIdx = cols.indexOf("timestamp")
-            val tpIdx = cols.indexOf("total_power_ms2")
-            if (tsIdx < 0 || tpIdx < 0) return emptyList()
+            val fpIdx = cols.indexOf("fatigue_percent")
+            if (tsIdx < 0 || fpIdx < 0) return emptyList()
 
             lines.drop(1).mapNotNull { line ->
                 val parts = line.split(",")
                 val ts = parts.getOrNull(tsIdx)?.toLongOrNull() ?: return@mapNotNull null
-                val tp = parts.getOrNull(tpIdx)?.toDoubleOrNull() ?: return@mapNotNull null
-                if (tp > 0.0) FatigueDataPoint(ts, tp) else null
+                val fp = parts.getOrNull(fpIdx)?.toFloatOrNull() ?: return@mapNotNull null
+                FatigueDataPoint(ts, fp)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to load fatigue data: ${e.message}")

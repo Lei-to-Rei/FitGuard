@@ -81,7 +81,7 @@ class FatigueIndexChartView @JvmOverloads constructor(
         val chartW = width - leftPad - rightPad
         val chartH = height - topPad - bottomPad
 
-        val maxPower = (points.maxOf { it.totalPowerMs2 } * 1.2).coerceAtLeast(fatigueThreshold * 1.5)
+        val maxPower = (points.maxOf { it.fatiguePercent.toDouble() } * 1.2).coerceAtLeast(fatigueThreshold * 1.5)
         val maxTimeMin = (points.last().timeMs - sessionStartMs) / 60000.0
 
         // Y-axis grid
@@ -119,7 +119,7 @@ class FatigueIndexChartView @JvmOverloads constructor(
 
         points.forEachIndexed { i, p ->
             val x = leftPad + ((p.timeMs - sessionStartMs) / 60000.0 / maxTimeMin * chartW).toFloat()
-            val y = topPad + chartH * (1f - (p.totalPowerMs2 / maxPower).toFloat())
+            val y = topPad + chartH * (1f - (p.fatiguePercent.toDouble() / maxPower).toFloat())
             if (i == 0) {
                 linePath.moveTo(x, y)
                 fillPath.moveTo(x, topPad + chartH)
