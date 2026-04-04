@@ -1,0 +1,1188 @@
+ ▐▛███▜▌   Claude Code v2.1.86
+▝▜█████▛▘  Sonnet 4.6 · Claude Pro
+  ▘▘ ▝▝    ~\AndroidStudioProjects\FitGuard
+
+  ↑ Install the PyCharm plugin from the JetBrains Marketplace:
+    https://docs.claude.com/s/claude-code-jetbrains
+
+❯ I want to redo how we are writting data into firebase, Currently each         
+individual session is not being saved in their own directory but instead all    
+windows from across all of the sessions are being saved into a directory called 
+ feature_vector under <UserID> with food_entries and profile under <UserID>. I  
+want to have Workout History folders aswell similar on how we store data        
+locally on the device. What we have on local device should also reflect on      
+firebase for easier fetch if needed, this is so if the user logs into another   
+device they will still be able to access their history from their old device.   
+
+● Let me explore the current Firebase structure and local storage to understand
+  both sides.
+
+● Explore(Explore Firebase and local storage)
+  ⎿  Done (38 tool uses · 75.7k tokens · 1m 48s)
+  (ctrl+o to expand)
+
+● Now let me read the key files I'll need to modify.
+
+  Read 3 files (ctrl+o to expand)
+
+● Let me also read the session stop flow and see what happens when a session
+  ends.
+
+  Read 3 files (ctrl+o to expand)
+
+● Let me check where fatigue history rows get written, and look at the
+  SessionDetailRepository.
+
+  Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+● Let me check the FatigueViewModel for the fatigue history write calls.
+
+  Read 1 file (ctrl+o to expand)
+
+● Let me check where existing Firestore syncs are triggered (to know where to
+  call the new workout sync).
+
+  Searched for 2 patterns, read 2 files (ctrl+o to expand)
+
+● Now I have the full picture. Here's the plan:
+
+  Current Firebase structure (flat, all sessions mixed):
+  users/{userId}/
+    ├── profile/data
+    ├── food_entries/{id}
+    └── feature_vectors/{sequenceId}  ← all sessions lumped together
+
+  New Firebase structure (mirrors local per-session directories):
+  users/{userId}/
+    ├── profile/data                        (unchanged)
+    ├── food_entries/{id}                   (unchanged)
+    └── workout_history/{sessionDirName}    ← doc with session metadata
+        ├── feature_vectors/{sequenceId}    ← subcollection per session
+        ├── route_points/{index}            ← subcollection
+        └── fatigue_history/{timestamp}     ← subcollection
+
+  Let me implement the changes across 4 files.
+
+● Starting with CsvWriter - restructuring all Firestore push methods to use
+  per-session paths.
+
+● Update(mobile\src\main\java\com\example\fitguard\data\processing\CsvWriter.kt)  ⎿  Added 3 lines, removed 3 lines
+       96  
+       97              Log.d(TAG, "Feature vector written to ${file.absol
+           utePath}")
+       98  
+       99 -            // Backup to Firestore                            
+      100 -            if (userId.isNotEmpty()) {                        
+      101 -                pushToFirestore(fv, userId)                   
+       99 +            // Backup to Firestore under session-scoped path  
+      100 +            if (userId.isNotEmpty() && sessionDir.isNotEmpty()
+          +) {                                                           
+      101 +                pushToFirestore(fv, userId, sessionDir)       
+      102              }
+      103          } catch (e: Exception) {
+      104              Log.e(TAG, "Failed to write features CSV: ${e.mess
+           age}", e)
+
+● Update(mobile\src\main\java\com\example\fitguard\data\processing\CsvWriter.kt)
+  ⎿  Added 2 lines, removed 1 line
+      152          }
+      153      }
+      154  
+      155 -    private fun pushToFirestore(fv: FeatureVector, userId: Str
+          -ing) {                                                        
+      155 +    private fun pushToFirestore(fv: FeatureVector, userId: Str
+          +ing, sessionDir: String) {                                    
+      156          FirebaseFirestore.getInstance()
+      157              .collection("users").document(userId)
+      158 +            .collection("workout_history").document(sessionDir
+          +)                                                             
+      159              .collection("feature_vectors").document(fv.sequenc
+           eId)
+      160              .set(fv.toFirestoreMap())
+      161              .addOnFailureListener { e ->
+
+● Now add the new Firestore push methods after toFirestoreMap():
+
+● Update(mobile\src\main\java\com\example\fitguard\data\processing\CsvWriter.kt)
+  ⎿  Added 93 lines
+      202          "rpeRaw" to rpeRaw
+      203      )
+      204  
+      205 +    fun pushSessionMetadata(                                  
+      206 +        userId: String,                                       
+      207 +        sessionDir: String,                                   
+      208 +        activityType: String,                                 
+      209 +        startTimeMillis: Long,                                
+      210 +        durationMillis: Long,                                 
+      211 +        totalDistanceMeters: Float,                           
+      212 +        avgPaceMinPerKm: Double,                              
+      213 +        pointCount: Int                                       
+      214 +    ) {                                                       
+      215 +        if (userId.isEmpty() || sessionDir.isEmpty()) return  
+      216 +        FirebaseFirestore.getInstance()                       
+      217 +            .collection("users").document(userId)             
+      218 +            .collection("workout_history").document(sessionDir
+          +)                                                             
+      219 +            .set(mapOf(                                       
+      220 +                "activityType" to activityType,               
+      221 +                "startTimeMillis" to startTimeMillis,         
+      222 +                "durationMillis" to durationMillis,           
+      223 +                "totalDistanceMeters" to totalDistanceMeters, 
+      224 +                "avgPaceMinPerKm" to avgPaceMinPerKm,         
+      225 +                "pointCount" to pointCount,                   
+      226 +                "sessionDirName" to sessionDir                
+      227 +            ))                                                
+      228 +            .addOnFailureListener { e ->                      
+      229 +                Log.e(TAG, "Firestore session metadata failed:
+          + ${e.message}", e)                                            
+      230 +            }                                                 
+      231 +    }                                                         
+      232 +                                                              
+      233 +    fun pushRouteToFirestore(points: List<LocationPoint>, user
+          +Id: String, sessionDir: String) {                             
+      234 +        if (userId.isEmpty() || sessionDir.isEmpty() || points
+          +.isEmpty()) return                                            
+      235 +        val db = FirebaseFirestore.getInstance()              
+      236 +        val routeRef = db.collection("users").document(userId)
+      237 +            .collection("workout_history").document(sessionDir
+          +)                                                             
+      238 +            .collection("route_points")                       
+      239 +                                                              
+      240 +        var cumDist = 0.0                                     
+      241 +        points.chunked(500).forEachIndexed { chunkIdx, chunk -
+          +>                                                             
+      242 +            val batch = db.batch()                            
+      243 +            chunk.forEachIndexed { i, p ->                    
+      244 +                val idx = chunkIdx * 500 + i                  
+      245 +                if (idx > 0) {                                
+      246 +                    val prev = points[idx - 1]                
+      247 +                    val results = FloatArray(1)               
+      248 +                    Location.distanceBetween(prev.lat, prev.ln
+          +g, p.lat, p.lng, results)                                     
+      249 +                    cumDist += results[0]                     
+      250 +                }                                             
+      251 +                batch.set(                                    
+      252 +                    routeRef.document(idx.toString().padStart(
+          +6, '0')),                                                     
+      253 +                    mapOf(                                    
+      254 +                        "latitude" to p.lat,                  
+      255 +                        "longitude" to p.lng,                 
+      256 +                        "timestamp_ms" to p.timeMs,           
+      257 +                        "cumulative_distance_m" to cumDist,   
+      258 +                        "index" to idx                        
+      259 +                    )                                         
+      260 +                )                                             
+      261 +            }                                                 
+      262 +            batch.commit().addOnFailureListener { e ->        
+      263 +                Log.e(TAG, "Firestore route batch failed: ${e.
+          +message}", e)                                                 
+      264 +            }                                                 
+      265 +        }                                                     
+      266 +    }                                                         
+      267 +                                                              
+      268 +    private fun pushFatigueHistoryToFirestore(row: FatigueHist
+          +oryRow, userId: String, sessionDir: String) {                 
+      269 +        FirebaseFirestore.getInstance()                       
+      270 +            .collection("users").document(userId)             
+      271 +            .collection("workout_history").document(sessionDir
+          +)                                                             
+      272 +            .collection("fatigue_history").document(row.timest
+          +amp.toString())                                               
+      273 +            .set(mapOf(                                       
+      274 +                "timestamp" to row.timestamp,                 
+      275 +                "fatiguePercent" to row.fatiguePercent,       
+      276 +                "globalPLow" to (row.global?.pLow ?: 0f),     
+      277 +                "globalPHigh" to (row.global?.pHigh ?: 0f),   
+      278 +                "globalLevel" to (row.global?.level ?: ""),   
+      279 +                "globalLevelIndex" to (row.global?.levelIndex 
+          +?: -1),                                                       
+      280 +                "extPLow" to (row.external?.pLow ?: 0f),      
+      281 +                "extPHigh" to (row.external?.pHigh ?: 0f),    
+      282 +                "extLevel" to (row.external?.level ?: ""),    
+      283 +                "extLevelIndex" to (row.external?.levelIndex ?
+          +: -1),                                                        
+      284 +                "ondevPLow" to (row.onDevice?.pLow ?: 0f),    
+      285 +                "ondevPHigh" to (row.onDevice?.pHigh ?: 0f),  
+      286 +                "ondevLevel" to (row.onDevice?.level ?: ""),  
+      287 +                "ondevLevelIndex" to (row.onDevice?.levelIndex
+          + ?: -1),                                                      
+      288 +                "currentHr" to row.currentHr,                 
+      289 +                "currentRmssd" to row.currentRmssd,           
+      290 +                "baselineHr" to row.baselineHr,               
+      291 +                "baselineRmssd" to row.baselineRmssd          
+      292 +            ))                                                
+      293 +            .addOnFailureListener { e ->                      
+      294 +                Log.e(TAG, "Firestore fatigue history failed: 
+          +${e.message}", e)                                             
+      295 +            }                                                 
+      296 +    }                                                         
+      297 +                                                              
+      298      fun writeRouteCsv(points: List<LocationPoint>, userId: Str
+           ing = "", sessionDir: String = "") {
+      299          try {
+      300              val dir = getOutputDir(userId, sessionDir)
+
+● Now add the Firestore push inside writeFatigueHistoryRow after the local file
+  write:
+
+● Update(mobile\src\main\java\com\example\fitguard\data\processing\CsvWriter.kt)
+  ⎿  Added 5 lines
+      466                  appendLine(line)
+      467              }
+      468              file.appendText(content)
+      469 +                                                              
+      470 +            // Backup to Firestore                            
+      471 +            if (userId.isNotEmpty() && sessionDir.isNotEmpty()
+          +) {                                                           
+      472 +                pushFatigueHistoryToFirestore(row, userId, ses
+          +sionDir)                                                      
+      473 +            }                                                 
+      474          } catch (e: Exception) {
+      475              Log.e(TAG, "Failed to write fatigue history: ${e.m
+           essage}", e)
+      476          }
+
+● Now updating ActivityTrackingViewModel to push session metadata and route to
+  Firestore on session stop.
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingViewModel.kt)
+  ⎿  Added 4 lines
+      258          viewModelScope.launch(Dispatchers.IO) {
+      259              CsvWriter.writeRouteCsv(points, userId, dir)
+      260              CsvWriter.writeRouteSummary(distance, pace, durati
+           on, points.size, userId, dir)
+      261 +            // Backup route to Firestore                      
+      262 +            if (userId.isNotEmpty()) {                        
+      263 +                CsvWriter.pushRouteToFirestore(points, userId,
+          + dir)                                                         
+      264 +            }                                                 
+      265          }
+      266      }
+      267  
+
+● Add pushSessionToFirestore() call in stopSession() before clearing the
+  session:
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingViewModel.kt)
+  ⎿  Added 1 line
+      273          saveRouteData()
+      274          stopLocationTracking()
+      275          SequenceProcessor.flushRemainingAndClear()
+      276 +        pushSessionToFirestore()                              
+      277          activeSessionId = null
+      278          activeSessionDir = null
+      279          SessionForegroundService.stop(getApplication())
+
+● Add pushSessionToFirestore() call in onWatchStopped() before clearing:
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingViewModel.kt)
+  ⎿  Added 1 line
+      324          stopTimer()
+      325          stopLocationTracking()
+      326          SequenceProcessor.flushRemainingAndClear()
+      327 +        pushSessionToFirestore()                              
+      328          RpeState.reset()
+      329          activeSessionId = null
+      330          activeSessionDir = null
+
+● Now add the pushSessionToFirestore() private method. I'll place it after
+  saveRouteData():
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingViewModel.kt)
+  ⎿  Added 12 lines
+      265          }
+      266      }
+      267  
+      268 +    private fun pushSessionToFirestore() {                    
+      269 +        val dir = activeSessionDir ?: return                  
+      270 +        val userId = FirebaseAuth.getInstance().currentUser?.u
+          +id ?: return                                                  
+      271 +        val activity = _activityType.value ?: "Unknown"       
+      272 +        val duration = if (sessionStartTime > 0) System.curren
+          +tTimeMillis() - sessionStartTime else 0L                      
+      273 +                                                              
+      274 +        CsvWriter.pushSessionMetadata(                        
+      275 +            userId, dir, activity, sessionStartTime, duration,
+      276 +            totalDistanceMeters, _paceMinPerKm.value ?: 0.0, r
+          +outePointsList.size                                           
+      277 +        )                                                     
+      278 +    }                                                         
+      279 +                                                              
+      280      fun stopSession() {
+      281          if (_state.value != SessionState.ACTIVE) return
+      282  
+
+● Now adding syncFromFirestore to ActivityHistoryRepository. This reconstructs
+  local CSV files from Firestore data so a new device can access full history.
+
+  Read 1 file (ctrl+o to expand)
+
+● Write(mobile\src\main\java\com\example\fitguard\data\repository\ActivityHistor
+       yRepository.kt)
+  ⎿  Added 195 lines, removed 2 lines
+       3  import android.util.Log
+       4  import com.example.fitguard.data.model.ActivityHistoryItem
+       5  import com.example.fitguard.data.processing.CsvWriter
+       6 -import java.io.BufferedReader                                  
+       6 +import com.google.firebase.firestore.FirebaseFirestore         
+       7 +import com.google.firebase.firestore.Query                     
+       8 +import kotlinx.coroutines.tasks.await                          
+       9 +import org.json.JSONObject                                     
+      10  import java.io.File
+       8 -import java.io.FileReader                                      
+      11  import java.text.SimpleDateFormat
+      12  import java.util.Locale
+      13  
+     ...
+       26              ?: emptyList()
+       27      }
+       28  
+       29 +    /**                                                       
+       30 +     * Syncs workout history from Firestore to local storage. 
+       31 +     * Downloads session data and reconstructs local CSV files
+          + so the existing                                              
+       32 +     * local reading code works unchanged. Skips sessions that
+          + already exist locally.                                       
+       33 +     */                                                       
+       34 +    suspend fun syncFromFirestore(userId: String) {           
+       35 +        try {                                                 
+       36 +            val db = FirebaseFirestore.getInstance()          
+       37 +            val snapshot = db.collection("users").document(use
+          +rId)                                                          
+       38 +                .collection("workout_history")                
+       39 +                .get()                                        
+       40 +                .await()                                      
+       41 +                                                              
+       42 +            var synced = 0                                    
+       43 +            for (doc in snapshot.documents) {                 
+       44 +                val sessionDir = doc.id                       
+       45 +                val localDir = CsvWriter.getOutputDir(userId, 
+          +sessionDir)                                                   
+       46 +                                                              
+       47 +                // Skip if local data already exists          
+       48 +                if (File(localDir, "features.csv").exists()) c
+          +ontinue                                                       
+       49 +                                                              
+       50 +                syncFeatureVectors(db, userId, sessionDir, loc
+          +alDir)                                                        
+       51 +                syncRouteData(db, userId, sessionDir, localDir
+          +, doc)                                                        
+       52 +                syncFatigueHistory(db, userId, sessionDir, loc
+          +alDir)                                                        
+       53 +                synced++                                      
+       54 +            }                                                 
+       55 +            if (synced > 0) {                                 
+       56 +                Log.d(TAG, "Synced $synced sessions from Fires
+          +tore")                                                        
+       57 +            }                                                 
+       58 +        } catch (e: Exception) {                              
+       59 +            Log.w(TAG, "Failed to sync workout history from Fi
+          +restore: ${e.message}")                                       
+       60 +        }                                                     
+       61 +    }                                                         
+       62 +                                                              
+       63 +    private suspend fun syncFeatureVectors(                   
+       64 +        db: FirebaseFirestore, userId: String, sessionDir: Str
+          +ing, localDir: File                                           
+       65 +    ) {                                                       
+       66 +        val fvDocs = db.collection("users").document(userId)  
+       67 +            .collection("workout_history").document(sessionDir
+          +)                                                             
+       68 +            .collection("feature_vectors")                    
+       69 +            .orderBy("timestamp")                             
+       70 +            .get().await()                                    
+       71 +                                                              
+       72 +        if (fvDocs.isEmpty) return                            
+       73 +                                                              
+       74 +        // Firestore camelCase keys in order matching CSV colu
+          +mns                                                           
+       75 +        val numericKeys = listOf(                             
+       76 +            "meanHrBpm", "hrStdBpm", "hrMinBpm", "hrMaxBpm", "
+          +hrRangeBpm",                                                  
+       77 +            "hrSlopeBpmPerS", "nnQualityRatio",               
+       78 +            "sdnnMs", "rmssdMs", "pnn50Pct", "meanNnMs", "cvNn
+          +",                                                            
+       79 +            "lfPowerMs2", "hfPowerMs2", "lfHfRatio", "totalPow
+          +erMs2",                                                       
+       80 +            "spo2MeanPct", "spo2MinPct", "spo2StdPct",        
+       81 +            "accelXMean", "accelYMean", "accelZMean",         
+       82 +            "accelXVar", "accelYVar", "accelZVar",            
+       83 +            "accelMagMean", "accelMagVar", "accelPeak"        
+       84 +        )                                                     
+       85 +                                                              
+       86 +        // JSONL snake_case keys matching CsvWriter.writeFeatu
+          +reJsonl                                                       
+       87 +        val jsonlKeys = listOf(                               
+       88 +            "mean_hr_bpm", "hr_std_bpm", "hr_min_bpm", "hr_max
+          +_bpm", "hr_range_bpm",                                        
+       89 +            "hr_slope_bpm_per_s", "nn_quality_ratio",         
+       90 +            "sdnn_ms", "rmssd_ms", "pnn50_pct", "mean_nn_ms", 
+          +"cv_nn",                                                      
+       91 +            "lf_power_ms2", "hf_power_ms2", "lf_hf_ratio", "to
+          +tal_power_ms2",                                               
+       92 +            "spo2_mean_pct", "spo2_min_pct", "spo2_std_pct",  
+       93 +            "accel_x_mean", "accel_y_mean", "accel_z_mean",   
+       94 +            "accel_x_var", "accel_y_var", "accel_z_var",      
+       95 +            "accel_mag_mean", "accel_mag_var", "accel_peak",  
+       96 +            "total_steps", "cadence_spm",                     
+       97 +            "activity_label", "fatigue_level", "rpe_raw"      
+       98 +        )                                                     
+       99 +                                                              
+      100 +        val csvHeader = "user_id,timestamp,timestamp_end,seque
+          +nce_id," +                                                    
+      101 +            "mean_hr_bpm,hr_std_bpm,hr_min_bpm,hr_max_bpm,hr_r
+          +ange_bpm," +                                                  
+      102 +            "hr_slope_bpm_per_s,nn_quality_ratio," +          
+      103 +            "sdnn_ms,rmssd_ms,pnn50_pct,mean_nn_ms,cv_nn," +  
+      104 +            "lf_power_ms2,hf_power_ms2,lf_hf_ratio,total_power
+          +_ms2," +                                                      
+      105 +            "spo2_mean_pct,spo2_min_pct,spo2_std_pct," +      
+      106 +            "accel_x_mean,accel_y_mean,accel_z_mean," +       
+      107 +            "accel_x_var,accel_y_var,accel_z_var," +          
+      108 +            "accel_mag_mean,accel_mag_var,accel_peak," +      
+      109 +            "total_steps,cadence_spm," +                      
+      110 +            "activity_label,fatigue_level,rpe_raw"            
+      111 +                                                              
+      112 +        val csvSb = StringBuilder()                           
+      113 +        csvSb.appendLine(csvHeader)                           
+      114 +                                                              
+      115 +        val jsonlSb = StringBuilder()                         
+      116 +                                                              
+      117 +        for (d in fvDocs.documents) {                         
+      118 +            val ts = d.getLong("timestamp") ?: 0L             
+      119 +            val tsEnd = d.getLong("timestampEnd") ?: 0L       
+      120 +            val seqId = d.getString("sequenceId") ?: ""       
+      121 +            val totalSteps = d.getLong("totalSteps") ?: 0     
+      122 +            val cadence = d.getDouble("cadenceSpm") ?: 0.0    
+      123 +            val actLabel = d.getString("activityLabel") ?: "" 
+      124 +            val fatLevel = d.getString("fatigueLevel") ?: ""  
+      125 +            val rpe = d.getLong("rpeRaw") ?: -1               
+      126 +                                                              
+      127 +            // Build CSV row                                  
+      128 +            val numericValues = numericKeys.joinToString(",") 
+          +{ key ->                                                      
+      129 +                fmt(d.getDouble(key) ?: 0.0)                  
+      130 +            }                                                 
+      131 +            val rpeStr = if (rpe >= 0) rpe.toString() else "" 
+      132 +            csvSb.appendLine("$userId,$ts,$tsEnd,$seqId,$numer
+          +icValues,$totalSteps,${fmt(cadence)},$actLabel,$fatLevel,$rpeS
+          +tr")                                                          
+      133 +                                                              
+      134 +            // Build JSONL row                                
+      135 +            val json = JSONObject()                           
+      136 +            json.put("timestamp", ts)                         
+      137 +            json.put("sequence_id", seqId)                    
+      138 +            for (i in numericKeys.indices) {                  
+      139 +                json.put(jsonlKeys[i], d.getDouble(numericKeys
+          +[i]) ?: 0.0)                                                  
+      140 +            }                                                 
+      141 +            json.put("total_steps", totalSteps)               
+      142 +            json.put("cadence_spm", cadence)                  
+      143 +            json.put("activity_label", actLabel)              
+      144 +            json.put("fatigue_level", fatLevel)               
+      145 +            json.put("rpe_raw", rpe)                          
+      146 +            jsonlSb.appendLine(json.toString())               
+      147 +        }                                                     
+      148 +                                                              
+      149 +        File(localDir, "features.csv").writeText(csvSb.toStrin
+          +g())                                                          
+      150 +        File(localDir, "features.jsonl").writeText(jsonlSb.toS
+          +tring())                                                      
+      151 +    }                                                         
+      152 +                                                              
+      153 +    private suspend fun syncRouteData(                        
+      154 +        db: FirebaseFirestore, userId: String, sessionDir: Str
+          +ing,                                                          
+      155 +        localDir: File, sessionDoc: com.google.firebase.firest
+          +ore.DocumentSnapshot                                          
+      156 +    ) {                                                       
+      157 +        // Route points                                       
+      158 +        val routeDocs = db.collection("users").document(userId
+          +)                                                             
+      159 +            .collection("workout_history").document(sessionDir
+          +)                                                             
+      160 +            .collection("route_points")                       
+      161 +            .orderBy("index")                                 
+      162 +            .get().await()                                    
+      163 +                                                              
+      164 +        if (routeDocs.documents.isNotEmpty()) {               
+      165 +            val sb = StringBuilder()                          
+      166 +            sb.appendLine("latitude,longitude,timestamp_ms,cum
+          +ulative_distance_m")                                          
+      167 +            for (d in routeDocs.documents) {                  
+      168 +                sb.appendLine("${fmt(d.getDouble("latitude") ?
+          +: 0.0)}," +                                                   
+      169 +                    "${fmt(d.getDouble("longitude") ?: 0.0)},"
+          + +                                                            
+      170 +                    "${d.getLong("timestamp_ms") ?: 0}," +    
+      171 +                    fmt(d.getDouble("cumulative_distance_m") ?
+          +: 0.0))                                                       
+      172 +            }                                                 
+      173 +            File(localDir, "route.csv").writeText(sb.toString(
+          +))                                                            
+      174 +        }                                                     
+      175 +                                                              
+      176 +        // Route summary from session metadata                
+      177 +        val dist = sessionDoc.getDouble("totalDistanceMeters")
+          + ?: 0.0                                                       
+      178 +        val pace = sessionDoc.getDouble("avgPaceMinPerKm") ?: 
+          +0.0                                                           
+      179 +        val dur = sessionDoc.getLong("durationMillis") ?: 0L  
+      180 +        val count = (sessionDoc.getLong("pointCount") ?: 0).to
+          +Int()                                                         
+      181 +        if (dist > 0 || dur > 0) {                            
+      182 +            File(localDir, "route_summary.csv").writeText(    
+      183 +                "total_distance_m,avg_pace_min_per_km,duration
+          +_ms,point_count\n" +                                          
+      184 +                    "${fmt(dist)},${fmt(pace)},${dur},${count}
+          +\n"                                                           
+      185 +            )                                                 
+      186 +        }                                                     
+      187 +    }                                                         
+      188 +                                                              
+      189 +    private suspend fun syncFatigueHistory(                   
+      190 +        db: FirebaseFirestore, userId: String, sessionDir: Str
+          +ing, localDir: File                                           
+      191 +    ) {                                                       
+      192 +        val fatigueDocs = db.collection("users").document(user
+          +Id)                                                           
+      193 +            .collection("workout_history").document(sessionDir
+          +)                                                             
+      194 +            .collection("fatigue_history")                    
+      195 +            .orderBy("timestamp")                             
+      196 +            .get().await()                                    
+      197 +                                                              
+      198 +        if (fatigueDocs.isEmpty) return                       
+      199 +                                                              
+      200 +        val header = "timestamp,fatigue_percent," +           
+      201 +            "global_pLow,global_pHigh,global_level,global_leve
+          +lIndex," +                                                    
+      202 +            "ext_pLow,ext_pHigh,ext_level,ext_levelIndex," +  
+      203 +            "ondev_pLow,ondev_pHigh,ondev_level,ondev_levelInd
+          +ex," +                                                        
+      204 +            "current_hr,current_rmssd,baseline_hr,baseline_rms
+          +sd"                                                           
+      205 +                                                              
+      206 +        val sb = StringBuilder()                              
+      207 +        sb.appendLine(header)                                 
+      208 +        for (d in fatigueDocs.documents) {                    
+      209 +            sb.appendLine("${d.getLong("timestamp") ?: 0},${fm
+          +t(d.getDouble("fatiguePercent") ?: 0.0)}," +                  
+      210 +                "${fmt(d.getDouble("globalPLow") ?: 0.0)},${fm
+          +t(d.getDouble("globalPHigh") ?: 0.0)},${d.getString("globalLev
+          +el") ?: ""},${d.getLong("globalLevelIndex") ?: -1}," +        
+      211 +                "${fmt(d.getDouble("extPLow") ?: 0.0)},${fmt(d
+          +.getDouble("extPHigh") ?: 0.0)},${d.getString("extLevel") ?: "
+          +"},${d.getLong("extLevelIndex") ?: -1}," +                    
+      212 +                "${fmt(d.getDouble("ondevPLow") ?: 0.0)},${fmt
+          +(d.getDouble("ondevPHigh") ?: 0.0)},${d.getString("ondevLevel"
+          +) ?: ""},${d.getLong("ondevLevelIndex") ?: -1}," +            
+      213 +                "${fmt(d.getDouble("currentHr") ?: 0.0)},${fmt
+          +(d.getDouble("currentRmssd") ?: 0.0)},${fmt(d.getDouble("basel
+          +ineHr") ?: 0.0)},${fmt(d.getDouble("baselineRmssd") ?: 0.0)}")
+      214 +        }                                                     
+      215 +        File(localDir, "fatigue_history.csv").writeText(sb.toS
+          +tring())                                                      
+      216 +    }                                                         
+      217 +                                                              
+      218      private fun parseSessionDir(dir: File): ActivityHistoryIte
+           m? {
+      219          return try {
+      220              val name = dir.name
+     ...
+      304          return value.toLongOrNull()
+      305              ?: value.toDoubleOrNull()?.toLong()
+      306      }
+      307 +                                                              
+      308 +    private fun fmt(value: Double): String = String.format(Loc
+          +ale.US, "%.4f", value)                                        
+      309  }
+
+● Now wire up the sync in ActivityHistoryViewModel so it runs before loading
+  local sessions.
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityHistoryViewModel.kt)
+  ⎿  Added 4 lines
+      28          _isLoading.value = true
+      29  
+      30          viewModelScope.launch {
+      31 +            withContext(Dispatchers.IO) {                      
+      32 +                // Sync from Firestore first (downloads session
+         +s missing locally, e.g. new device)                            
+      33 +                ActivityHistoryRepository.syncFromFirestore(use
+         +rId)                                                           
+      34 +            }                                                  
+      35              val result = withContext(Dispatchers.IO) {
+      36                  ActivityHistoryRepository.loadSessions(userId)
+      37              }
+● Now let me build to verify everything compiles.
+
+● Bash(cd C:/Users/claud/AndroidStudioProjects/FitGuard &&
+      C:/Users/claud/AndroidStudioProjects/FitGuard/gradlew.bat --no-daemon
+      :mobile:compileDebugKotlin 2>&1)
+  ⎿  To honour the JVM settings for this build a single-use Daemon process
+     will be forked. For more on this, please refer to https://docs.gradle.
+     org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the
+     … +21 lines (ctrl+o to expand)
+  ⎿  (timeout 10m)
+
+● Build successful. Let me verify the final state of the modified files.
+
+● All changes compile successfully. Here's a summary of what was done:
+
+  Firebase Structure Change
+
+  Before (flat, all sessions mixed):
+  users/{userId}/
+    ├── profile/data
+    ├── food_entries/{id}
+    └── feature_vectors/{sequenceId}     ← every window from every session
+
+  After (mirrors local per-session directories):
+  users/{userId}/
+    ├── profile/data                          (unchanged)
+    ├── food_entries/{id}                     (unchanged)
+    └── workout_history/{sessionDirName}      ← metadata doc per session
+        ├── feature_vectors/{sequenceId}      ← scoped to this session
+        ├── route_points/{index}              ← GPS track (batched writes)
+        └── fatigue_history/{timestamp}       ← fatigue tracking rows
+
+  Files Modified
+
+  1. CsvWriter.kt - pushToFirestore now writes under
+  workout_history/{sessionDir}/feature_vectors/ instead of flat
+  feature_vectors/. Added pushSessionMetadata(), pushRouteToFirestore() (batched
+   in chunks of 500), and pushFatigueHistoryToFirestore(). Fatigue history rows
+  now auto-push to Firestore alongside local CSV writes.
+  2. ActivityTrackingViewModel.kt - Added pushSessionToFirestore() that writes
+  session metadata (activity type, start time, duration, distance, pace) on
+  session stop. Called in both stopSession() and onWatchStopped() before
+  clearing activeSessionDir. Route data push added in saveRouteData().
+  3. ActivityHistoryRepository.kt - Added syncFromFirestore(userId) that
+  downloads all workout sessions from Firestore and reconstructs local CSV files
+   (features.csv, features.jsonl, route.csv, route_summary.csv,
+  fatigue_history.csv). Skips sessions that already exist locally.
+  4. ActivityHistoryViewModel.kt - Calls syncFromFirestore before loading local
+  sessions, so when a user logs in on a new device their history is pulled down
+  automatically.
+
+✻ Brewed for 11m 1s
+
+❯ Do I have to delete the current feature_vectors in firestore since it has all 
+ the windows lumped up together?                                                
+
+● Good question. Let me check if any code still reads from the old
+  feature_vectors collection.
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● No code reads from the old users/{userId}/feature_vectors/ path anymore — both
+   references in the codebase are the new subcollection paths under
+  workout_history/{sessionDir}/feature_vectors/.
+
+  So the old collection is dead data. You have two practical options:
+
+  1. Delete it (recommended) — Go to Firebase Console > Firestore >
+  users/{userId}/feature_vectors and delete the collection. Since the old
+  documents don't have a sessionDirName field, there's no clean way to migrate
+  them into the new per-session structure. Your local device still has all the
+  original per-session CSVs, so no data is lost.
+  2. Leave it — It won't interfere with anything, just takes up Firestore
+  storage. But it's dead weight.
+
+  I'd recommend deleting it to keep things clean. You can do it from the
+  Firebase Console in a few clicks, or with a small Firestore script if there
+  are many documents.
+
+  Now, regarding the changes we already made — would you like me to create a
+  plan to review them, or are there additional things you'd like restructured in
+   the Firebase layout before we move on?
+
+❯ once I delete them, the locally stored sessions will be saved in firestore    
+once the user logs in?                                                          
+
+● No — that's a gap in the current implementation. Right now the Firestore push
+  only happens in real-time during active sessions (as each feature vector,
+  route point, and fatigue row is generated). And the sync we added is one-way: 
+  Firestore → Local (for pulling data onto a new device).
+
+  There's no mechanism to upload existing local sessions to Firestore. So if you
+   delete the old feature_vectors collection, past sessions would only exist
+  locally until the user completes new workouts.
+
+  Would you like me to plan a backfill/upload function that:
+  1. Scans all local session directories under FitGuard_Data/{userId}/
+  2. Checks which ones are missing from Firestore workout_history/
+  3. Uploads the missing ones (session metadata, feature vectors, route points,
+  fatigue history)
+
+  This way, on login, the app pushes any local-only sessions up to Firestore —
+  making the sync truly bidirectional.
+
+❯ yes                                                                           
+
+● Explore(Explore local session data and upload paths)
+  ⎿  Done (23 tool uses · 60.2k tokens · 54s)
+  (ctrl+o to expand)
+
+● Now let me design the implementation with a Plan agent.
+
+● Plan(Plan backfill upload to Firestore)
+  ⎿  Done (24 tool uses · 45.2k tokens · 3m 0s)
+  (ctrl+o to expand)
+
+● The Plan agent gave a thorough design. Let me verify a couple of things in the
+   current code before writing the final plan.
+
+  Read 2 files (ctrl+o to expand)
+
+● Good, imports are already in place. Now let me write the final plan.
+
+● Updated plan
+  ⎿  /plan to preview
+  ⎿  Tool use rejected
+
+● Got it - you want to remove RPE entirely from both phone and watch, not just
+  from the backfill. Let me explore the full scope of RPE code across both
+  modules.
+● 2 Explore agents finished (ctrl+o to expand)
+   ├─ Explore all RPE code in mobile · 31 tool uses · 88.0k tokens
+   │  ⎿  Done
+   └─ Explore all RPE code in watch · 19 tool uses · 50.7k tokens
+      ⎿  Done
+
+❯ /plan                                                                         
+  ⎿  Current Plan
+     C:\Users\claud.claude\plans\hidden-meandering-wilkes.md
+
+     Plan: Backfill Local Workout Sessions to Firestore
+
+     Context
+
+     We restructured Firestore writes so each workout session lives under
+     users/{userId}/workout_history/{sessionDir}/. Real-time push (during active
+     sessions) and download sync (Firestore -> Local) are implemented. But
+     existing
+      local sessions recorded before the restructuring have no upload path. If
+     the
+     user deletes the old flat feature_vectors collection, past sessions only
+     exist
+      locally. We need a backfill that uploads local-only sessions to Firestore
+     so
+     they're available on any device.
+
+     Approach
+
+     Add a syncToFirestore(userId) method to ActivityHistoryRepository that:
+     1. Fetches existing Firestore session IDs in one query
+     2. Scans local session directories for any not in Firestore
+     3. Reads local CSV files and batch-writes to Firestore with the correct
+     schema
+
+     Call it in ActivityHistoryViewModel.loadSessions() before the existing
+     download sync.
+
+     Key design decisions:
+     - Read from features.csv (not JSONL) because it has timestamp_end which
+     maps
+      to Firestore's timestampEnd
+     - Construct Firestore maps directly from CSV data (don't reconstruct domain
+     objects)
+     - Use batched writes (500 per batch) for efficiency
+     - Per-session try/catch so one corrupt CSV doesn't abort the whole backfill
+
+     Files to Modify
+
+     1. 
+     `mobile/src/main/java/com/example/fitguard/data/repository/ActivityHistor
+
+     yRepository.kt`
+
+     Add these methods:
+
+     - suspend fun syncToFirestore(userId: String) - Main entry point. Fetches
+     existing Firestore session IDs, scans local dirs, uploads missing ones.
+     - private suspend fun uploadSession(db, userId, dir, sessionDirName) -
+     Orchestrates upload of one session: metadata, feature vectors, route
+     points,
+     fatigue history. Reuses existing parseSessionDir() and parseRouteSummary()
+     for metadata extraction.
+     - private suspend fun uploadSessionMetadata(...) - Writes the
+     workout_history/{sessionDir} doc. Same map structure as
+     CsvWriter.pushSessionMetadata().
+     - private suspend fun uploadFeatureVectors(db, userId, sessionDirName, dir)
+      - Reads features.csv, maps snake_case CSV columns to camelCase
+     Firestore keys, batch writes to feature_vectors/{sequenceId} subcollection.
+     - private fun buildFeatureVectorMap(parts, colIdx): Map<String, Any> -
+     Helper mapping CSV columns to Firestore field names. Mirrors
+     FeatureVector.toFirestoreMap() in CsvWriter.
+     - private suspend fun uploadRoutePoints(db, userId, sessionDirName, dir) -
+      Reads route.csv, batch writes to route_points/{index} subcollection. Uses
+     pre-computed cumulative distance from CSV (no need for
+     Location.distanceBetween).
+     - private suspend fun uploadFatigueHistory(db, userId, sessionDirName, dir)
+      - Reads fatigue_history.csv, batch writes to
+     fatigue_history/{timestamp} subcollection. Same map structure as
+     CsvWriter.pushFatigueHistoryToFirestore().
+
+     No new imports needed - FirebaseFirestore, await, File, Locale already
+     imported.
+
+     2. 
+     `mobile/src/main/java/com/example/fitguard/features/activitytracking/Acti
+
+     vityHistoryViewModel.kt`
+
+     Change loadSessions() to call syncToFirestore before syncFromFirestore:
+
+     withContext(Dispatchers.IO) {
+         ActivityHistoryRepository.syncToFirestore(userId)   // upload 
+     local-only
+     sessions
+         ActivityHistoryRepository.syncFromFirestore(userId)  // download
+     Firestore-only sessions
+     }
+
+     No changes to CsvWriter.kt
+
+     All upload logic uses direct Firestore writes in the repository.
+     CsvWriter's
+     private push methods stay private.
+
+     Field Mapping Reference
+
+     CSV column -> Firestore key (features):
+     - timestamp -> timestamp (Long), timestamp_end -> timestampEnd (Long),
+     sequence_id -> sequenceId (String)
+     - All 28 numeric metrics: snake_case -> camelCase (e.g. mean_hr_bpm ->
+     meanHrBpm)
+     - total_steps -> totalSteps (Int), cadence_spm -> cadenceSpm (Double)
+     - activity_label -> activityLabel, fatigue_level -> fatigueLevel,
+     rpe_raw -> rpeRaw (Int)
+
+     CSV column -> Firestore key (fatigue history):
+     - fatigue_percent -> fatiguePercent, global_pLow -> globalPLow, etc.
+
+     Verification
+
+     1. Run gradlew.bat --no-daemon :mobile:compileDebugKotlin to verify
+     compilation
+     2. Manual test: With existing local sessions and empty Firestore
+     workout_history, open Activity History screen -> sessions should appear in
+     Firestore Console under workout_history/{sessionDir} with correct
+     subcollections
+     3. Idempotency test: Open Activity History again -> no duplicate uploads
+     (existing sessions skipped)
+     4. New device test: Clear local data, open Activity History -> sessions
+     download
+      from Firestore and display correctly
+
+     "/plan open" to edit this plan in Notepad
+
+❯ implement this plan                                                           
+
+● I'll implement the backfill plan now, excluding RPE fields as you requested.
+  Let me start by reading the current state of the files.
+
+  Read 2 files (ctrl+o to expand)
+
+● Update(mobile\src\main\java\com\example\fitguard\data\repository\ActivityHisto
+        ryRepository.kt)
+  ⎿  Added 234 lines
+       27      }
+       28  
+       29      /**
+       30 +     * Uploads local-only sessions to Firestore.              
+       31 +     * Scans local session directories and pushes any that don
+          +'t exist in Firestore yet.                                    
+       32 +     */                                                       
+       33 +    suspend fun syncToFirestore(userId: String) {             
+       34 +        try {                                                 
+       35 +            val db = FirebaseFirestore.getInstance()          
+       36 +                                                              
+       37 +            // Fetch existing Firestore session IDs in one que
+          +ry                                                            
+       38 +            val existingSessionIds = db.collection("users").do
+          +cument(userId)                                                
+       39 +                .collection("workout_history")                
+       40 +                .get().await()                                
+       41 +                .documents.map { it.id }.toSet()              
+       42 +                                                              
+       43 +            val userDir = CsvWriter.getOutputDir(userId)      
+       44 +            if (!userDir.exists() || !userDir.isDirectory) ret
+          +urn                                                           
+       45 +                                                              
+       46 +            val localSessionDirs = userDir.listFiles()        
+       47 +                ?.filter { it.isDirectory && File(it, "feature
+          +s.csv").exists() }                                            
+       48 +                ?: return                                     
+       49 +                                                              
+       50 +            var uploaded = 0                                  
+       51 +            for (dir in localSessionDirs) {                   
+       52 +                if (dir.name in existingSessionIds) continue  
+       53 +                uploadSession(db, userId, dir)                
+       54 +                uploaded++                                    
+       55 +            }                                                 
+       56 +            if (uploaded > 0) {                               
+       57 +                Log.d(TAG, "Uploaded $uploaded local sessions 
+          +to Firestore")                                                
+       58 +            }                                                 
+       59 +        } catch (e: Exception) {                              
+       60 +            Log.w(TAG, "Failed to upload local sessions to Fir
+          +estore: ${e.message}")                                        
+       61 +        }                                                     
+       62 +    }                                                         
+       63 +                                                              
+       64 +    private suspend fun uploadSession(db: FirebaseFirestore, u
+          +serId: String, dir: File) {                                   
+       65 +        val sessionDirName = dir.name                         
+       66 +        try {                                                 
+       67 +            val item = parseSessionDir(dir) ?: return         
+       68 +                                                              
+       69 +            val (distance, pace, routeDuration) = parseRouteSu
+          +mmary(dir)                                                    
+       70 +            val durationMillis = if (routeDuration > 0) routeD
+          +uration                                                       
+       71 +                                 else parseDurationFromCsv(Fil
+          +e(dir, "features.csv"))                                       
+       72 +                                                              
+       73 +            // Count route points                             
+       74 +            val routeFile = File(dir, "route.csv")            
+       75 +            val pointCount = if (routeFile.exists()) {        
+       76 +                maxOf(0, routeFile.readLines().size - 1)      
+       77 +            } else 0                                          
+       78 +                                                              
+       79 +            // Upload metadata doc first                      
+       80 +            db.collection("users").document(userId)           
+       81 +                .collection("workout_history").document(sessio
+          +nDirName)                                                     
+       82 +                .set(mapOf(                                   
+       83 +                    "activityType" to item.activityType,      
+       84 +                    "startTimeMillis" to item.startTimeMillis,
+       85 +                    "durationMillis" to durationMillis,       
+       86 +                    "totalDistanceMeters" to distance,        
+       87 +                    "avgPaceMinPerKm" to pace,                
+       88 +                    "pointCount" to pointCount,               
+       89 +                    "sessionDirName" to sessionDirName        
+       90 +                )).await()                                    
+       91 +                                                              
+       92 +            // Upload subcollections                          
+       93 +            uploadFeatureVectors(db, userId, sessionDirName, d
+          +ir)                                                           
+       94 +            uploadRoutePoints(db, userId, sessionDirName, dir)
+       95 +            uploadFatigueHistory(db, userId, sessionDirName, d
+          +ir)                                                           
+       96 +                                                              
+       97 +            Log.d(TAG, "Uploaded session $sessionDirName")    
+       98 +        } catch (e: Exception) {                              
+       99 +            Log.w(TAG, "Failed to upload session $sessionDirNa
+          +me: ${e.message}")                                            
+      100 +        }                                                     
+      101 +    }                                                         
+      102 +                                                              
+      103 +    private suspend fun uploadFeatureVectors(                 
+      104 +        db: FirebaseFirestore, userId: String, sessionDirName:
+          + String, dir: File                                            
+      105 +    ) {                                                       
+      106 +        val file = File(dir, "features.csv")                  
+      107 +        if (!file.exists()) return                            
+      108 +        val lines = file.readLines()                          
+      109 +        if (lines.size < 2) return                            
+      110 +                                                              
+      111 +        val columns = lines[0].split(",")                     
+      112 +        val colIdx = columns.withIndex().associate { (i, name)
+          + -> name.trim() to i }                                        
+      113 +                                                              
+      114 +        val collRef = db.collection("users").document(userId) 
+      115 +            .collection("workout_history").document(sessionDir
+          +Name)                                                         
+      116 +            .collection("feature_vectors")                    
+      117 +                                                              
+      118 +        lines.drop(1).chunked(500).forEach { chunk ->         
+      119 +            val batch = db.batch()                            
+      120 +            for (line in chunk) {                             
+      121 +                val parts = line.split(",")                   
+      122 +                val seqId = parts.getOrNull(colIdx["sequence_i
+          +d"] ?: -1)?.trim() ?: continue                                
+      123 +                if (seqId.isEmpty()) continue                 
+      124 +                batch.set(collRef.document(seqId), buildFeatur
+          +eVectorMap(parts, colIdx))                                    
+      125 +            }                                                 
+      126 +            batch.commit().await()                            
+      127 +        }                                                     
+      128 +    }                                                         
+      129 +                                                              
+      130 +    private fun buildFeatureVectorMap(parts: List<String>, col
+          +Idx: Map<String, Int>): Map<String, Any> {                    
+      131 +        fun str(col: String) = parts.getOrNull(colIdx[col] ?: 
+          +-1)?.trim() ?: ""                                             
+      132 +        fun long(col: String) = str(col).toLongOrNull() ?: 0L 
+      133 +        fun double(col: String) = str(col).toDoubleOrNull() ?:
+          + 0.0                                                          
+      134 +        fun int(col: String) = str(col).toIntOrNull() ?: 0    
+      135 +                                                              
+      136 +        return mapOf(                                         
+      137 +            "timestamp" to long("timestamp"),                 
+      138 +            "timestampEnd" to long("timestamp_end"),          
+      139 +            "sequenceId" to str("sequence_id"),               
+      140 +            "meanHrBpm" to double("mean_hr_bpm"),             
+      141 +            "hrStdBpm" to double("hr_std_bpm"),               
+      142 +            "hrMinBpm" to double("hr_min_bpm"),               
+      143 +            "hrMaxBpm" to double("hr_max_bpm"),               
+      144 +            "hrRangeBpm" to double("hr_range_bpm"),           
+      145 +            "hrSlopeBpmPerS" to double("hr_slope_bpm_per_s"), 
+      146 +            "nnQualityRatio" to double("nn_quality_ratio"),   
+      147 +            "sdnnMs" to double("sdnn_ms"),                    
+      148 +            "rmssdMs" to double("rmssd_ms"),                  
+      149 +            "pnn50Pct" to double("pnn50_pct"),                
+      150 +            "meanNnMs" to double("mean_nn_ms"),               
+      151 +            "cvNn" to double("cv_nn"),                        
+      152 +            "lfPowerMs2" to double("lf_power_ms2"),           
+      153 +            "hfPowerMs2" to double("hf_power_ms2"),           
+      154 +            "lfHfRatio" to double("lf_hf_ratio"),             
+      155 +            "totalPowerMs2" to double("total_power_ms2"),     
+      156 +            "spo2MeanPct" to double("spo2_mean_pct"),         
+      157 +            "spo2MinPct" to double("spo2_min_pct"),           
+      158 +            "spo2StdPct" to double("spo2_std_pct"),           
+      159 +            "accelXMean" to double("accel_x_mean"),           
+      160 +            "accelYMean" to double("accel_y_mean"),           
+      161 +            "accelZMean" to double("accel_z_mean"),           
+      162 +            "accelXVar" to double("accel_x_var"),             
+      163 +            "accelYVar" to double("accel_y_var"),             
+      164 +            "accelZVar" to double("accel_z_var"),             
+      165 +            "accelMagMean" to double("accel_mag_mean"),       
+      166 +            "accelMagVar" to double("accel_mag_var"),         
+      167 +            "accelPeak" to double("accel_peak"),              
+      168 +            "totalSteps" to int("total_steps"),               
+      169 +            "cadenceSpm" to double("cadence_spm"),            
+      170 +            "activityLabel" to str("activity_label")          
+      171 +        )                                                     
+      172 +    }                                                         
+      173 +                                                              
+      174 +    private suspend fun uploadRoutePoints(                    
+      175 +        db: FirebaseFirestore, userId: String, sessionDirName:
+          + String, dir: File                                            
+      176 +    ) {                                                       
+      177 +        val file = File(dir, "route.csv")                     
+      178 +        if (!file.exists()) return                            
+      179 +        val lines = file.readLines()                          
+      180 +        if (lines.size < 2) return                            
+      181 +                                                              
+      182 +        val columns = lines[0].split(",")                     
+      183 +        val colIdx = columns.withIndex().associate { (i, name)
+          + -> name.trim() to i }                                        
+      184 +                                                              
+      185 +        val collRef = db.collection("users").document(userId) 
+      186 +            .collection("workout_history").document(sessionDir
+          +Name)                                                         
+      187 +            .collection("route_points")                       
+      188 +                                                              
+      189 +        lines.drop(1).chunked(500).forEachIndexed { chunkIdx, 
+          +chunk ->                                                      
+      190 +            val batch = db.batch()                            
+      191 +            chunk.forEachIndexed { i, line ->                 
+      192 +                val parts = line.split(",")                   
+      193 +                val idx = chunkIdx * 500 + i                  
+      194 +                batch.set(                                    
+      195 +                    collRef.document(idx.toString().padStart(6
+          +, '0')),                                                      
+      196 +                    mapOf(                                    
+      197 +                        "latitude" to (parts.getOrNull(colIdx[
+          +"latitude"] ?: -1)?.toDoubleOrNull() ?: 0.0),                 
+      198 +                        "longitude" to (parts.getOrNull(colIdx
+          +["longitude"] ?: -1)?.toDoubleOrNull() ?: 0.0),               
+      199 +                        "timestamp_ms" to (parts.getOrNull(col
+          +Idx["timestamp_ms"] ?: -1)?.toLongOrNull() ?: 0L),            
+      200 +                        "cumulative_distance_m" to (parts.getO
+          +rNull(colIdx["cumulative_distance_m"] ?: -1)?.toDoubleOrNull()
+          + ?: 0.0),                                                     
+      201 +                        "index" to idx                        
+      202 +                    )                                         
+      203 +                )                                             
+      204 +            }                                                 
+      205 +            batch.commit().await()                            
+      206 +        }                                                     
+      207 +    }                                                         
+      208 +                                                              
+      209 +    private suspend fun uploadFatigueHistory(                 
+      210 +        db: FirebaseFirestore, userId: String, sessionDirName:
+          + String, dir: File                                            
+      211 +    ) {                                                       
+      212 +        val file = File(dir, "fatigue_history.csv")           
+      213 +        if (!file.exists()) return                            
+      214 +        val lines = file.readLines()                          
+      215 +        if (lines.size < 2) return                            
+      216 +                                                              
+      217 +        val columns = lines[0].split(",")                     
+      218 +        val colIdx = columns.withIndex().associate { (i, name)
+          + -> name.trim() to i }                                        
+      219 +                                                              
+      220 +        val collRef = db.collection("users").document(userId) 
+      221 +            .collection("workout_history").document(sessionDir
+          +Name)                                                         
+      222 +            .collection("fatigue_history")                    
+      223 +                                                              
+      224 +        lines.drop(1).chunked(500).forEach { chunk ->         
+      225 +            val batch = db.batch()                            
+      226 +            for (line in chunk) {                             
+      227 +                val parts = line.split(",")                   
+      228 +                fun str(col: String) = parts.getOrNull(colIdx[
+          +col] ?: -1)?.trim() ?: ""                                     
+      229 +                fun double(col: String) = str(col).toDoubleOrN
+          +ull() ?: 0.0                                                  
+      230 +                fun long(col: String) = str(col).toLongOrNull(
+          +) ?: -1L                                                      
+      231 +                                                              
+      232 +                val ts = long("timestamp")                    
+      233 +                if (ts <= 0) continue                         
+      234 +                                                              
+      235 +                batch.set(                                    
+      236 +                    collRef.document(ts.toString()),          
+      237 +                    mapOf(                                    
+      238 +                        "timestamp" to ts,                    
+      239 +                        "fatiguePercent" to double("fatigue_pe
+          +rcent"),                                                      
+      240 +                        "globalPLow" to double("global_pLow"),
+      241 +                        "globalPHigh" to double("global_pHigh"
+          +),                                                            
+      242 +                        "globalLevel" to str("global_level"), 
+      243 +                        "globalLevelIndex" to long("global_lev
+          +elIndex"),                                                    
+      244 +                        "extPLow" to double("ext_pLow"),      
+      245 +                        "extPHigh" to double("ext_pHigh"),    
+      246 +                        "extLevel" to str("ext_level"),       
+      247 +                        "extLevelIndex" to long("ext_levelInde
+          +x"),                                                          
+      248 +                        "ondevPLow" to double("ondev_pLow"),  
+      249 +                        "ondevPHigh" to double("ondev_pHigh"),
+      250 +                        "ondevLevel" to str("ondev_level"),   
+      251 +                        "ondevLevelIndex" to long("ondev_level
+          +Index"),                                                      
+      252 +                        "currentHr" to double("current_hr"),  
+      253 +                        "currentRmssd" to double("current_rmss
+          +d"),                                                          
+      254 +                        "baselineHr" to double("baseline_hr"),
+      255 +                        "baselineRmssd" to double("baseline_rm
+          +ssd")                                                         
+      256 +                    )                                         
+      257 +                )                                             
+      258 +            }                                                 
+      259 +            batch.commit().await()                            
+      260 +        }                                                     
+      261 +    }                                                         
+      262 +                                                              
+      263 +    /**                                                       
+      264       * Syncs workout history from Firestore to local storage.
+      265       * Downloads session data and reconstructs local CSV files
+            so the existing
+      266       * local reading code works unchanged. Skips sessions that
+            already exist locally.
+  ⎿  You're out of extra usage · resets 3pm (Asia/Manila)
+     /upgrade or /extra-usage to finish what you’re working on.
+
+✻ Cooked for 1m 30s

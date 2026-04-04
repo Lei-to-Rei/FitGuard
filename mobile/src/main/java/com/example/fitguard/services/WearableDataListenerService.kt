@@ -166,6 +166,7 @@ class WearableDataListenerService : WearableListenerService() {
                     sendBroadcast(Intent(ACTION_ACTIVITY_ACK).apply {
                         putExtra("session_id", json.optString("session_id"))
                         putExtra("status", json.optString("status"))
+                        putExtra("activity_type", json.optString("activity_type"))
                     })
                 }
                 "/fitguard/activity/stopped" -> {

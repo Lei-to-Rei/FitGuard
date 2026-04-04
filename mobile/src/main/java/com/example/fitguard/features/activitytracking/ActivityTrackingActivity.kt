@@ -147,7 +147,9 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
             "/fitguard/activity/ack" -> runOnUiThread {
                 viewModel.onWatchAck(
                     ackSessionId = json.optString("session_id", ""),
-                    status = json.optString("status", "")
+                    status = json.optString("status", ""),
+                    activityType = json.optString("activity_type", "")
+                        .ifEmpty { null }
                 )
             }
             "/fitguard/activity/stopped" -> runOnUiThread {

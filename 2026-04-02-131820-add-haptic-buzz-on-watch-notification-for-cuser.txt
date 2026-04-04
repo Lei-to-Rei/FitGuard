@@ -1,0 +1,1160 @@
+ ▐▛███▜▌   Claude Code v2.1.88
+▝▜█████▛▘  Sonnet 4.6 · Claude Pro
+  ▘▘ ▝▝    ~\AndroidStudioProjects\FitGuard
+
+  ↑ Install the PyCharm plugin from the JetBrains Marketplace:
+    https://docs.claude.com/s/claude-code-jetbrains
+
+❯ Add haptic buzz on watch notification for                                     
+C:\Users\claud\AndroidStudioProjects\FitGuard\wear\src\main\java\com\example\fi 
+tguard\presentation\FatigueAlertHelper.kt. And do not auto dismiss until the    
+user notices the notification by tapping it. It should vibrate frequently when  
+the user hasnt noticed the notification, do the same for the phone              
+  ⎿  ⧉ Selected 48 lines from 
+     ..\..\..\..\mnt\c\Users\claud\AndroidStudioProjects\FitGuard\mobile\src\mai
+     n\java\com\example\fitguard\data\processing\SequenceProcessor.kt in Android
+      Studio
+
+● Let me read the current file first.
+
+  Read 1 file (ctrl+o to expand)
+
+● Now let me find the phone-side equivalent.
+
+  Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+● Let me check the manifests for both wear and mobile.
+
+  Read 2 files (ctrl+o to expand)
+
+● Good, both manifests have VIBRATE permission. Now I'll implement the changes.
+  The approach:
+
+  1. Use Vibrator service with a repeating waveform pattern that buzzes
+  periodically until dismissed
+  2. Remove setTimeoutAfter (no auto-dismiss)
+  3. Keep setAutoCancel(true) so tapping dismisses it
+  4. Add a content PendingIntent + delete PendingIntent via a BroadcastReceiver
+  to stop vibration
+  5. Register the receiver in both manifests
+
+  Let me update both files and create the receivers.
+
+● Write(wear\src\main\java\com\example\fitguard\presentation\FatigueAlertHelper.
+       kt)
+  ⎿  Added 53 lines, removed 9 lines
+       3  import android.app.Notification
+       4  import android.app.NotificationChannel
+       5  import android.app.NotificationManager
+       6 +import android.app.PendingIntent                               
+       7 +import android.content.BroadcastReceiver                       
+       8  import android.content.Context
+       9 +import android.content.Intent                                  
+      10  import android.os.PowerManager
+      11 +import android.os.VibrationEffect                              
+      12 +import android.os.Vibrator                                     
+      13  import android.util.Log
+      14  import androidx.core.app.NotificationCompat
+      15  
+     ...
+      17      private const val TAG = "FatigueAlertHelper"
+      18      private const val CHANNEL_ID = "fatigue_alert"
+      19      private const val NOTIFICATION_ID = 1003
+      20 +    private const val ACTION_DISMISS = "com.example.fitguard.FA
+         +TIGUE_ALERT_DISMISS_WEAR"                                      
+      21  
+      22      private var channelCreated = false
+      23 +    private var vibrator: Vibrator? = null                     
+      24  
+      25      private fun ensureChannel(context: Context) {
+      26          if (channelCreated) return
+     ...
+      31              NotificationManager.IMPORTANCE_HIGH
+      32          ).apply {
+      33              description = "Fatigue level escalation alerts duri
+          ng workout"
+      27 -            enableVibration(true)                              
+      28 -            vibrationPattern = longArrayOf(0, 300, 150, 300)   
+      34 +            enableVibration(false) // We handle vibration manua
+         +lly for repeating                                              
+      35              lockscreenVisibility = Notification.VISIBILITY_PUBL
+          IC
+      36          }
+      37          val nm = context.getSystemService(NotificationManager::
+          class.java)
+     ...
+      44  
+      45          val nm = context.getSystemService(NotificationManager::
+          class.java)
+      46  
+      41 -        val (title, body, vibration) = when (levelIndex) {     
+      47 +        // Repeating vibration patterns: vibrate then pause, lo
+         +op from index 0                                                
+      48 +        // Higher levels vibrate more aggressively with shorter
+         + pauses                                                        
+      49 +        val (title, body, vibrationPattern) = when (levelIndex)
+         + {                                                             
+      50              1 -> Triple(
+      51                  "Fatigue Rising",
+      52                  "$percentDisplay% — Consider pacing yourself",
+      45 -                longArrayOf(0, 200, 100, 200)                  
+      53 +                longArrayOf(0, 200, 100, 200, 4500)        // ~
+         +5s cycle                                                       
+      54              )
+      55              2 -> Triple(
+      56                  "High Fatigue Warning",
+      57                  "$percentDisplay% — Consider taking a break",
+      50 -                longArrayOf(0, 300, 100, 300, 100, 300)        
+      58 +                longArrayOf(0, 300, 100, 300, 100, 300, 1900) /
+         +/ ~3s cycle                                                    
+      59              )
+      60              3 -> Triple(
+      61                  "CRITICAL Fatigue",
+      62                  "$percentDisplay% — Stop and rest immediately!"
+          ,
+      55 -                longArrayOf(0, 500, 200, 500, 200, 500)        
+      63 +                longArrayOf(0, 500, 200, 500, 200, 500, 100)  /
+         +/ ~2s cycle                                                    
+      64              )
+      65              else -> return
+      66          }
+      67  
+      68 +        val dismissIntent = Intent(ACTION_DISMISS).setPackage(c
+         +ontext.packageName)                                            
+      69 +        val dismissPendingIntent = PendingIntent.getBroadcast( 
+      70 +            context, NOTIFICATION_ID, dismissIntent,           
+      71 +            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.
+         +FLAG_IMMUTABLE                                                 
+      72 +        )                                                      
+      73 +                                                               
+      74          val notification = NotificationCompat.Builder(context, 
+          CHANNEL_ID)
+      75              .setSmallIcon(android.R.drawable.ic_dialog_alert)
+      76              .setContentTitle(title)
+     ...
+       78              .setPriority(NotificationCompat.PRIORITY_MAX)
+       79              .setCategory(NotificationCompat.CATEGORY_ALARM)
+       80              .setVisibility(NotificationCompat.VISIBILITY_PUBLI
+           C)
+       67 -            .setVibrate(vibration)                            
+       81              .setAutoCancel(true)
+       69 -            .setTimeoutAfter(15_000)                          
+       82 +            .setContentIntent(dismissPendingIntent)           
+       83 +            .setDeleteIntent(dismissPendingIntent)            
+       84              .build()
+       85  
+       86          nm.notify(NOTIFICATION_ID, notification)
+       73 -        Log.d(TAG, "Fatigue alert shown: $level ($percentDispl
+          -ay%)")                                                        
+       87 +                                                              
+       88 +        // Start repeating vibration until user acknowledges  
+       89 +        startRepeatingVibration(context, vibrationPattern)    
+       90 +                                                              
+       91 +        Log.d(TAG, "Fatigue alert shown: $level ($percentDispl
+          +ay%) — vibrating until dismissed")                            
+       92      }
+       93  
+       94 +    private fun startRepeatingVibration(context: Context, patt
+          +ern: LongArray) {                                             
+       95 +        cancelVibration()                                     
+       96 +        val v = context.getSystemService(Vibrator::class.java)
+       97 +        vibrator = v                                          
+       98 +        // repeat=0 means loop the entire pattern from index 0
+       99 +        v.vibrate(VibrationEffect.createWaveform(pattern, 0)) 
+      100 +    }                                                         
+      101 +                                                              
+      102 +    fun cancelVibration() {                                   
+      103 +        vibrator?.cancel()                                    
+      104 +        vibrator = null                                       
+      105 +    }                                                         
+      106 +                                                              
+      107      @Suppress("DEPRECATION")
+      108      private fun wakeScreen(context: Context) {
+      109          try {
+     ...
+      122      }
+      123  
+      124      fun cancel(context: Context) {
+      125 +        cancelVibration()                                     
+      126          val nm = context.getSystemService(NotificationManager:
+           :class.java)
+      127          nm.cancel(NOTIFICATION_ID)
+      128      }
+      129 +                                                              
+      130 +    /**                                                       
+      131 +     * Receiver that stops vibration and cancels notification 
+          +when user taps or swipes.                                     
+      132 +     */                                                       
+      133 +    class DismissReceiver : BroadcastReceiver() {             
+      134 +        override fun onReceive(context: Context, intent: Inten
+          +t?) {                                                         
+      135 +            cancelVibration()                                 
+      136 +            val nm = context.getSystemService(NotificationMana
+          +ger::class.java)                                              
+      137 +            nm.cancel(NOTIFICATION_ID)                        
+      138 +            Log.d(TAG, "Fatigue alert dismissed by user")     
+      139 +        }                                                     
+      140 +    }                                                         
+      141  }
+
+● Now update the phone-side FatigueAlertManager.kt:
+
+● Write(mobile\src\main\java\com\example\fitguard\features\fatigue\FatigueAlertM
+       anager.kt)
+  ⎿  Added 52 lines, removed 9 lines
+       2  
+       3  import android.app.NotificationChannel
+       4  import android.app.NotificationManager
+       5 +import android.app.PendingIntent                               
+       6 +import android.content.BroadcastReceiver                       
+       7  import android.content.Context
+       8 +import android.content.Intent                                  
+       9 +import android.os.VibrationEffect                              
+      10 +import android.os.Vibrator                                     
+      11  import android.util.Log
+      12  import androidx.core.app.NotificationCompat
+      13  import com.example.fitguard.data.processing.FatigueDetector
+     ...
+      26      private const val NOTIFICATION_ID = 2003
+      27      private const val COOLDOWN_MS = 60_000L
+      28      private const val MESSAGE_PATH = "/fitguard/fatigue/alert"
+      29 +    private const val ACTION_DISMISS = "com.example.fitguard.FA
+         +TIGUE_ALERT_DISMISS_PHONE"                                     
+      30  
+      31      private var detector: FatigueDetector? = null
+      32      private var initialized = false
+      33      private var previousLevelIndex = -1
+      34      private var lastAlertTimeMs = 0L
+      35 +    private var vibrator: Vibrator? = null                     
+      36  
+      37      private fun ensureInitialized(context: Context) {
+      38          if (initialized) return
+     ...
+      53              NotificationManager.IMPORTANCE_HIGH
+      54          ).apply {
+      55              description = "Fatigue level escalation alerts duri
+          ng workout"
+      49 -            enableVibration(true)                              
+      50 -            vibrationPattern = longArrayOf(0, 300, 150, 300)   
+      56 +            enableVibration(false) // We handle vibration manua
+         +lly for repeating                                              
+      57              lockscreenVisibility = android.app.Notification.VIS
+          IBILITY_PUBLIC
+      58          }
+      59          val nm = context.getSystemService(NotificationManager::
+          class.java)
+     ...
+       98      private fun showPhoneNotification(context: Context, result
+           : FatigueResult) {
+       99          val nm = context.getSystemService(NotificationManager:
+           :class.java)
+      100  
+       95 -        val (title, body, vibration) = when (result.levelIndex
+          -) {                                                           
+      101 +        // Repeating vibration patterns: vibrate then pause, l
+          +oop from index 0                                              
+      102 +        val (title, body, vibrationPattern) = when (result.lev
+          +elIndex) {                                                    
+      103              1 -> Triple(
+      104                  "Fatigue Rising",
+      105                  "Fatigue level: Moderate (${result.percentDisp
+           lay}%). Consider pacing yourself.",
+       99 -                longArrayOf(0, 200, 100, 200)                 
+      106 +                longArrayOf(0, 200, 100, 200, 4500)        // 
+          +~5s cycle                                                     
+      107              )
+      108              2 -> Triple(
+      109                  "High Fatigue Warning",
+      110                  "Fatigue level: High (${result.percentDisplay}
+           %). Consider taking a break.",
+      104 -                longArrayOf(0, 300, 100, 300, 100, 300)       
+      111 +                longArrayOf(0, 300, 100, 300, 100, 300, 1900) 
+          +// ~3s cycle                                                  
+      112              )
+      113              3 -> Triple(
+      114                  "CRITICAL Fatigue",
+      115                  "Fatigue level: Critical (${result.percentDisp
+           lay}%). Stop and rest immediately!",
+      109 -                longArrayOf(0, 500, 200, 500, 200, 500)       
+      116 +                longArrayOf(0, 500, 200, 500, 200, 500, 100)  
+          +// ~2s cycle                                                  
+      117              )
+      118              else -> return
+      119          }
+      120  
+      121 +        val dismissIntent = Intent(ACTION_DISMISS).setPackage(
+          +context.packageName)                                          
+      122 +        val dismissPendingIntent = PendingIntent.getBroadcast(
+      123 +            context, NOTIFICATION_ID, dismissIntent,          
+      124 +            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent
+          +.FLAG_IMMUTABLE                                               
+      125 +        )                                                     
+      126 +                                                              
+      127          val notification = NotificationCompat.Builder(context,
+            CHANNEL_ID)
+      128              .setSmallIcon(android.R.drawable.ic_dialog_alert)
+      129              .setContentTitle(title)
+      130              .setContentText(body)
+      118 -            .setPriority(NotificationCompat.PRIORITY_HIGH)    
+      131 +            .setPriority(NotificationCompat.PRIORITY_MAX)     
+      132              .setCategory(NotificationCompat.CATEGORY_ALARM)
+      133              .setVisibility(NotificationCompat.VISIBILITY_PUBLI
+           C)
+      121 -            .setVibrate(vibration)                            
+      134              .setAutoCancel(true)
+      123 -            .setTimeoutAfter(10_000)                          
+      135 +            .setContentIntent(dismissPendingIntent)           
+      136 +            .setDeleteIntent(dismissPendingIntent)            
+      137              .build()
+      138  
+      139          nm.notify(NOTIFICATION_ID, notification)
+      140 +                                                              
+      141 +        // Start repeating vibration until user acknowledges  
+      142 +        startRepeatingVibration(context, vibrationPattern)    
+      143 +                                                              
+      144 +        Log.d(TAG, "Phone notification shown: ${result.level} 
+          +— vibrating until dismissed")                                 
+      145      }
+      146  
+      147 +    private fun startRepeatingVibration(context: Context, patt
+          +ern: LongArray) {                                             
+      148 +        cancelVibration()                                     
+      149 +        val v = context.getSystemService(Vibrator::class.java)
+      150 +        vibrator = v                                          
+      151 +        // repeat=0 means loop the entire pattern from index 0
+      152 +        v.vibrate(VibrationEffect.createWaveform(pattern, 0)) 
+      153 +    }                                                         
+      154 +                                                              
+      155 +    fun cancelVibration() {                                   
+      156 +        vibrator?.cancel()                                    
+      157 +        vibrator = null                                       
+      158 +    }                                                         
+      159 +                                                              
+      160      private fun sendToWatch(context: Context, result: FatigueR
+           esult) {
+      161          CoroutineScope(Dispatchers.IO).launch {
+      162              try {
+     ...
+      178              }
+      179          }
+      180      }
+      181 +                                                              
+      182 +    /**                                                       
+      183 +     * Receiver that stops vibration and cancels notification 
+          +when user taps or swipes.                                     
+      184 +     */                                                       
+      185 +    class DismissReceiver : BroadcastReceiver() {             
+      186 +        override fun onReceive(context: Context, intent: Inten
+          +t?) {                                                         
+      187 +            cancelVibration()                                 
+      188 +            val nm = context.getSystemService(NotificationMana
+          +ger::class.java)                                              
+      189 +            nm.cancel(NOTIFICATION_ID)                        
+      190 +            Log.d(TAG, "Fatigue alert dismissed by user")     
+      191 +        }                                                     
+      192 +    }                                                         
+      193  }
+
+● Now register the BroadcastReceivers in both manifests.
+
+● Update(wear\src\main\AndroidManifest.xml)
+  ⎿  Added 9 lines
+      158              </intent-filter>
+      159          </service>
+      160  
+      161 +        <!-- Fatigue Alert Dismiss Receiver -->               
+      162 +        <receiver                                             
+      163 +            android:name=".presentation.FatigueAlertHelper$Dis
+          +missReceiver"                                                 
+      164 +            android:exported="false">                         
+      165 +            <intent-filter>                                   
+      166 +                <action android:name="com.example.fitguard.FAT
+          +IGUE_ALERT_DISMISS_WEAR" />                                   
+      167 +            </intent-filter>                                  
+      168 +        </receiver>                                           
+      169 +                                                              
+      170      </application>
+      171  
+      172  </manifest>
+      173   No newline at end of file
+
+● Update(mobile\src\main\AndroidManifest.xml)
+  ⎿  Added 9 lines
+      254              android:exported="false"
+      255              android:foregroundServiceType="dataSync" />
+      256  
+      257 +        <!-- Fatigue Alert Dismiss Receiver -->               
+      258 +        <receiver                                             
+      259 +            android:name=".features.fatigue.FatigueAlertManage
+          +r$DismissReceiver"                                            
+      260 +            android:exported="false">                         
+      261 +            <intent-filter>                                   
+      262 +                <action android:name="com.example.fitguard.FAT
+          +IGUE_ALERT_DISMISS_PHONE" />                                  
+      263 +            </intent-filter>                                  
+      264 +        </receiver>                                           
+      265 +                                                              
+      266      </application>
+      267  
+      268  </manifest>
+      269   No newline at end of file
+
+● Let me verify the build compiles.
+
+● Bash(cd C:/Users/claud/AndroidStudioProjects/FitGuard && ./gradlew.bat
+      --no-daemon :wear:compileDebugKotlin :mobile:compileDebugKotlin 2>&1 |
+      tail -30)
+  ⎿  > Task :mobile:mergeDebugResources UP-TO-DATE
+     > Task :mobile:packageDebugResources UP-TO-DATE
+     > Task :mobile:processDebugNavigationResources UP-TO-DATE
+     … +24 lines (ctrl+o to expand)
+  ⎿  (timeout 10m)
+
+● Build successful. Here's what was changed:
+
+  Watch (FatigueAlertHelper.kt) and Phone (FatigueAlertManager.kt):
+
+  1. Removed auto-dismiss — deleted setTimeoutAfter() so notifications persist
+  until the user taps or swipes them away
+  2. Repeating haptic vibration — uses
+  Vibrator.vibrate(VibrationEffect.createWaveform(pattern, 0)) with repeat=0 to
+  loop continuously until acknowledged
+  3. Vibration frequency scales with severity:
+    - Level 1 (Moderate): ~5s cycle
+    - Level 2 (High): ~3s cycle
+    - Level 3 (Critical): ~2s cycle
+  4. Dismiss handling — a BroadcastReceiver (DismissReceiver) is triggered by
+  both contentIntent (tap) and deleteIntent (swipe), which cancels the vibration
+   and clears the notification
+  5. Channel vibration disabled — set enableVibration(false) on the channel so
+  the notification itself doesn't add a one-shot buzz on top of the repeating
+  vibration
+
+  Both receivers are registered in their respective AndroidManifest.xml files.
+
+✻ Crunched for 5m 33s
+
+❯ read this                                                                     
+"C:\Users\claud\Downloads\claude_code_prompt_fix_prediction_stride.md"          
+  ⎿  ⧉ Selected 48 lines from 
+     ..\..\..\..\mnt\c\Users\claud\AndroidStudioProjects\FitGuard\mobile\src\mai
+     n\java\com\example\fitguard\data\processing\SequenceProcessor.kt in Android
+      Studio
+
+  Read 1 file (ctrl+o to expand)
+
+● Now let me explore the current state of the relevant files to understand
+  what's already done and what needs to be implemented.
+
+● 3 Explore agents finished (ctrl+o to expand)
+   ├─ Explore SequenceProcessor stride · 1 tool use · 13.4k tokens
+   │  ⎿  Done
+   ├─ Explore FatigueAlertManager state · 17 tool uses · 41.3k tokens
+   │  ⎿  Done
+   └─ Explore CSV logging code · 17 tool uses · 56.0k tokens
+      ⎿  Done
+
+● Good, I have a thorough understanding now. Let me also quickly check how
+  FatigueViewModel.onNewFeatureWindow() receives features, since CSV logging
+  lives there.
+
+  Read 2 files (ctrl+o to expand)
+
+● Now I have full understanding of the system. Let me read the CsvWriter fatigue
+   history section and ActivityHistoryRepository header to understand the CSV
+  format that needs updating.
+
+  Read 2 files (ctrl+o to expand)
+
+● Now let me also check the Firestore push to see what fields it stores.
+
+  Searched for 1 pattern (ctrl+o to expand)
+● Now I also need to see the SequenceProcessor broadcastResult() method and
+  clearBuffer() precisely.
+
+  Read 1 file (ctrl+o to expand)
+
+● Now I have everything. Let me read the FatigueHistoryRow data class definition
+   too.
+
+  Read 1 file (ctrl+o to expand)
+
+● I now have complete understanding. Let me write the plan.
+
+● Updated plan
+  ⎿  /plan to preview
+
+● User approved Claude's plan
+  ⎿  Plan saved to: ~\.claude\plans\lively-imagining-galaxy.md · /plan to edit
+     Fix Prediction Instability: Stride Control + EMA Smoothing
+
+     Context
+
+     When a 60s batch arrives from the watch, SequenceProcessor generates ~4
+     sliding windows (60s window, 15s step) and calls
+     FatigueAlertManager.onFeatureWindow() for each. This fires 4 predictions
+     instantly, causing fatigue levels to flip wildly. The model was trained
+     with step=3 (every 3rd window), but deployment runs inference on every
+     window (stride=1).
+
+     Goal: Match deployment inference cadence to training (stride=3), add EMA
+     smoothing to prevent single-prediction spikes, and require sustained high
+     fatigue before firing alerts.
+
+     ---
+     Part 1: Add bufferWindowOnly() to FatigueDetector
+
+     File: mobile/src/main/java/com/example/fitguard/data/processing/FatigueDete
+     ctor.kt
+
+     Add a new method that normalizes and buffers features WITHOUT running
+     inference:
+
+     fun bufferWindowOnly(rawFeatures: FloatArray) {
+         val normalized = normalize(rawFeatures)
+         windowBuffer.addLast(normalized)
+         if (windowBuffer.size > SEQ_LENGTH) windowBuffer.removeFirst()
+     }
+
+     This keeps the detector's buffer in sync on non-prediction windows so that
+     when inference does run, it has the latest 5 windows.
+
+     ---
+     Part 2: Add bufferWindowOnly() + EMA Smoothing + Consecutive-High to 
+     FatigueAlertManager
+
+     File: mobile/src/main/java/com/example/fitguard/features/fatigue/FatigueAle
+     rtManager.kt
+
+     New fields:
+
+     - smoothedPHigh: Float = -1f (EMA accumulator, -1 = uninitialized)
+     - lastRawPHigh: Float = 0f
+     - consecutiveHighCount: Int = 0
+     - EMA_ALPHA = 0.4f
+     - CONSECUTIVE_HIGH_THRESHOLD = 3 (require 3+ consecutive predictions above
+     0.50)
+
+     New method bufferWindowOnly(context, features):
+
+     - Call ensureInitialized(context)
+     - Call detector.bufferWindowOnly(features) (buffer only, no inference)
+
+     Modify onFeatureWindow():
+
+     After detector.addWindowAndPredict() returns a result:
+     1. Store lastRawPHigh = result.pHigh
+     2. Compute EMA: if smoothedPHigh < 0 then smoothedPHigh = result.pHigh else
+      smoothedPHigh = alpha * result.pHigh + (1-alpha) * smoothedPHigh
+     3. Re-classify using smoothedPHigh for the 4-level mapping (same
+     thresholds: 0.25, 0.50, 0.75)
+     4. Track consecutiveHighCount: increment if smoothedPHigh >= 0.50, reset to
+      0 otherwise
+     5. Only fire alert (notification + send to watch) when consecutiveHighCount
+      >= CONSECUTIVE_HIGH_THRESHOLD AND level escalated
+     6. Expose lastRawPHigh and smoothedPHigh as readable properties (already
+     object-level)
+
+     Modify reset():
+
+     Also clear smoothedPHigh = -1f, lastRawPHigh = 0f, consecutiveHighCount = 0
+
+     ---
+     Part 3: Stride Control in SequenceProcessor
+
+     File: mobile/src/main/java/com/example/fitguard/data/processing/SequencePro
+     cessor.kt
+
+     New companion constants/fields:
+
+     - PREDICTION_STRIDE = 3 (matches training SEQ_OVERLAP step)
+     - windowsSinceLastPrediction: Int = 0
+     - totalWindowsProcessed: Int = 0
+
+     Modify broadcastResult():
+
+     private fun broadcastResult(fv: FeatureVector) {
+         // ... existing broadcast intent (unchanged — FatigueViewModel still 
+     gets ALL windows)
+         context.sendBroadcast(intent)
+
+         totalWindowsProcessed++
+         windowsSinceLastPrediction++
+
+         if (totalWindowsProcessed >= 5 && windowsSinceLastPrediction >=
+     PREDICTION_STRIDE) {
+             // Run inference on this window
+             FatigueAlertManager.onFeatureWindow(context,
+     fv.toFeatureFloatArray())
+             windowsSinceLastPrediction = 0
+         } else {
+             // Buffer only — keep detector's sliding window in sync
+             FatigueAlertManager.bufferWindowOnly(context,
+     fv.toFeatureFloatArray())
+         }
+     }
+
+     Modify clearBuffer():
+
+     Also reset windowsSinceLastPrediction = 0 and totalWindowsProcessed = 0
+
+     ---
+     Part 4: Update fatigue_history.csv Logging
+
+     CsvWriter.kt (mobile/.../data/processing/CsvWriter.kt)
+
+     1. Add fields to FatigueHistoryRow: alertRawPHigh: Float = 0f,
+     alertSmoothedPHigh: Float = 0f
+     2. Update HISTORY_HEADER: append ,alert_raw_pHigh,alert_smoothed_pHigh
+     3. Update writeFatigueHistoryRow(): append the two new values to the CSV
+     line
+     4. Update readFatigueHistory(): parse new columns (with backward-compat:
+     check cols.size >= 20)
+     5. Update pushFatigueHistoryToFirestore(): add alertRawPHigh and
+     alertSmoothedPHigh to the map
+
+     ActivityHistoryRepository.kt 
+     (mobile/.../data/repository/ActivityHistoryRepository.kt)
+
+     - Update syncFatigueHistory(): add ,alert_raw_pHigh,alert_smoothed_pHigh to
+      the header string and append d.getDouble("alertRawPHigh"),
+     d.getDouble("alertSmoothedPHigh") to each row
+
+     FatigueViewModel.kt (mobile/.../features/fatigue/FatigueViewModel.kt)
+
+     - Update onNewFeatureWindow() CSV write call (~line 268): pass
+     FatigueAlertManager.lastRawPHigh and FatigueAlertManager.smoothedPHigh to
+     the FatigueHistoryRow constructor
+
+     ---
+     Files Modified (summary)
+
+     ┌──────────────────────────────┬───────────────────────────────────────────
+     ┐
+     │             File             │                  Changes
+     │
+     ├──────────────────────────────┼───────────────────────────────────────────
+     ┤
+     │ FatigueDetector.kt           │ Add bufferWindowOnly() method
+     │
+     ├──────────────────────────────┼───────────────────────────────────────────
+     ┤
+     │                              │ Add bufferWindowOnly(), EMA smoothing,
+     │
+     │ FatigueAlertManager.kt       │ consecutive-high tracking, modify alert
+     │
+     │                              │ logic
+     │
+     ├──────────────────────────────┼───────────────────────────────────────────
+     ┤
+     │                              │ Add stride constants, conditional
+     │
+     │ SequenceProcessor.kt         │ predict/buffer calls in
+     │
+     │                              │ broadcastResult(), reset in clearBuffer()
+     │
+     ├──────────────────────────────┼───────────────────────────────────────────
+     ┤
+     │ CsvWriter.kt                 │ Add 2 columns to FatigueHistoryRow,
+     │
+     │                              │ header, write, read, and Firestore push
+     │
+     ├──────────────────────────────┼───────────────────────────────────────────
+     ┤
+     │ ActivityHistoryRepository.kt │ Update syncFatigueHistory() header and
+     │
+     │                              │ row format
+     │
+     ├──────────────────────────────┼───────────────────────────────────────────
+     ┤
+     │ FatigueViewModel.kt          │ Pass alert raw/smoothed pHigh to CSV
+     │
+     │                              │ writer
+     │
+     └──────────────────────────────┴───────────────────────────────────────────
+     ┘
+
+     ---
+     Verification
+
+     1. Build: gradlew.bat --no-daemon :mobile:compileDebugKotlin must succeed
+     2. Stride check: In logcat, FatigueAlertManager "Alert fired" / prediction
+     logs should appear every ~45s (3 windows x 15s), not 4x per batch
+     3. Smoothing check: CSV alert_smoothed_pHigh column should show gradual
+     transitions, not jumps
+     4. Alert debounce: Notifications should only fire after 3+ consecutive
+     predictions with smoothed pHigh >= 0.50
+     5. Buffer sync: After stride-skipped windows, the next prediction should
+     still use the latest 5 windows (no gaps)
+
+● Let me implement the plan. I'll start with Parts 1 and 2 in parallel since
+  they're closely related, then Part 3, then Part 4.
+
+  Part 1: Add bufferWindowOnly() to FatigueDetector
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(mobile\src\main\java\com\example\fitguard\data\processing\FatigueDetect
+        or.kt)
+  ⎿  Added 10 lines
+      106          return runInference()
+      107      }
+      108  
+      109 +    /**                                                       
+      110 +     * Normalize and buffer features WITHOUT running inference
+          +.                                                             
+      111 +     * Keeps the sliding window in sync on non-prediction wind
+          +ows.                                                          
+      112 +     */                                                       
+      113 +    fun bufferWindowOnly(rawFeatures: FloatArray) {           
+      114 +        val normalized = normalize(rawFeatures)               
+      115 +        windowBuffer.addLast(normalized)                      
+      116 +        if (windowBuffer.size > SEQ_LENGTH) windowBuffer.remov
+          +eFirst()                                                      
+      117 +    }                                                         
+      118 +                                                              
+      119      fun predictBatch(windows: List<FloatArray>): FatigueResult
+           ? {
+      120          if (windows.size < SEQ_LENGTH) return null
+      121          // Use the last SEQ_LENGTH windows
+
+● Part 2: Update FatigueAlertManager with bufferWindowOnly(), EMA smoothing, and
+   consecutive-high tracking
+
+  Read 1 file (ctrl+o to expand)
+
+● Write(mobile\src\main\java\com\example\fitguard\features\fatigue\FatigueAlertM
+       anager.kt)
+  ⎿  Added 71 lines, removed 8 lines
+      27      private const val COOLDOWN_MS = 60_000L
+      28      private const val MESSAGE_PATH = "/fitguard/fatigue/alert"
+      29      private const val ACTION_DISMISS = "com.example.fitguard.FA
+          TIGUE_ALERT_DISMISS_PHONE"
+      30 +    private const val EMA_ALPHA = 0.4f                         
+      31 +    private const val CONSECUTIVE_HIGH_THRESHOLD = 3           
+      32  
+      33      private var detector: FatigueDetector? = null
+      34      private var initialized = false
+     ...
+      36      private var lastAlertTimeMs = 0L
+      37      private var vibrator: Vibrator? = null
+      38  
+      39 +    // EMA smoothing state                                     
+      40 +    var smoothedPHigh: Float = -1f                             
+      41 +        private set                                            
+      42 +    var lastRawPHigh: Float = 0f                               
+      43 +        private set                                            
+      44 +    private var consecutiveHighCount = 0                       
+      45 +                                                               
+      46      private fun ensureInitialized(context: Context) {
+      47          if (initialized) return
+      48          initialized = true
+     ...
+      69          nm.createNotificationChannel(channel)
+      70      }
+      71  
+      72 +    /**                                                        
+      73 +     * Buffer features in the detector WITHOUT running inferenc
+         +e.                                                             
+      74 +     * Called by SequenceProcessor on non-prediction stride win
+         +dows.                                                          
+      75 +     */                                                        
+      76 +    fun bufferWindowOnly(context: Context, features: FloatArray
+         +) {                                                            
+      77 +        ensureInitialized(context)                             
+      78 +        val det = detector ?: return                           
+      79 +        det.bufferWindowOnly(features)                         
+      80 +        Log.d(TAG, "Window buffered (no inference)")           
+      81 +    }                                                          
+      82 +                                                               
+      83      fun onFeatureWindow(context: Context, features: FloatArray)
+           {
+      84          ensureInitialized(context)
+      85          val det = detector ?: return
+     ...
+       87  
+       88          val result = det.addWindowAndPredict(features) ?: retu
+           rn
+       89  
+       90 +        // Update raw pHigh                                   
+       91 +        lastRawPHigh = result.pHigh                           
+       92 +                                                              
+       93 +        // Apply EMA smoothing                                
+       94 +        smoothedPHigh = if (smoothedPHigh < 0f) {             
+       95 +            result.pHigh                                      
+       96 +        } else {                                              
+       97 +            EMA_ALPHA * result.pHigh + (1f - EMA_ALPHA) * smoo
+          +thedPHigh                                                     
+       98 +        }                                                     
+       99 +                                                              
+      100 +        // Classify using smoothed pHigh                      
+      101 +        val smoothedLevelIndex = when {                       
+      102 +            smoothedPHigh < 0.25f -> 0                        
+      103 +            smoothedPHigh < 0.50f -> 1                        
+      104 +            smoothedPHigh < 0.75f -> 2                        
+      105 +            else -> 3                                         
+      106 +        }                                                     
+      107 +        val smoothedPercentDisplay = (smoothedPHigh * 100).toI
+          +nt().coerceIn(0, 100)                                         
+      108 +                                                              
+      109 +        // Track consecutive predictions above High threshold 
+          +(0.50)                                                        
+      110 +        if (smoothedPHigh >= 0.50f) {                         
+      111 +            consecutiveHighCount++                            
+      112 +        } else {                                              
+      113 +            consecutiveHighCount = 0                          
+      114 +        }                                                     
+      115 +                                                              
+      116 +        Log.d(TAG, "Prediction: raw=${String.format("%.3f", la
+          +stRawPHigh)}, " +                                             
+      117 +                "smoothed=${String.format("%.3f", smoothedPHig
+          +h)}, " +                                                      
+      118 +                "level=$smoothedLevelIndex, consecutiveHigh=$c
+          +onsecutiveHighCount")                                         
+      119 +                                                              
+      120          if (previousLevelIndex == -1) {
+       71 -            previousLevelIndex = result.levelIndex            
+       72 -            Log.d(TAG, "Baseline set: ${result.level} (${resul
+          -t.percentDisplay}%)")                                         
+      121 +            previousLevelIndex = smoothedLevelIndex           
+      122 +            Log.d(TAG, "Baseline set: level=$smoothedLevelInde
+          +x ($smoothedPercentDisplay%)")                                
+      123              return
+      124          }
+      125  
+       76 -        if (result.levelIndex > previousLevelIndex) {         
+      126 +        // Only fire alert when: level escalated AND sustained
+          + high fatigue (3+ consecutive)                                
+      127 +        if (smoothedLevelIndex > previousLevelIndex &&        
+      128 +            consecutiveHighCount >= CONSECUTIVE_HIGH_THRESHOLD
+          +) {                                                           
+      129              val now = System.currentTimeMillis()
+      130              if (now - lastAlertTimeMs >= COOLDOWN_MS) {
+       79 -                showPhoneNotification(context, result)        
+       80 -                sendToWatch(context, result)                  
+      131 +                // Build a result using smoothed values for th
+          +e notification                                                
+      132 +                val smoothedResult = FatigueResult(           
+      133 +                    pLow = 1f - smoothedPHigh,                
+      134 +                    pHigh = smoothedPHigh,                    
+      135 +                    level = result.level,                     
+      136 +                    levelIndex = smoothedLevelIndex,          
+      137 +                    percentDisplay = smoothedPercentDisplay   
+      138 +                )                                             
+      139 +                showPhoneNotification(context, smoothedResult)
+      140 +                sendToWatch(context, smoothedResult)          
+      141                  lastAlertTimeMs = now
+       82 -                Log.d(TAG, "Alert fired: ${result.level} (${re
+          -sult.percentDisplay}%)")                                      
+      142 +                Log.d(TAG, "Alert fired: level=$smoothedLevelI
+          +ndex ($smoothedPercentDisplay%)")                             
+      143              } else {
+       84 -                Log.d(TAG, "Alert suppressed (cooldown): ${res
+          -ult.level}")                                                  
+      144 +                Log.d(TAG, "Alert suppressed (cooldown): level
+          +=$smoothedLevelIndex")                                        
+      145              }
+      146          }
+      147  
+       88 -        previousLevelIndex = result.levelIndex                
+      148 +        previousLevelIndex = smoothedLevelIndex               
+      149      }
+      150  
+      151      fun reset() {
+      152          previousLevelIndex = -1
+      153          lastAlertTimeMs = 0L
+      154 +        smoothedPHigh = -1f                                   
+      155 +        lastRawPHigh = 0f                                     
+      156 +        consecutiveHighCount = 0                              
+      157          detector?.clearBuffer()
+      158          Log.d(TAG, "Reset")
+      159      }
+
+● Part 3: Stride control in SequenceProcessor
+
+● Update(mobile\src\main\java\com\example\fitguard\data\processing\SequenceProce
+        ssor.kt)
+  ⎿  Added 6 lines
+      20          private const val WINDOW_DURATION_MS = 60_000L
+      21          private const val WINDOW_STEP_MS = 15_000L
+      22          private const val MIN_PPG_SAMPLES = 10
+      23 +        // Match training stride: SEQ_LENGTH=5, SEQ_OVERLAP=2 →
+         + step=3                                                        
+      24 +        private const val PREDICTION_STRIDE = 3                
+      25  
+      26          // Static so buffer survives WearableListenerService re
+          creation between sequences
+      27          private val ppgBuffer = mutableListOf<PpgSample>()
+     ...
+      30          private var windowIndex: Int = 0
+      31          private var currentActivityType: String = ""
+      32          private val bufferMutex = Mutex()
+      33 +        private var totalWindowsProcessed: Int = 0             
+      34 +        private var windowsSinceLastPrediction: Int = 0        
+      35  
+      36          fun clearBuffer() {
+      37              ppgBuffer.clear()
+     ...
+      39              nextWindowStart = -1L
+      40              windowIndex = 0
+      41              currentActivityType = ""
+      42 +            totalWindowsProcessed = 0                          
+      43 +            windowsSinceLastPrediction = 0                     
+      44              SequenceBatchAccumulator.clearAll()
+      45              FatigueAlertManager.reset()
+      46          }
+  ⎿  Found 1 new diagnostic issue in 1 file (ctrl+o to expand)
+
+● Now update broadcastResult() to use stride logic:
+
+● Update(mobile\src\main\java\com\example\fitguard\data\processing\SequenceProce
+        ssor.kt)
+  ⎿  Added 16 lines, removed 2 lines
+      187              putExtra("feature_array", fv.toFeatureFloatArray()
+           )
+      188          }
+      189          context.sendBroadcast(intent)
+      190 -        FatigueAlertManager.onFeatureWindow(context, fv.toFeat
+          -ureFloatArray())                                              
+      191 -        Log.d(TAG, "Broadcast SEQUENCE_PROCESSED for ${fv.sequ
+          -enceId}")                                                     
+      190 +                                                              
+      191 +        // Stride control: only run inference every PREDICTION
+          +_STRIDE windows,                                              
+      192 +        // and only after enough windows have been buffered (S
+          +EQ_LENGTH=5)                                                  
+      193 +        totalWindowsProcessed++                               
+      194 +        windowsSinceLastPrediction++                          
+      195 +        val featureArray = fv.toFeatureFloatArray()           
+      196 +                                                              
+      197 +        if (totalWindowsProcessed >= 5 && windowsSinceLastPred
+          +iction >= PREDICTION_STRIDE) {                                
+      198 +            FatigueAlertManager.onFeatureWindow(context, featu
+          +reArray)                                                      
+      199 +            windowsSinceLastPrediction = 0                    
+      200 +            Log.d(TAG, "Broadcast SEQUENCE_PROCESSED for ${fv.
+          +sequenceId} (inference)")                                     
+      201 +        } else {                                              
+      202 +            FatigueAlertManager.bufferWindowOnly(context, feat
+          +ureArray)                                                     
+      203 +            Log.d(TAG, "Broadcast SEQUENCE_PROCESSED for ${fv.
+          +sequenceId} (buffer only, " +                                 
+      204 +                    "total=$totalWindowsProcessed, sincePred=$
+          +windowsSinceLastPrediction)")                                 
+      205 +        }                                                     
+      206      }
+      207  }
+
+● Part 4: Update CSV logging
+
+● Update(mobile\src\main\java\com\example\fitguard\data\processing\CsvWriter.kt)
+  ⎿  Added 3 lines, removed 1 line
+      423          val currentHr: Double,
+      424          val currentRmssd: Double,
+      425          val baselineHr: Double,
+      426 -        val baselineRmssd: Double                             
+      426 +        val baselineRmssd: Double,                            
+      427 +        val alertRawPHigh: Float = 0f,                        
+      428 +        val alertSmoothedPHigh: Float = 0f                    
+      429      )
+      430  
+      431      private const val HISTORY_FILE = "fatigue_history.csv"
+
+● Update(mobile\src\main\java\com\example\fitguard\data\processing\CsvWriter.kt)
+  ⎿  Added 2 lines, removed 1 line
+      433          "global_pLow,global_pHigh,global_level,global_levelInd
+           ex," +
+      434          "ext_pLow,ext_pHigh,ext_level,ext_levelIndex," +
+      435          "ondev_pLow,ondev_pHigh,ondev_level,ondev_levelIndex,"
+            +
+      436 -        "current_hr,current_rmssd,baseline_hr,baseline_rmssd" 
+      436 +        "current_hr,current_rmssd,baseline_hr,baseline_rmssd,"
+          + +                                                            
+      437 +        "alert_raw_pHigh,alert_smoothed_pHigh"                
+      438  
+      439      fun writeFatigueHistoryRow(
+      440          row: FatigueHistoryRow,
+
+● Now update the CSV line in writeFatigueHistoryRow():
+
+● Update(mobile\src\main\java\com\example\fitguard\data\processing\CsvWriter.kt)
+  ⎿  Added 2 lines, removed 1 line
+      456  
+      457              val line = "${row.timestamp},${fmt(row.fatiguePerc
+           ent.toDouble())}," +
+      458                  "${resCols(row.global)},${resCols(row.external
+           )},${resCols(row.onDevice)}," +
+      459 -                "${fmt(row.currentHr)},${fmt(row.currentRmssd)
+          -},${fmt(row.baselineHr)},${fmt(row.baselineRmssd)}"           
+      459 +                "${fmt(row.currentHr)},${fmt(row.currentRmssd)
+          +},${fmt(row.baselineHr)},${fmt(row.baselineRmssd)}," +        
+      460 +                "${fmt(row.alertRawPHigh.toDouble())},${fmt(ro
+          +w.alertSmoothedPHigh.toDouble())}"                            
+      461  
+      462              val content = buildString {
+      463                  if (needsHeader) appendLine(HISTORY_HEADER)
+
+● Update Firestore push:
+
+● Update(mobile\src\main\java\com\example\fitguard\data\processing\CsvWriter.kt)
+  ⎿  Added 3 lines, removed 1 line
+      282                  "currentHr" to row.currentHr,
+      283                  "currentRmssd" to row.currentRmssd,
+      284                  "baselineHr" to row.baselineHr,
+      285 -                "baselineRmssd" to row.baselineRmssd          
+      285 +                "baselineRmssd" to row.baselineRmssd,         
+      286 +                "alertRawPHigh" to row.alertRawPHigh,         
+      287 +                "alertSmoothedPHigh" to row.alertSmoothedPHigh
+      288              ))
+      289              .addOnFailureListener { e ->
+      290                  Log.e(TAG, "Firestore fatigue history failed: 
+           ${e.message}", e)
+
+● Update readFatigueHistory() to parse new columns:
+
+● Update(mobile\src\main\java\com\example\fitguard\data\processing\CsvWriter.kt)
+  ⎿  Added 3 lines, removed 1 line
+      507                      currentHr = cols.getOrNull(14)?.toDoubleOr
+           Null() ?: 0.0,
+      508                      currentRmssd = cols.getOrNull(15)?.toDoubl
+           eOrNull() ?: 0.0,
+      509                      baselineHr = cols.getOrNull(16)?.toDoubleO
+           rNull() ?: 0.0,
+      510 -                    baselineRmssd = cols.getOrNull(17)?.toDoub
+          -leOrNull() ?: 0.0                                             
+      510 +                    baselineRmssd = cols.getOrNull(17)?.toDoub
+          +leOrNull() ?: 0.0,                                            
+      511 +                    alertRawPHigh = cols.getOrNull(18)?.toFloa
+          +tOrNull() ?: 0f,                                              
+      512 +                    alertSmoothedPHigh = cols.getOrNull(19)?.t
+          +oFloatOrNull() ?: 0f                                          
+      513                  ))
+      514              }
+      515          } catch (e: Exception) {
+● Update ActivityHistoryRepository.syncFatigueHistory():
+
+● Update(mobile\src\main\java\com\example\fitguard\data\repository\ActivityHisto
+        ryRepository.kt)
+  ⎿  Added 2 lines, removed 1 line
+      430              "global_pLow,global_pHigh,global_level,global_leve
+           lIndex," +
+      431              "ext_pLow,ext_pHigh,ext_level,ext_levelIndex," +
+      432              "ondev_pLow,ondev_pHigh,ondev_level,ondev_levelInd
+           ex," +
+      433 -            "current_hr,current_rmssd,baseline_hr,baseline_rms
+          -sd"                                                           
+      433 +            "current_hr,current_rmssd,baseline_hr,baseline_rms
+          +sd," +                                                        
+      434 +            "alert_raw_pHigh,alert_smoothed_pHigh"            
+      435  
+      436          val sb = StringBuilder()
+      437          sb.appendLine(header)
+
+● Now update the row format in syncFatigueHistory:
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(mobile\src\main\java\com\example\fitguard\data\repository\ActivityHisto
+        ryRepository.kt)
+  ⎿  Added 2 lines, removed 1 line
+      440                  "${fmt(d.getDouble("globalPLow") ?: 0.0)},${fm
+           t(d.getDouble("globalPHigh") ?: 0.0)},${d.getString("globalLev
+           el") ?: ""},${d.getLong("globalLevelIndex") ?: -1}," +
+      441                  "${fmt(d.getDouble("extPLow") ?: 0.0)},${fmt(d
+           .getDouble("extPHigh") ?: 0.0)},${d.getString("extLevel") ?: "
+           "},${d.getLong("extLevelIndex") ?: -1}," +
+      442                  "${fmt(d.getDouble("ondevPLow") ?: 0.0)},${fmt
+           (d.getDouble("ondevPHigh") ?: 0.0)},${d.getString("ondevLevel"
+           ) ?: ""},${d.getLong("ondevLevelIndex") ?: -1}," +
+      443 -                "${fmt(d.getDouble("currentHr") ?: 0.0)},${fmt
+          -(d.getDouble("currentRmssd") ?: 0.0)},${fmt(d.getDouble("basel
+          -ineHr") ?: 0.0)},${fmt(d.getDouble("baselineRmssd") ?: 0.0)}")
+      443 +                "${fmt(d.getDouble("currentHr") ?: 0.0)},${fmt
+          +(d.getDouble("currentRmssd") ?: 0.0)},${fmt(d.getDouble("basel
+          +ineHr") ?: 0.0)},${fmt(d.getDouble("baselineRmssd") ?: 0.0)},"
+          + +                                                            
+      444 +                "${fmt(d.getDouble("alertRawPHigh") ?: 0.0)},$
+          +{fmt(d.getDouble("alertSmoothedPHigh") ?: 0.0)}")             
+      445          }
+      446          File(localDir, "fatigue_history.csv").writeText(sb.toS
+           tring())
+      447      }
+
+● Now update FatigueViewModel.onNewFeatureWindow() to pass the alert values:
+
+● Update(mobile\src\main\java\com\example\fitguard\features\fatigue\FatigueViewM
+        odel.kt)
+  ⎿  Added 4 lines, removed 1 line
+      275                              currentHr = currentHr,
+      276                              currentRmssd = currentRmssd,
+      277                              baselineHr = baselineHr,
+      278 -                            baselineRmssd = baselineRmssd     
+      278 +                            baselineRmssd = baselineRmssd,    
+      279 +                            alertRawPHigh = FatigueAlertManage
+          +r.lastRawPHigh,                                               
+      280 +                            alertSmoothedPHigh = if (FatigueAl
+          +ertManager.smoothedPHigh >= 0f)                               
+      281 +                                FatigueAlertManager.smoothedPH
+          +igh else 0f                                                   
+      282                          ),
+      283                          userId, sessionDir
+      284                      )
+
+● Now check if FatigueViewModel needs the import:
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Need to add the import:
+
+  Read 1 file (ctrl+o to expand)
+
+● It's in the same package, so no import needed for FatigueAlertManager. Let me
+  verify the build:
+
+● Bash(cd C:/Users/claud/AndroidStudioProjects/FitGuard && ./gradlew.bat
+      --no-daemon :mobile:compileDebugKotlin 2>&1 | tail -20)
+  ⎿  > Task :mobile:parseDebugLocalResources UP-TO-DATE
+     > Task :mobile:dataBindingGenBaseClassesDebug UP-TO-DATE
+     > Task :mobile:checkDebugAarMetadata UP-TO-DATE
+     … +18 lines (ctrl+o to expand)
+  ⎿  (timeout 10m)
+
+● Build successful. Here's a summary of all changes:
+
+  Part 1: FatigueDetector.kt
+
+  - Added bufferWindowOnly(rawFeatures) — normalizes and buffers features
+  without running inference
+
+  Part 2: FatigueAlertManager.kt
+
+  - Added bufferWindowOnly(context, features) — delegates to detector's
+  buffer-only method
+  - Added EMA smoothing (alpha=0.4) on pHigh after each prediction
+  - Added consecutiveHighCount tracker — alerts only fire after 3+ consecutive
+  predictions with smoothed pHigh >= 0.50
+  - Level classification now uses smoothedPHigh instead of raw
+  - Exposed lastRawPHigh and smoothedPHigh as readable properties
+  - reset() clears all new state
+
+  Part 3: SequenceProcessor.kt
+
+  - Added PREDICTION_STRIDE = 3, totalWindowsProcessed,
+  windowsSinceLastPrediction
+  - broadcastResult() now calls onFeatureWindow() only every 3rd window after 5
+  windows buffered; otherwise calls bufferWindowOnly()
+  - clearBuffer() resets stride counters
+
+  Part 4: CSV logging
+
+  - CsvWriter.kt: Added alertRawPHigh/alertSmoothedPHigh to FatigueHistoryRow,
+  header, write, read, and Firestore push
+  - ActivityHistoryRepository.kt: Updated syncFatigueHistory() header and row
+  format
+  - FatigueViewModel.kt: Passes FatigueAlertManager.lastRawPHigh/smoothedPHigh
+  when writing CSV rows
+
+✻ Crunched for 9m 51s
+
+❯ /plan                                                                         
+  ⎿  Enabled plan mode

@@ -372,6 +372,7 @@ class MainActivity : Activity() {
         sendMessageToPhone("/fitguard/activity/ack", JSONObject().apply {
             put("session_id", sessionId)
             put("status", "started")
+            put("activity_type", selectedActivity)
         })
         Log.d(TAG, "Session started: $selectedActivity id=$sessionId")
     }

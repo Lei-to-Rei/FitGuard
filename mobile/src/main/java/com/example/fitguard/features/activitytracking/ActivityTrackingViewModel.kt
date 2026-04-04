@@ -289,7 +289,46 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         }
     }
 
-    fun onWatchAck(ackSessionId: String, status: String) {
+    fun onWatchAck(ackSessionId: String, status: String, activityType: String? = null) {
+        if (status == "started" && ackSessionId != sessionId && _state.value == SessionState.IDLE) {
+            // Watch-initiated session — adopt it
+            val type = activityType ?: "Walking"
+            sessionId = ackSessionId
+            sessionStartTime = System.currentTimeMillis()
+            _activityType.value = type
+            _error.value = null
+            _elapsedSeconds.value = 0
+            _sequenceCount.value = 0
+            SequenceProcessor.clearBuffer()
+            RecoveryRecommendationManager.startSession()
+            activeSessionId = sessionId
+            activeSessionDir = buildSessionDirName(type, sessionStartTime)
+
+            routePointsList.clear()
+            totalDistanceMeters = 0f
+            _routePoints.value = emptyList()
+            _distanceMeters.value = 0f
+            _paceMinPerKm.value = 0.0
+
+            prefs.edit()
+                .putString(KEY_SESSION_DIR, activeSessionDir)
+                .putString(KEY_SESSION_ID, sessionId)
+                .putString(KEY_ACTIVITY_TYPE, type)
+                .putLong(KEY_START_TIME, sessionStartTime)
+                .apply()
+            val hasLocationPerm = ActivityCompat.checkSelfPermission(
+                getApplication(), Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            SessionForegroundService.start(getApplication(), type, withLocation = hasLocationPerm)
+
+            _state.value = SessionState.ACTIVE
+            startTimer()
+            startLocationTracking()
+            saveSession()
+            Log.d(TAG, "Adopted watch-initiated session: $sessionId type=$type")
+            return
+        }
+
         if (ackSessionId != sessionId) return
 
         cancelConnectTimeout()

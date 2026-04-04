@@ -1,0 +1,1876 @@
+ ▐▛███▜▌   Claude Code v2.1.86
+▝▜█████▛▘  Sonnet 4.6 · Claude Pro
+  ▘▘ ▝▝    ~\AndroidStudioProjects\FitGuard
+
+  ↑ Install the PyCharm plugin from the JetBrains Marketplace:
+    https://docs.claude.com/s/claude-code-jetbrains
+
+✻ Conversation compacted (ctrl+o for history)
+
+
+● Let me read the files I need to modify.
+
+  Read 2 files (ctrl+o to expand)
+
+● Now I'll make all three core data model changes in parallel.
+
+● Update(mobile\src\main\java\com\example\fitguard\data\processing\PpgProcessor.
+        kt)
+  ⎿  Added 1 line, removed 3 lines
+      45      val accelPeak: Double,
+      46      val totalSteps: Int,
+      47      val cadenceSpm: Double,
+      48 -    val activityLabel: String = "",                            
+      49 -    val fatigueLevel: String = "",                             
+      50 -    val rpeRaw: Int = -1                                       
+      48 +    val activityLabel: String = ""                             
+      49  ) {
+      50      /** Extract 30 model features in scaler_params.json order. 
+          */
+      51      fun toFeatureFloatArray(): FloatArray = floatArrayOf(
+
+● Update(mobile\src\main\java\com\example\fitguard\data\processing\CsvWriter.kt)
+  ⎿  Added 1 line, removed 3 lines
+      193          "accelPeak" to accelPeak,
+      194          "totalSteps" to totalSteps,
+      195          "cadenceSpm" to cadenceSpm,
+      196 -        "activityLabel" to activityLabel,                     
+      197 -        "fatigueLevel" to fatigueLevel,                       
+      198 -        "rpeRaw" to rpeRaw                                    
+      196 +        "activityLabel" to activityLabel                      
+      197      )
+      198  
+      199      fun pushSessionMetadata(
+
+● Update(mobile\src\main\java\com\example\fitguard\data\processing\CsvWriter.kt)
+  ⎿  Added 1 line, removed 1 line
+      28          "accel_x_var", "accel_y_var", "accel_z_var",
+      29          "accel_mag_mean", "accel_mag_var", "accel_peak",
+      30          "total_steps", "cadence_spm",
+      31 -        "activity_label", "fatigue_level", "rpe_raw"           
+      31 +        "activity_label"                                       
+      32      ).joinToString(",")
+      33  
+      34      fun getOutputDir(userId: String = "", sessionDir: String = 
+          ""): File {
+
+● Update(mobile\src\main\java\com\example\fitguard\data\processing\CsvWriter.kt)
+  ⎿  Added 1 line, removed 3 lines
+      83                  fmt(fv.accelPeak),
+      84                  fv.totalSteps.toString(),
+      85                  fmt(fv.cadenceSpm),
+      86 -                fv.activityLabel,                              
+      87 -                fv.fatigueLevel,                               
+      88 -                if (fv.rpeRaw >= 0) fv.rpeRaw.toString() else "
+         -"                                                              
+      86 +                fv.activityLabel                               
+      87              ).joinToString(",")
+      88  
+      89              val content = buildString {
+
+● Update(mobile\src\main\java\com\example\fitguard\data\processing\CsvWriter.kt)
+  ⎿  Removed 2 lines
+      141                  put("total_steps", fv.totalSteps)
+      142                  put("cadence_spm", fv.cadenceSpm)
+      143                  put("activity_label", fv.activityLabel)
+      144 -                put("fatigue_level", fv.fatigueLevel)         
+      145 -                put("rpe_raw", fv.rpeRaw)                     
+      144              }
+      145              file.appendText(json.toString() + "\n")
+      146          } catch (e: Exception) {
+
+● Now rewrite SequenceProcessor.kt to remove all RPE logic and make windows
+  write immediately.
+
+● Write(mobile\src\main\java\com\example\fitguard\data\processing\SequenceProces
+       sor.kt)
+  ⎿  Added 7 lines, removed 113 lines
+      13  import kotlinx.coroutines.sync.Mutex
+      14  import kotlinx.coroutines.sync.withLock
+      15  
+      16 -object RpeState {                                              
+      17 -    @Volatile var currentRpe: Int = -1                         
+      18 -                                                               
+      19 -    fun update(rpe: Int) {                                     
+      20 -        currentRpe = rpe                                       
+      21 -    }                                                          
+      22 -                                                               
+      23 -    fun reset() {                                              
+      24 -        currentRpe = -1                                        
+      25 -    }                                                          
+      26 -                                                               
+      27 -    val fatigueLevel: String get() = fatigueLevelForRpe(current
+         -Rpe)                                                           
+      28 -                                                               
+      29 -    fun fatigueLevelForRpe(rpe: Int): String = when (rpe) {    
+      30 -        in 0..2 -> "0"                                         
+      31 -        in 3..4 -> "1"                                         
+      32 -        in 5..7 -> "2"                                         
+      33 -        in 8..10 -> "3"                                        
+      34 -        else -> ""                                             
+      35 -    }                                                          
+      36 -}                                                              
+      37 -                                                               
+      16  class SequenceProcessor(private val context: Context) {
+      39 -    data class PendingWindow(val fv: FeatureVector, val userId:
+         - String, val sessionDir: String)                               
+      40 -                                                               
+      17      companion object {
+      18          private const val TAG = "SequenceProcessor"
+      19          const val ACTION_SEQUENCE_PROCESSED = "com.example.fitg
+          uard.SEQUENCE_PROCESSED"
+     ...
+      29          private var currentActivityType: String = ""
+      30          private val bufferMutex = Mutex()
+      31  
+      56 -        // Deferred-flush RPE state                            
+      57 -        private val pendingWindows = mutableListOf<PendingWindo
+         -w>()                                                           
+      58 -        private var lastFlushedRpe: Int = -1                   
+      59 -        private var pendingRpe: Int? = null                    
+      60 -                                                               
+      32          fun clearBuffer() {
+      33              ppgBuffer.clear()
+      34              accelBuffer.clear()
+      35              nextWindowStart = -1L
+      36              windowIndex = 0
+      37              currentActivityType = ""
+      67 -            pendingWindows.clear()                             
+      68 -            lastFlushedRpe = -1                                
+      69 -            pendingRpe = null                                  
+      38              SequenceBatchAccumulator.clearAll()
+      39              FatigueAlertManager.reset()
+      40          }
+      41  
+      42          /**
+      75 -         * Flush any remaining pending windows to CSV with carr
+         -y-forward RPE,                                                 
+      76 -         * then clear all buffers. Call this on session stop so
+         - features.csv                                                  
+      77 -         * is always written before the session directory is fi
+         -nalized.                                                       
+      43 +         * Clear all buffers. Call this on session stop.       
+      44           */
+      45          fun flushRemainingAndClear() {
+      80 -            if (pendingWindows.isNotEmpty()) {                 
+      81 -                val carryRpe = if (lastFlushedRpe >= 0) lastFlu
+         -shedRpe else -1                                                
+      82 -                val fatigue = RpeState.fatigueLevelForRpe(carry
+         -Rpe)                                                           
+      83 -                for (pw in pendingWindows) {                   
+      84 -                    val finalFv = pw.fv.copy(rpeRaw = carryRpe,
+         - fatigueLevel = fatigue)                                       
+      85 -                    CsvWriter.writeFeatureVector(finalFv, pw.us
+         -erId, pw.sessionDir)                                           
+      86 -                    CsvWriter.writeFeatureJsonl(finalFv, pw.use
+         -rId, pw.sessionDir)                                            
+      87 -                }                                              
+      88 -                Log.d(TAG, "Flushed ${pendingWindows.size} rema
+         -ining windows on session end with RPE=$carryRpe")              
+      89 -            }                                                  
+      46              clearBuffer()
+      47          }
+      48      }
+     ...
+       98                  // Trim samples older than nextWindowStart (ca
+           n't participate in future windows)
+       99                  ppgBuffer.removeAll { it.timestamp < nextWindo
+           wStart }
+      100                  accelBuffer.removeAll { it.timestamp < nextWin
+           dowStart }
+      145 -                                                              
+      146 -                // Flush with stored RPE that arrived before w
+          -indows were ready (race condition)                            
+      147 -                val storedRpe = pendingRpe                    
+      148 -                if (storedRpe != null && pendingWindows.isNotE
+          -mpty()) {                                                     
+      149 -                    Log.d(TAG, "Flushing ${pendingWindows.size
+          -} windows with stored pendingRpe=$storedRpe")                 
+      150 -                    flushPendingWindows(storedRpe)            
+      151 -                    pendingRpe = null                         
+      152 -                }                                             
+      101              }
+      102          }
+      103      }
+     ...
+      121              } else 0.0
+      122              val accelFeatures = AccelProcessor.process(data.ac
+           celSamples, durationSeconds)
+      123  
+      176 -            // 3. Assemble FeatureVector (RPE filled later on 
+          -flush)                                                        
+      124 +            // 3. Assemble FeatureVector                      
+      125              val dataTimestamp = if (data.ppgSamples.size >= 2)
+            {
+      126                  val first = data.ppgSamples.first().timestamp
+      127                  val last = data.ppgSamples.last().timestamp
+     ...
+      154                      "RMSSD=${String.format("%.2f", ppgFeatures
+           .rmssdMs)} " +
+      155                      "LF/HF=${String.format("%.2f", ppgFeatures
+           .lfHfRatio)} " +
+      156                      "SpO2=${String.format("%.1f", ppgFeatures.
+           spo2MeanPct)} " +
+      209 -                    "Steps=${accelFeatures.totalSteps} (pendin
+          -g RPE)")                                                      
+      157 +                    "Steps=${accelFeatures.totalSteps}")      
+      158  
+      211 -            // 4. Add to pending list — will be flushed when R
+          -PE arrives                                                    
+      159 +            // 4. Write immediately to CSV/JSONL and broadcast
+      160              val userId = FirebaseAuth.getInstance().currentUse
+           r?.uid ?: ""
+      161              val sessionDir = ActivityTrackingViewModel.activeS
+           essionDir ?: ""
+      214 -            pendingWindows.add(PendingWindow(featureVector, us
+          -erId, sessionDir))                                            
+      162 +            CsvWriter.writeFeatureVector(featureVector, userId
+          +, sessionDir)                                                 
+      163 +            CsvWriter.writeFeatureJsonl(featureVector, userId,
+          + sessionDir)                                                  
+      164 +            broadcastResult(featureVector)                    
+      165          } catch (e: Exception) {
+      166              Log.e(TAG, "Failed to process window ${data.sequen
+           ceId}: ${e.message}", e)
+      167          }
+      168      }
+      169  
+      220 -    /**                                                       
+      221 -     * Flush all pendingWindows to CSV with the given RPE valu
+          -e.                                                            
+      222 -     * Must be called while holding bufferMutex.              
+      223 -     */                                                       
+      224 -    private fun flushPendingWindows(rpe: Int) {               
+      225 -        val n = pendingWindows.size                           
+      226 -        if (n == 0) return                                    
+      227 -                                                              
+      228 -        if (rpe >= 0) {                                       
+      229 -            for (i in pendingWindows.indices) {               
+      230 -                val roundedRpe = if (lastFlushedRpe < 0) {    
+      231 -                    rpe                                       
+      232 -                } else {                                      
+      233 -                    (lastFlushedRpe + (i + 1).toDouble() / n *
+          - (rpe - lastFlushedRpe)).toInt()                              
+      234 -                }                                             
+      235 -                val fatigue = RpeState.fatigueLevelForRpe(roun
+          -dedRpe)                                                       
+      236 -                val pw = pendingWindows[i]                    
+      237 -                val finalFv = pw.fv.copy(rpeRaw = roundedRpe, 
+          -fatigueLevel = fatigue)                                       
+      238 -                CsvWriter.writeFeatureVector(finalFv, pw.userI
+          -d, pw.sessionDir)                                             
+      239 -                CsvWriter.writeFeatureJsonl(finalFv, pw.userId
+          -, pw.sessionDir)                                              
+      240 -                broadcastResult(finalFv)                      
+      241 -            }                                                 
+      242 -            Log.d(TAG, "Flushed $n windows with RPE interpolat
+          -ion: " +                                                      
+      243 -                    "lastFlushed=$lastFlushedRpe -> new=$rpe")
+      244 -            lastFlushedRpe = rpe                              
+      245 -        } else {                                              
+      246 -            val carryRpe = if (lastFlushedRpe >= 0) lastFlushe
+          -dRpe else -1                                                  
+      247 -            val fatigue = RpeState.fatigueLevelForRpe(carryRpe
+          -)                                                             
+      248 -            for (pw in pendingWindows) {                      
+      249 -                val finalFv = pw.fv.copy(                     
+      250 -                    rpeRaw = carryRpe,                        
+      251 -                    fatigueLevel = fatigue                    
+      252 -                )                                             
+      253 -                CsvWriter.writeFeatureVector(finalFv, pw.userI
+          -d, pw.sessionDir)                                             
+      254 -                CsvWriter.writeFeatureJsonl(finalFv, pw.userId
+          -, pw.sessionDir)                                              
+      255 -                broadcastResult(finalFv)                      
+      256 -            }                                                 
+      257 -            Log.d(TAG, "Flushed $n windows with carry-forward 
+          -RPE=$carryRpe (skipped)")                                     
+      258 -        }                                                     
+      259 -        pendingWindows.clear()                                
+      260 -    }                                                         
+      261 -                                                              
+      262 -    fun onRpeReceived(rpe: Int) {                             
+      263 -        scope.launch {                                        
+      264 -            bufferMutex.withLock {                            
+      265 -                if (pendingWindows.isEmpty()) {               
+      266 -                    Log.d(TAG, "onRpeReceived($rpe) but no pen
+          -ding windows, storing as pendingRpe")                         
+      267 -                    pendingRpe = rpe                          
+      268 -                    return@withLock                           
+      269 -                }                                             
+      270 -                pendingRpe = null                             
+      271 -                flushPendingWindows(rpe)                      
+      272 -            }                                                 
+      273 -        }                                                     
+      274 -    }                                                         
+      275 -                                                              
+      170      private fun broadcastResult(fv: FeatureVector) {
+      171          val intent = Intent(ACTION_SEQUENCE_PROCESSED).apply {
+      172              putExtra("sequence_id", fv.sequenceId)
+
+● Also fix the redundant suspend warning, then read the phone module files I
+  need to modify.
+
+● Update(mobile\src\main\java\com\example\fitguard\data\processing\SequenceProce
+        ssor.kt)
+  ⎿  Added 1 line, removed 1 line
+      102          }
+      103      }
+      104  
+      105 -    private suspend fun processWindow(data: SequenceData) {   
+      105 +    private fun processWindow(data: SequenceData) {           
+      106          try {
+      107              Log.d(TAG, "Processing window ${data.sequenceId} w
+           ith " +
+      108                      "${data.ppgSamples.size} PPG, ${data.accel
+           Samples.size} accel samples")
+
+  Read 4 files (ctrl+o to expand)
+
+● Now let me read the remaining files and start making edits. I'll read the
+  remaining files and make the straightforward edits in parallel.
+
+  Read 4 files (ctrl+o to expand)
+
+● Now I have all the phone module files. Let me make all the edits in parallel.
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingViewModel.kt)
+  ⎿  Removed 1 line
+      15  import androidx.lifecycle.viewModelScope
+      16  import com.example.fitguard.data.processing.CsvWriter
+      17  import com.example.fitguard.data.processing.FatigueDetector
+      18 -import com.example.fitguard.data.processing.RpeState           
+      18  import com.example.fitguard.data.processing.SequenceProcessor
+      19  import com.google.firebase.auth.FirebaseAuth
+      20  import com.example.fitguard.services.SessionForegroundService
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingViewModel.kt)
+  ⎿  Removed 2 lines
+      50          private const val KEY_START_TIME = "start_time"
+      51          private const val KEY_IS_ACTIVE = "is_active"
+      52          private const val KEY_SEQUENCE_COUNT = "sequence_count"
+      53 -        private const val KEY_RPE_INTERVAL = "rpe_interval"    
+      54 -        private const val KEY_LAST_RPE = "last_rpe"            
+      53          private const val KEY_SESSION_DIR = "session_dir"
+      54  
+      55          /** Current active session ID, readable by WearableData
+          ListenerService to filter stale batches. */
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingViewModel.kt)
+  ⎿  Removed 6 lines
+      80      private val _error = MutableLiveData<String?>(null)
+      81      val error: LiveData<String?> = _error
+      82  
+      83 -    private val _rpeIntervalMinutes = MutableLiveData(10)      
+      84 -    val rpeIntervalMinutes: LiveData<Int> = _rpeIntervalMinutes
+      85 -                                                               
+      86 -    private val _lastRpe = MutableLiveData(-1)                 
+      87 -    val lastRpe: LiveData<Int> = _lastRpe                      
+      88 -                                                               
+      83      // Location tracking
+      84      private val _routePoints = MutableLiveData<List<LocationPoi
+          nt>>(emptyList())
+      85      val routePoints: LiveData<List<LocationPoint>> = _routePoin
+          ts
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingViewModel.kt)
+  ⎿  Removed 2 lines
+      371              .putLong(KEY_START_TIME, sessionStartTime)
+      372              .putBoolean(KEY_IS_ACTIVE, true)
+      373              .putInt(KEY_SEQUENCE_COUNT, _sequenceCount.value ?
+           : 0)
+      374 -            .putInt(KEY_RPE_INTERVAL, _rpeIntervalMinutes.valu
+          -e ?: 10)                                                      
+      375 -            .putInt(KEY_LAST_RPE, _lastRpe.value ?: -1)       
+      374              .putString(KEY_SESSION_DIR, activeSessionDir ?: ""
+           )
+      375              .apply()
+      376      }
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingViewModel.kt)
+  ⎿  Removed 2 lines
+      390          sessionStartTime = savedStartTime
+      391          _activityType.value = prefs.getString(KEY_ACTIVITY_TYP
+           E, "Walking")
+      392          _sequenceCount.value = prefs.getInt(KEY_SEQUENCE_COUNT
+           , 0)
+      393 -        _rpeIntervalMinutes.value = prefs.getInt(KEY_RPE_INTER
+          -VAL, 10)                                                      
+      394 -        _lastRpe.value = prefs.getInt(KEY_LAST_RPE, -1)       
+      393  
+      394          // Calculate elapsed from saved start time
+      395          val elapsedMs = System.currentTimeMillis() - savedStar
+           tTime
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingViewModel.kt)
+  ⎿  Removed 22 lines
+      136          _activityType.value = type
+      137      }
+      138  
+      139 -    fun setRpeInterval(minutes: Int) {                        
+      140 -        _rpeIntervalMinutes.value = minutes.coerceIn(1, 15)   
+      141 -    }                                                         
+      142 -                                                              
+      143 -    fun onRpeReceived(sessionId: String, rpeValue: Int) {     
+      144 -        if (sessionId != this.sessionId) return               
+      145 -        _lastRpe.value = rpeValue                             
+      146 -        if (rpeValue >= 0) {                                  
+      147 -            RpeState.update(rpeValue)                         
+      148 -        }                                                     
+      149 -        saveSession()                                         
+      150 -        Log.d(TAG, "RPE received: $rpeValue for session $sessi
+          -onId")                                                        
+      151 -    }                                                         
+      152 -                                                              
+      153 -    fun onPhoneRpeAnswered(sessionId: String, rpeValue: Int) {
+      154 -        if (sessionId != this.sessionId) return               
+      155 -        _lastRpe.value = rpeValue                             
+      156 -        // RpeState and SequenceProcessor already updated by R
+          -pePromptActivity                                              
+      157 -        saveSession()                                         
+      158 -        Log.d(TAG, "Phone RPE answered: $rpeValue for session 
+          -$sessionId")                                                  
+      159 -    }                                                         
+      160 -                                                              
+      139      private fun buildSessionDirName(activityType: String, star
+           tTime: Long): String {
+      140          val sdf = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.
+           US)
+      141          return "${sdf.format(Date(startTime))}_${activityType.
+           replace(' ', '_')}"
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingViewModel.kt)
+  ⎿  Removed 2 lines
+      151          _error.value = null
+      152          _elapsedSeconds.value = 0
+      153          _sequenceCount.value = 0
+      154 -        _lastRpe.value = -1                                   
+      155 -        RpeState.reset()                                      
+      154          SequenceProcessor.clearBuffer()
+      155          activeSessionId = sessionId
+      156          activeSessionDir = buildSessionDirName(activityType, s
+           essionStartTime)
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingViewModel.kt)
+  ⎿  Removed 1 line
+      194                  val payload = JSONObject().apply {
+      195                      put("activity_type", activityType)
+      196                      put("session_id", sessionId)
+      197 -                    put("rpe_interval_minutes", _rpeIntervalMi
+          -nutes.value ?: 10)                                            
+      197                  }
+      198                  val data = payload.toString().toByteArray(Char
+           sets.UTF_8)
+      199  
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingViewModel.kt)
+  ⎿  Removed 1 line
+      303          stopLocationTracking()
+      304          SequenceProcessor.flushRemainingAndClear()
+      305          pushSessionToFirestore()
+      306 -        RpeState.reset()                                      
+      306          activeSessionId = null
+      307          activeSessionDir = null
+      308          SessionForegroundService.stop(getApplication())
+
+● Now edit ActivityTrackingActivity.kt, the layout XML,
+  WearableDataListenerService.kt, AndroidManifest.xml,
+  SessionDetailRepository.kt, ActivityDetailViewModel.kt, and
+  ActivityHistoryRepository.kt in parallel.
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingActivity.kt)
+  ⎿  Removed 1 line
+      45      private val viewModel: ActivityTrackingViewModel by viewMod
+          els()
+      46      private var routePolyline: Polyline? = null
+      47      private lateinit var myLocationOverlay: MyLocationNewOverla
+          y
+      48 -    private var phoneRpeReceiver: BroadcastReceiver? = null    
+      48  
+      49      companion object {
+      50          private const val TAG = "ActivityTrackingActivity"
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingActivity.kt)
+  ⎿  Removed 6 lines
+      168                      elapsedS = json.optInt("elapsed_s", 0)
+      169                  )
+      170              }
+      171 -            "/fitguard/activity/rpe" -> runOnUiThread {       
+      172 -                viewModel.onRpeReceived(                      
+      173 -                    sessionId = json.optString("session_id", "
+          -"),                                                           
+      174 -                    rpeValue = json.optInt("rpe_value", -1)   
+      175 -                )                                             
+      176 -            }                                                 
+      171          }
+      172      }
+      173  
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingActivity.kt)
+  ⎿  Removed 18 lines
+      438          }
+      439      }
+      440  
+      441 -    private fun registerPhoneRpeReceiver() {                  
+      442 -        phoneRpeReceiver = object : BroadcastReceiver() {     
+      443 -            override fun onReceive(context: Context?, intent: 
+          -Intent?) {                                                    
+      444 -                intent ?: return                              
+      445 -                if (intent.action == RpePromptActivity.ACTION_
+          -PHONE_RPE_RESPONSE) {                                         
+      446 -                    val sessionId = intent.getStringExtra("ses
+          -sion_id") ?: ""                                               
+      447 -                    val rpeValue = intent.getIntExtra("rpe_val
+          -ue", -1)                                                      
+      448 -                    viewModel.onPhoneRpeAnswered(sessionId, rp
+          -eValue)                                                       
+      449 -                }                                             
+      450 -            }                                                 
+      451 -        }                                                     
+      452 -        val filter = IntentFilter(RpePromptActivity.ACTION_PHO
+          -NE_RPE_RESPONSE)                                              
+      453 -        registerReceiver(phoneRpeReceiver, filter, RECEIVER_NO
+          -T_EXPORTED)                                                   
+      454 -    }                                                         
+      455 -                                                              
+      441      override fun onDestroy() {
+      442          Wearable.getMessageClient(this).removeListener(this)
+      458 -        phoneRpeReceiver?.let {                               
+      459 -            try { unregisterReceiver(it) } catch (_: Exception
+          -) {}                                                          
+      460 -        }                                                     
+      443          if (::myLocationOverlay.isInitialized) {
+      444              myLocationOverlay.disableMyLocation()
+      445          }
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingActivity.kt)
+  ⎿  Removed 1 line
+      91          requestMapLocationPermission()
+      92          setupActivityTypeSelection()
+      93          setupStartStopButton()
+      94 -        setupRpeIntervalSlider()                               
+      94          setupBottomNavigation()
+      95          observeViewModel()
+      96          observeRoute()
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingActivity.kt)
+  ⎿  Removed 1 line
+       96          observeRoute()
+       97  
+       98          Wearable.getMessageClient(this).addListener(this)
+       99 -        registerPhoneRpeReceiver()                            
+       99      }
+      100  
+      101      override fun onResume() {
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingActivity.kt)
+  ⎿  Removed 13 lines
+      243          }
+      244      }
+      245  
+      246 -    private fun setupRpeIntervalSlider() {                    
+      247 -        binding.seekRpeInterval.setOnSeekBarChangeListener(obj
+          -ect : SeekBar.OnSeekBarChangeListener {                       
+      248 -            override fun onProgressChanged(seekBar: SeekBar?, 
+          -progress: Int, fromUser: Boolean) {                           
+      249 -                binding.tvRpeIntervalValue.text = "$progress m
+          -in"                                                           
+      250 -                if (fromUser) {                               
+      251 -                    viewModel.setRpeInterval(progress)        
+      252 -                }                                             
+      253 -            }                                                 
+      254 -            override fun onStartTrackingTouch(seekBar: SeekBar
+          -?) {}                                                         
+      255 -            override fun onStopTrackingTouch(seekBar: SeekBar?
+          -) {}                                                          
+      256 -        })                                                    
+      257 -    }                                                         
+      258 -                                                              
+      246      private fun observeViewModel() {
+      247          viewModel.state.observe(this) { state ->
+      248              when (state) {
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingActivity.kt)
+  ⎿  Removed 1 line
+      253                      binding.tvSessionStatus.text = "Idle"
+      254                      binding.rgActivityType.isEnabled = true
+      255                      setRadioGroupEnabled(true)
+      256 -                    binding.seekRpeInterval.isEnabled = true  
+      256                      if (::myLocationOverlay.isInitialized) {
+      257                          myLocationOverlay.enableFollowLocation
+           ()
+      258                      }
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingActivity.kt)
+  ⎿  Removed 1 line
+      262                      binding.btnStartStop.isEnabled = false
+      263                      binding.tvSessionStatus.text = "Connecting
+            to watch..."
+      264                      setRadioGroupEnabled(false)
+      265 -                    binding.seekRpeInterval.isEnabled = false 
+      265                  }
+      266                  ActivityTrackingViewModel.SessionState.ACTIVE 
+           -> {
+      267                      binding.btnStartStop.text = "Stop Session"
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingActivity.kt)
+  ⎿  Removed 1 line
+      269                      binding.btnStartStop.setBackgroundColor(ge
+           tColor(R.color.red_stop))
+      270                      binding.tvSessionStatus.text = "Active - $
+           {viewModel.activityType.value}"
+      271                      setRadioGroupEnabled(false)
+      272 -                    binding.seekRpeInterval.isEnabled = false 
+      272                      if (::myLocationOverlay.isInitialized) {
+      273                          myLocationOverlay.disableFollowLocatio
+           n()
+      274                      }
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingActivity.kt)
+  ⎿  Removed 1 line
+      277                      binding.btnStartStop.text = "Stopping..."
+      278                      binding.btnStartStop.isEnabled = false
+      279                      binding.tvSessionStatus.text = "Stopping s
+           ession..."
+      280 -                    binding.seekRpeInterval.isEnabled = false 
+      280                  }
+      281                  null -> {}
+      282              }
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingActivity.kt)
+  ⎿  Removed 9 lines
+      302              }
+      303          }
+      304  
+      305 -        viewModel.lastRpe.observe(this) { rpe ->              
+      306 -            binding.tvLastRpe.text = if (rpe >= 0) "RPE: $rpe"
+          - else "RPE: --"                                               
+      307 -        }                                                     
+      308 -                                                              
+      309 -        viewModel.rpeIntervalMinutes.observe(this) { minutes -
+          ->                                                             
+      310 -            binding.seekRpeInterval.progress = minutes        
+      311 -            binding.tvRpeIntervalValue.text = "$minutes min"  
+      312 -        }                                                     
+      313 -                                                              
+      305          viewModel.activityType.observe(this) { type ->
+      306              val radioId = when (type) {
+      307                  "Treadmill" -> R.id.rbTreadmill
+
+● Now clean up unused imports in ActivityTrackingActivity.kt and edit the
+  remaining files.
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingActivity.kt)
+  ⎿  Removed 3 lines
+       1  package com.example.fitguard.features.activitytracking
+       2  
+       3  import android.Manifest
+       4 -import android.content.BroadcastReceiver                       
+       5 -import android.content.Context                                 
+       4  import android.content.Intent
+       7 -import android.content.IntentFilter                            
+       5  import android.content.IntentSender
+       6  import android.content.pm.PackageManager
+       7  import android.graphics.Color
+
+● Update(mobile\src\main\res\layout\activity_activity_tracking.xml)
+  ⎿  Removed 53 lines
+      345                  </LinearLayout>
+      346              </com.google.android.material.card.MaterialCardVie
+           w>
+      347  
+      348 -            <!-- RPE Settings Card -->                        
+      349 -            <com.google.android.material.card.MaterialCardView
+      350 -                android:layout_width="match_parent"           
+      351 -                android:layout_height="wrap_content"          
+      352 -                android:layout_marginBottom="12dp"            
+      353 -                app:cardCornerRadius="12dp"                   
+      354 -                app:cardElevation="2dp">                      
+      355 -                                                              
+      356 -                <LinearLayout                                 
+      357 -                    android:layout_width="match_parent"       
+      358 -                    android:layout_height="wrap_content"      
+      359 -                    android:orientation="vertical"            
+      360 -                    android:padding="16dp">                   
+      361 -                                                              
+      362 -                    <TextView                                 
+      363 -                        android:layout_width="wrap_content"   
+      364 -                        android:layout_height="wrap_content"  
+      365 -                        android:text="RPE Prompt Interval"    
+      366 -                        android:textSize="16sp"               
+      367 -                        android:textStyle="bold"              
+      368 -                        android:textColor="@android:color/blac
+          -k"                                                            
+      369 -                        android:layout_marginBottom="12dp" /> 
+      370 -                                                              
+      371 -                    <LinearLayout                             
+      372 -                        android:layout_width="match_parent"   
+      373 -                        android:layout_height="wrap_content"  
+      374 -                        android:orientation="horizontal"      
+      375 -                        android:gravity="center_vertical">    
+      376 -                                                              
+      377 -                        <SeekBar                              
+      378 -                            android:id="@+id/seekRpeInterval" 
+      379 -                            android:layout_width="0dp"        
+      380 -                            android:layout_height="wrap_conten
+          -t"                                                            
+      381 -                            android:layout_weight="1"         
+      382 -                            android:min="1"                   
+      383 -                            android:max="15"                  
+      384 -                            android:progress="10" />          
+      385 -                                                              
+      386 -                        <TextView                             
+      387 -                            android:id="@+id/tvRpeIntervalValu
+          -e"                                                            
+      388 -                            android:layout_width="wrap_content
+          -"                                                             
+      389 -                            android:layout_height="wrap_conten
+          -t"                                                            
+      390 -                            android:text="10 min"             
+      391 -                            android:textSize="14sp"           
+      392 -                            android:textColor="@android:color/
+          -black"                                                        
+      393 -                            android:layout_marginStart="12dp" 
+      394 -                            android:minWidth="50dp" />        
+      395 -                                                              
+      396 -                    </LinearLayout>                           
+      397 -                                                              
+      398 -                </LinearLayout>                               
+      399 -            </com.google.android.material.card.MaterialCardVie
+          -w>                                                            
+      400 -                                                              
+      348              <!-- Error Text -->
+      349              <TextView
+      350                  android:id="@+id/tvError"
+● Update(mobile\src\main\java\com\example\fitguard\services\WearableDataListener
+        Service.kt)
+  ⎿  Removed 34 lines
+       93                          putExtra("elapsed_s", json.optInt("ela
+           psed_s", 0))
+       94                      })
+       95                  }
+       96 -                "/fitguard/activity/rpe" -> {                 
+       97 -                    val rpeValue = json.optInt("rpe_value", -1
+          -)                                                             
+       98 -                    val sessionId = json.optString("session_id
+          -", "")                                                        
+       99 -                    Log.d(TAG, "RPE received: $rpeValue for se
+          -ssion $sessionId")                                            
+      100 -                    if (rpeValue >= 0) {                      
+      101 -                        RpeState.update(rpeValue)             
+      102 -                    }                                         
+      103 -                    sequenceProcessor.onRpeReceived(rpeValue) 
+      104 -                                                              
+      105 -                    // Cancel phone RPE notification/activity 
+          -(watch answered first)                                        
+      106 -                    val nm = getSystemService(NotificationMana
+          -ger::class.java)                                              
+      107 -                    nm.cancel(RpeNotificationHelper.NOTIFICATI
+          -ON_ID)                                                        
+      108 -                                                              
+      109 -                    sendBroadcast(Intent(ACTION_RPE_RECEIVED).
+          -apply {                                                       
+      110 -                        setPackage(packageName)               
+      111 -                        putExtra("session_id", sessionId)     
+      112 -                        putExtra("rpe_value", rpeValue)       
+      113 -                    })                                        
+      114 -                }                                             
+      115 -                "/fitguard/activity/rpe_prompt" -> {          
+      116 -                    val sessionId = json.optString("session_id
+          -", "")                                                        
+      117 -                    val lastRpe = json.optInt("last_rpe", -1) 
+      118 -                    val isEndOfSession = json.optBoolean("is_e
+          -nd_of_session", false)                                        
+      119 -                    Log.d(TAG, "RPE prompt from watch: session
+          -=$sessionId isEnd=$isEndOfSession")                           
+      120 -                                                              
+      121 -                    // Validate session matches active session
+      122 -                    val activeSession = ActivityTrackingViewMo
+          -del.activeSessionId                                           
+      123 -                    if (activeSession != null && sessionId.isN
+          -otEmpty() && sessionId != activeSession) {                    
+      124 -                        Log.w(TAG, "Ignoring RPE prompt for st
+          -ale session $sessionId (active=$activeSession)")              
+      125 -                        return                                
+      126 -                    }                                         
+      127 -                                                              
+      128 -                    RpeNotificationHelper(this).showRpePrompt(
+          -lastRpe, isEndOfSession, sessionId)                           
+      129 -                }                                             
+       96              }
+       97          } catch (e: Exception) {
+       98              Log.e(TAG, "Failed to process message on $path: ${
+           e.message}", e)
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityDetailViewModel.kt)
+  ⎿  Added 1 line, removed 2 lines
+      82          val splits: List<SplitData>,
+      83          val hr: List<HrDataPoint>,
+      84          val avgHr: Float,
+      85 -        val fatigue: List<FatigueDataPoint>,                   
+      86 -        val fatigueLevel: String                               
+      85 +        val fatigue: List<FatigueDataPoint>                    
+      86      )
+      87  }
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityTrackingActivity.kt)
+  ⎿  Removed 1 line
+       9  import android.os.Bundle
+      10  import android.util.Log
+      11  import android.view.View
+      12 -import android.widget.SeekBar                                  
+      12  import android.widget.Toast
+      13  import androidx.activity.result.IntentSenderRequest
+      14  import androidx.activity.result.contract.ActivityResultContract
+          s
+
+● Update(mobile\src\main\res\layout\activity_activity_tracking.xml)
+  ⎿  Removed 7 lines
+      174                          android:textColor="@android:color/dark
+           er_gray"
+      175                          android:layout_marginEnd="12dp" />
+      176  
+      177 -                    <TextView                                 
+      178 -                        android:id="@+id/tvLastRpe"           
+      179 -                        android:layout_width="wrap_content"   
+      180 -                        android:layout_height="wrap_content"  
+      181 -                        android:text="RPE: --"                
+      182 -                        android:textSize="12sp"               
+      183 -                        android:textColor="@android:color/dark
+          -er_gray" />                                                   
+      177                  </LinearLayout>
+      178              </com.google.android.material.card.MaterialCardVie
+           w>
+      179  
+
+● Update(mobile\src\main\java\com\example\fitguard\services\WearableDataListener
+        Service.kt)
+  ⎿  Removed 2 lines
+       6  import android.util.Log
+       7  import com.example.fitguard.data.processing.AccelSample
+       8  import com.example.fitguard.data.processing.PpgSample
+       9 -import com.example.fitguard.data.processing.RpeState           
+       9  import com.example.fitguard.data.processing.SequenceProcessor
+      10  import com.example.fitguard.features.activitytracking.ActivityT
+          rackingViewModel
+      12 -import com.example.fitguard.features.activitytracking.RpeNotifi
+         -cationHelper                                                   
+      11  import android.net.Uri
+      12  import com.google.android.gms.wearable.*
+      13  import com.google.firebase.auth.FirebaseAuth
+
+● Update(mobile\src\main\java\com\example\fitguard\services\WearableDataListener
+        Service.kt)
+  ⎿  Removed 1 line
+      22          const val ACTION_ACTIVITY_ACK = "com.example.fitguard.A
+          CTIVITY_ACK"
+      23          const val ACTION_ACTIVITY_STOPPED = "com.example.fitgua
+          rd.ACTIVITY_STOPPED"
+      24          const val ACTION_ACTIVITY_HEARTBEAT = "com.example.fitg
+          uard.ACTIVITY_HEARTBEAT"
+      25 -        const val ACTION_RPE_RECEIVED = "com.example.fitguard.R
+         -PE_RECEIVED"                                                   
+      25          const val ACTION_WATCH_BATTERY_RESPONSE = "com.example.
+          fitguard.WATCH_BATTERY_RESPONSE"
+      26      }
+      27  
+
+● Update(mobile\src\main\AndroidManifest.xml)
+  ⎿  Removed 11 lines
+      149              android:windowSoftInputMode="adjustResize" />
+      150  
+      151          <!-- ========================================== -->
+      152 -        <!-- RPE PROMPT (phone-side, cross-device) -->        
+      153 -        <!-- ========================================== -->   
+      154 -        <activity                                             
+      155 -            android:name=".features.activitytracking.RpePrompt
+          -Activity"                                                     
+      156 -            android:exported="false"                          
+      157 -            android:turnScreenOn="true"                       
+      158 -            android:showWhenLocked="true"                     
+      159 -            android:screenOrientation="portrait"              
+      160 -            android:theme="@style/Theme.FitGuard" />          
+      161 -                                                              
+      162 -        <!-- ========================================== -->   
+      152          <!-- ACTIVITY HISTORY -->
+      153          <!-- ========================================== -->
+      154          <activity
+
+● Update(mobile\src\main\java\com\example\fitguard\data\repository\SessionDetail
+        Repository.kt)
+  ⎿  Removed 30 lines
+      106          }
+      107      }
+      108  
+      109 -    fun loadOverallFatigueLevel(userId: String, sessionDir: St
+          -ring): String {                                               
+      110 -        return try {                                          
+      111 -            val file = File(CsvWriter.getOutputDir(userId, ses
+          -sionDir), "features.csv")                                     
+      112 -            if (!file.exists()) return "--"                   
+      113 -            val lines = file.readLines()                      
+      114 -            if (lines.size < 2) return "--"                   
+      115 -            val cols = lines[0].split(",")                    
+      116 -            val flIdx = cols.indexOf("fatigue_level")         
+      117 -            if (flIdx < 0) return "--"                        
+      118 -                                                              
+      119 -            val levels = lines.drop(1).mapNotNull { line ->   
+      120 -                val parts = line.split(",")                   
+      121 -                parts.getOrNull(flIdx)?.trim()?.ifEmpty { null
+          - }                                                            
+      122 -            }                                                 
+      123 -            if (levels.isEmpty()) return "--"                 
+      124 -                                                              
+      125 -            val mostCommon = levels.groupingBy { it }.eachCoun
+          -t().maxByOrNull { it.value }?.key ?: "--"                     
+      126 -            when (mostCommon) {                               
+      127 -                "0" -> "Very Light"                           
+      128 -                "1" -> "Light"                                
+      129 -                "2" -> "Moderate"                             
+      130 -                "3" -> "Heavy"                                
+      131 -                else -> mostCommon                            
+      132 -            }                                                 
+      133 -        } catch (e: Exception) {                              
+      134 -            Log.w(TAG, "Failed to load fatigue level: ${e.mess
+          -age}")                                                        
+      135 -            "--"                                              
+      136 -        }                                                     
+      137 -    }                                                         
+      138 -                                                              
+      109      fun computeSplits(routePoints: List<RoutePoint>): List<Spl
+           itData> {
+      110          if (routePoints.size < 2) return emptyList()
+      111          val splits = mutableListOf<SplitData>()
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityDetailViewModel.kt)
+  ⎿  Added 1 line, removed 2 lines
+      61                      val hr = SessionDetailRepository.loadHeartR
+          ateData(userId, sessionDirName)
+      62                      Log.d(TAG, "HR points: ${hr.size}")
+      63                      val fatigue = SessionDetailRepository.loadF
+          atigueData(userId, sessionDirName)
+      64 -                    val fLevel = SessionDetailRepository.loadOv
+         -erallFatigueLevel(userId, sessionDirName)                      
+      64                      val avg = if (hr.isNotEmpty()) hr.map { it.
+          hrBpm }.average().toFloat() else 0f
+      66 -                    DetailResult(route, sum, splits, hr, avg, f
+         -atigue, fLevel)                                                
+      65 +                    DetailResult(route, sum, splits, hr, avg, f
+         +atigue)                                                        
+      66                  }
+      67                  _routePoints.value = result.route
+      68                  _summary.value = result.summary
+
+● Update(mobile\src\main\java\com\example\fitguard\features\activitytracking\Act
+        ivityDetailViewModel.kt)
+  ⎿  Removed 1 line
+      70                  _hrData.value = result.hr
+      71                  _avgHr.value = result.avgHr
+      72                  _fatigueData.value = result.fatigue
+      73 -                _fatigueLevel.value = result.fatigueLevel      
+      73              } catch (e: Exception) {
+      74                  Log.e(TAG, "loadDetail FAILED: ${e.message}", e
+          )
+      75              }
+
+● Now remove RPE from ActivityHistoryRepository's syncFeatureVectors. Also need
+  to check if _fatigueLevel LiveData in ActivityDetailViewModel is still used
+  elsewhere and clean up unused imports in WearableDataListenerService.
+
+● Update(mobile\src\main\java\com\example\fitguard\data\repository\ActivityHisto
+        ryRepository.kt)
+  ⎿  Added 1 line, removed 1 line
+      328              "accel_x_var", "accel_y_var", "accel_z_var",
+      329              "accel_mag_mean", "accel_mag_var", "accel_peak",
+      330              "total_steps", "cadence_spm",
+      331 -            "activity_label", "fatigue_level", "rpe_raw"      
+      331 +            "activity_label"                                  
+      332          )
+      333  
+      334          val csvHeader = "user_id,timestamp,timestamp_end,seque
+           nce_id," +
+
+● Update(mobile\src\main\java\com\example\fitguard\data\repository\ActivityHisto
+        ryRepository.kt)
+  ⎿  Added 1 line, removed 4 lines
+      355              val totalSteps = d.getLong("totalSteps") ?: 0
+      356              val cadence = d.getDouble("cadenceSpm") ?: 0.0
+      357              val actLabel = d.getString("activityLabel") ?: ""
+      358 -            val fatLevel = d.getString("fatigueLevel") ?: ""  
+      359 -            val rpe = d.getLong("rpeRaw") ?: -1               
+      358  
+      359              // Build CSV row
+      360              val numericValues = numericKeys.joinToString(",") 
+           { key ->
+      361                  fmt(d.getDouble(key) ?: 0.0)
+      362              }
+      365 -            val rpeStr = if (rpe >= 0) rpe.toString() else "" 
+      366 -            csvSb.appendLine("$userId,$ts,$tsEnd,$seqId,$numer
+          -icValues,$totalSteps,${fmt(cadence)},$actLabel,$fatLevel,$rpeS
+          -tr")                                                          
+      363 +            csvSb.appendLine("$userId,$ts,$tsEnd,$seqId,$numer
+          +icValues,$totalSteps,${fmt(cadence)},$actLabel")              
+      364  
+      365              // Build JSONL row
+      366              val json = JSONObject()
+
+● Update(mobile\src\main\java\com\example\fitguard\data\repository\ActivityHisto
+        ryRepository.kt)
+  ⎿  Removed 2 lines
+      372              json.put("total_steps", totalSteps)
+      373              json.put("cadence_spm", cadence)
+      374              json.put("activity_label", actLabel)
+      375 -            json.put("fatigue_level", fatLevel)               
+      376 -            json.put("rpe_raw", rpe)                          
+      375              jsonlSb.appendLine(json.toString())
+      376          }
+      377  
+
+● Update(mobile\src\main\java\com\example\fitguard\services\WearableDataListener
+        Service.kt)
+  ⎿  Removed 1 line
+      1  package com.example.fitguard.services
+      2  
+      3 -import android.app.NotificationManager                          
+      3  import android.content.Context
+      4  import android.content.Intent
+      5  import android.util.Log
+
+● Update(mobile\src\main\java\com\example\fitguard\data\repository\ActivityHisto
+        ryRepository.kt)
+  ⎿  Added 1 line, removed 1 line
+      341              "accel_x_var,accel_y_var,accel_z_var," +
+      342              "accel_mag_mean,accel_mag_var,accel_peak," +
+      343              "total_steps,cadence_spm," +
+      344 -            "activity_label,fatigue_level,rpe_raw"            
+      344 +            "activity_label"                                  
+      345  
+      346          val csvSb = StringBuilder()
+      347          csvSb.appendLine(csvHeader)
+
+● Now check if _fatigueLevel in ActivityDetailViewModel is referenced from the
+  Activity. Let me also check if fatigueLevel is used in ActivityDetailActivity.
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● The fatigueLevel LiveData is still used in the Activity UI. Since we removed
+  the RPE-derived loadOverallFatigueLevel(), the _fatigueLevel will now always
+  show "--". That's fine — the LiveData and UI binding can stay as-is (it just
+  won't get populated with RPE data anymore). It's no longer set, so it stays at
+   the default "--".
+
+  Now let me update task #11 and move to the watch module.
+
+  Read 4 files (ctrl+o to expand)
+● Now I'll edit all four watch module files. The MainActivity is the most
+  complex — replacing deferred RPE stop with immediate stop.
+
+● Update(wear\src\main\java\com\example\fitguard\presentation\MainActivity.kt)
+  ⎿  Removed 5 lines
+      35      private lateinit var buttonContainer: LinearLayout
+      36      private lateinit var healthTrackerManager: HealthTrackerMan
+          ager
+      37      private lateinit var sensorSequenceManager: SensorSequenceM
+          anager
+      38 -    private lateinit var rpeNotificationHelper: RpeNotification
+         -Helper                                                         
+      38      private val activeTrackerButtons = mutableMapOf<HealthTrack
+          erType, Button>()
+      39      private val individualButtons = mutableListOf<Button>()
+      40      private var sequenceButton: Button? = null
+      41      private var sequenceStatusText: TextView? = null
+      42      private var activityCommandReceiver: BroadcastReceiver? = n
+          ull
+      44 -    private var rpeResponseReceiver: BroadcastReceiver? = null 
+      45 -    private var rpeDismissReceiver: BroadcastReceiver? = null  
+      46 -    private var lastRpeValue: Int = -1                         
+      47 -    private var pendingStopAction: (() -> Unit)? = null        
+      43  
+      44      companion object {
+      45          private const val PERMISSION_REQUEST_CODE = 100
+
+● Update(wear\src\main\java\com\example\fitguard\presentation\MainActivity.kt)
+  ⎿  Removed 4 lines
+      112          mainContainer.addView(scrollView)
+      113          setContentView(mainContainer)
+      114  
+      115 -        rpeNotificationHelper = RpeNotificationHelper(this)   
+      116 -                                                              
+      115          checkAndRequestPermissions()
+      116          registerActivityCommandReceiver()
+      119 -        registerRpeResponseReceiver()                         
+      120 -        registerRpeDismissReceiver()                          
+      117      }
+      118  
+      119      private fun checkAndRequestPermissions() {
+
+● Update(wear\src\main\java\com\example\fitguard\presentation\MainActivity.kt)
+  ⎿  Added 5 lines, removed 8 lines
+      492                          val sid = sensorSequenceManager.sessio
+           nId
+      493                          sensorSequenceManager.cancelSequence()
+      494                          SessionForegroundService.stop(this@Mai
+           nActivity)
+      495 -                        pendingStopAction = {                 
+      496 -                            sendMessageToPhone("/fitguard/acti
+          -vity/stopped", JSONObject().apply {                           
+      497 -                                put("session_id", sid)        
+      498 -                                put("reason", "watch_stop")   
+      499 -                                put("sequence_count", seqCount
+          -)                                                             
+      500 -                            })                                
+      501 -                        }                                     
+      502 -                        launchRpePrompt(isEndOfSession = true)
+      495 +                        sendMessageToPhone("/fitguard/activity
+          +/stopped", JSONObject().apply {                               
+      496 +                            put("session_id", sid)            
+      497 +                            put("reason", "watch_stop")       
+      498 +                            put("sequence_count", seqCount)   
+      499 +                        })                                    
+      500                      } else {
+      501                          sensorSequenceManager.cancelSequence()
+      502                      }
+
+● Update(wear\src\main\java\com\example\fitguard\presentation\MainActivity.kt)
+  ⎿  Removed 3 lines
+      362              })
+      363          }
+      364  
+      365 -        sensorSequenceManager.onRpePromptNeeded = { _ ->      
+      366 -            runOnUiThread { launchRpePrompt(isEndOfSession = f
+          -alse) }                                                       
+      367 -        }                                                     
+      365      }
+      366  
+      367      private fun createTrackerButtons() {
+
+● Update(wear\src\main\java\com\example\fitguard\presentation\MainActivity.kt)
+  ⎿  Added 5 lines, removed 9 lines
+      441                          val sid = sensorSequenceManager.sessio
+           nId
+      442                          sensorSequenceManager.cancelSequence()
+      443                          SessionForegroundService.stop(this@Mai
+           nActivity)
+      444 -                        // Defer stop message until end-of-ses
+          -sion RPE is collected                                         
+      445 -                        pendingStopAction = {                 
+      446 -                            sendMessageToPhone("/fitguard/acti
+          -vity/stopped", JSONObject().apply {                           
+      447 -                                put("session_id", sid)        
+      448 -                                put("reason", "watch_stop")   
+      449 -                                put("sequence_count", seqCount
+          -)                                                             
+      450 -                            })                                
+      451 -                        }                                     
+      452 -                        launchRpePrompt(isEndOfSession = true)
+      444 +                        sendMessageToPhone("/fitguard/activity
+          +/stopped", JSONObject().apply {                               
+      445 +                            put("session_id", sid)            
+      446 +                            put("reason", "watch_stop")       
+      447 +                            put("sequence_count", seqCount)   
+      448 +                        })                                    
+      449                          sequenceStatusText?.text = "Session st
+           opped locally"
+      450                      } else {
+      451                          sensorSequenceManager.cancelSequence()
+  ⎿  You're out of extra usage · resets 8pm (Asia/Manila)
+     /upgrade or /extra-usage to finish what you’re working on.
+
+✻ Cogitated for 12m 19s
+
+❯ /export                                                                       
+  ⎿  Conversation exported to: C:\Users\claud\AndroidStudioProjects\FitGuard\202
+     6-03-30-160720-this-session-is-being-continued-from-a-previous-co.txt
+
+❯ continue                                                                      
+
+● Let me continue with the remaining watch module edits. I need to remove the
+  RPE-related receiver registrations, RPE interval handling, and remaining RPE
+  code from MainActivity.kt, plus edit the other watch files.
+
+  Read 1 file (ctrl+o to expand)
+
+● Now I'll make all remaining edits in parallel.
+
+● Update(wear\src\main\java\com\example\fitguard\presentation\MainActivity.kt)
+  ⎿  Added 1 line, removed 6 lines
+      669                      WearableMessageListenerService.ACTION_STAR
+           T_ACTIVITY -> {
+      670                          val activityType = intent.getStringExt
+           ra("activity_type") ?: ""
+      671                          val sessionId = intent.getStringExtra(
+           "session_id") ?: ""
+      672 -                        val rpeIntervalMinutes = intent.getInt
+          -Extra("rpe_interval_minutes", 10)                             
+      673 -                        Log.d(TAG, "Received start command: ac
+          -tivity=$activityType session=$sessionId rpeInterval=${rpeInter
+          -valMinutes}min")                                              
+      672 +                        Log.d(TAG, "Received start command: ac
+          +tivity=$activityType session=$sessionId")                     
+      673  
+      674                          if (::sensorSequenceManager.isInitiali
+           zed && !sensorSequenceManager.isRunning) {
+      676 -                            Log.d(TAG, "RPE interval: every $r
+          -peIntervalMinutes sequences")                                 
+      677 -                            sensorSequenceManager.rpeIntervalS
+          -equences = rpeIntervalMinutes.coerceAtLeast(1)                
+      678 -                            lastRpeValue = -1                 
+      679 -                                                              
+      675                              // Start foreground service to kee
+           p process alive
+      676                              SessionForegroundService.start(thi
+           s@MainActivity, activityType)
+      677  
+
+● Update(wear\src\main\java\com\example\fitguard\presentation\MainActivity.kt)
+  ⎿  Added 5 lines, removed 9 lines
+      718                                  sequenceStatusText?.text = "Se
+           ssion stopped by phone"
+      719                                  statusText.text = "Session sto
+           pped"
+      720                              }
+      721 -                            // Defer stop message until end-of
+          --session RPE is collected                                     
+      722 -                            pendingStopAction = {             
+      723 -                                sendMessageToPhone("/fitguard/
+          -activity/stopped", JSONObject().apply {                       
+      724 -                                    put("session_id", sessionI
+          -d)                                                            
+      725 -                                    put("reason", "phone_stop"
+          -)                                                             
+      726 -                                    put("sequence_count", seqC
+          -ount)                                                         
+      727 -                                })                            
+      728 -                            }                                 
+      729 -                            runOnUiThread { launchRpePrompt(is
+          -EndOfSession = true) }                                        
+      721 +                            sendMessageToPhone("/fitguard/acti
+          +vity/stopped", JSONObject().apply {                           
+      722 +                                put("session_id", sessionId)  
+      723 +                                put("reason", "phone_stop")   
+      724 +                                put("sequence_count", seqCount
+          +)                                                             
+      725 +                            })                                
+      726                          }
+      727                      }
+      728                  }
+
+● Update(wear\src\main\java\com\example\fitguard\presentation\MainActivity.kt)
+  ⎿  Removed 49 lines
+      736          registerReceiver(activityCommandReceiver, filter, RECE
+           IVER_NOT_EXPORTED)
+      737      }
+      738  
+      739 -    private fun registerRpeResponseReceiver() {               
+      740 -        rpeResponseReceiver = object : BroadcastReceiver() {  
+      741 -            override fun onReceive(context: Context?, intent: 
+          -Intent?) {                                                    
+      742 -                intent ?: return                              
+      743 -                if (intent.action != RpePromptActivity.ACTION_
+          -RPE_RESPONSE) return                                          
+      744 -                val rpeValue = intent.getIntExtra(RpePromptAct
+          -ivity.EXTRA_RPE_VALUE, -1)                                    
+      745 -                val seqCount = if (::sensorSequenceManager.isI
+          -nitialized) sensorSequenceManager.sequenceCount else -1       
+      746 -                Log.d(TAG, "RPE response received: rpe=$rpeVal
+          -ue at sequence=$seqCount")                                    
+      747 -                                                              
+      748 -                if (rpeValue >= 0) {                          
+      749 -                    lastRpeValue = rpeValue                   
+      750 -                }                                             
+      751 -                                                              
+      752 -                // Send RPE to phone                          
+      753 -                if (::sensorSequenceManager.isInitialized) {  
+      754 -                    sendMessageToPhone("/fitguard/activity/rpe
+          -", JSONObject().apply {                                       
+      755 -                        put("session_id", sensorSequenceManage
+          -r.sessionId)                                                  
+      756 -                        put("rpe_value", rpeValue)            
+      757 -                        put("sequence_count", sensorSequenceMa
+          -nager.sequenceCount)                                          
+      758 -                        put("timestamp", System.currentTimeMil
+          -lis())                                                        
+      759 -                    })                                        
+      760 -                }                                             
+      761 -                                                              
+      762 -                // Execute pending stop action if this was an 
+          -end-of-session prompt                                         
+      763 -                pendingStopAction?.let { action ->            
+      764 -                    pendingStopAction = null                  
+      765 -                    action()                                  
+      766 -                }                                             
+      767 -            }                                                 
+      768 -        }                                                     
+      769 -                                                              
+      770 -        val filter = IntentFilter(RpePromptActivity.ACTION_RPE
+          -_RESPONSE)                                                    
+      771 -        registerReceiver(rpeResponseReceiver, filter, RECEIVER
+          -_NOT_EXPORTED)                                                
+      772 -    }                                                         
+      773 -                                                              
+      774 -    private fun launchRpePrompt(isEndOfSession: Boolean = fals
+          -e) {                                                          
+      775 -        val sessionId = if (::sensorSequenceManager.isInitiali
+          -zed) {                                                        
+      776 -            sensorSequenceManager.sessionId                   
+      777 -        } else ""                                             
+      778 -        rpeNotificationHelper.showRpePrompt(lastRpeValue, isEn
+          -dOfSession, sessionId)                                        
+      779 -                                                              
+      780 -        // Also send prompt to phone so user can answer from e
+          -ither device                                                  
+      781 -        sendMessageToPhone("/fitguard/activity/rpe_prompt", JS
+          -ONObject().apply {                                            
+      782 -            put("session_id", sessionId)                      
+      783 -            put("last_rpe", lastRpeValue)                     
+      784 -            put("is_end_of_session", isEndOfSession)          
+      785 -        })                                                    
+      786 -    }                                                         
+      787 -                                                              
+      739      private fun sendMessageToPhone(path: String, payload: JSON
+           Object) {
+      740          CoroutineScope(Dispatchers.IO).launch {
+      741              try {
+
+● Update(wear\src\main\java\com\example\fitguard\presentation\MainActivity.kt)
+  ⎿  Removed 32 lines
+      751          }
+      752      }
+      753  
+      754 -    private fun registerRpeDismissReceiver() {                
+      755 -        rpeDismissReceiver = object : BroadcastReceiver() {   
+      756 -            override fun onReceive(context: Context?, intent: 
+          -Intent?) {                                                    
+      757 -                intent ?: return                              
+      758 -                if (intent.action != RpePromptActivity.ACTION_
+          -RPE_DISMISS) return                                           
+      759 -                val rpeValue = intent.getIntExtra(RpePromptAct
+          -ivity.EXTRA_RPE_VALUE, -1)                                    
+      760 -                Log.d(TAG, "RPE dismiss from phone: rpe=$rpeVa
+          -lue")                                                         
+      761 -                                                              
+      762 -                if (rpeValue >= 0) {                          
+      763 -                    lastRpeValue = rpeValue                   
+      764 -                }                                             
+      765 -                                                              
+      766 -                // Execute pending stop action (phone already 
+          -processed RPE)                                                
+      767 -                pendingStopAction?.let { action ->            
+      768 -                    pendingStopAction = null                  
+      769 -                    action()                                  
+      770 -                }                                             
+      771 -                                                              
+      772 -                // Do NOT send /fitguard/activity/rpe — phone 
+          -already processed it                                          
+      773 -            }                                                 
+      774 -        }                                                     
+      775 -                                                              
+      776 -        val filter = IntentFilter(RpePromptActivity.ACTION_RPE
+          -_DISMISS)                                                     
+      777 -        registerReceiver(rpeDismissReceiver, filter, RECEIVER_
+          -NOT_EXPORTED)                                                 
+      778 -    }                                                         
+      779 -                                                              
+      754      override fun onDestroy() {
+      755          super.onDestroy()
+      756          activityCommandReceiver?.let {
+      757              try { unregisterReceiver(it) } catch (_: Exception
+           ) {}
+      758          }
+      785 -        rpeResponseReceiver?.let {                            
+      786 -            try { unregisterReceiver(it) } catch (_: Exception
+          -) {}                                                          
+      787 -        }                                                     
+      788 -        rpeDismissReceiver?.let {                             
+      789 -            try { unregisterReceiver(it) } catch (_: Exception
+          -) {}                                                          
+      790 -        }                                                     
+      759          if (::sensorSequenceManager.isInitialized && sensorSeq
+           uenceManager.isRunning) {
+      760              if (sensorSequenceManager.isContinuousMode) {
+      761                  val seqCount = sensorSequenceManager.sequenceC
+           ount
+
+● Update(wear\src\main\java\com\example\fitguard\presentation\WearableMessageLis
+        tenerService.kt)
+  ⎿  Added 1 line, removed 3 lines
+      36                  "/fitguard/activity/start" -> {
+      37                      val activityType = json.optString("activity
+          _type", "")
+      38                      val sessionId = json.optString("session_id"
+          , "")
+      39 -                    val rpeIntervalMinutes = json.optInt("rpe_i
+         -nterval_minutes", 10)                                          
+      40 -                    Log.d(TAG, "Start command: activity=$activi
+         -tyType session=$sessionId rpeInterval=${rpeIntervalMinutes}min"
+         -)                                                              
+      39 +                    Log.d(TAG, "Start command: activity=$activi
+         +tyType session=$sessionId")                                    
+      40                      sendBroadcast(Intent(ACTION_START_ACTIVITY)
+          .apply {
+      41                          setPackage(packageName)
+      42                          putExtra("activity_type", activityType)
+      43                          putExtra("session_id", sessionId)
+      45 -                        putExtra("rpe_interval_minutes", rpeInt
+         -ervalMinutes)                                                  
+      44                      })
+      45                  }
+      46                  "/fitguard/activity/stop" -> {
+
+● Update(wear\src\main\java\com\example\fitguard\presentation\WearableMessageLis
+        tenerService.kt)
+  ⎿  Removed 10 lines
+      51                          putExtra("session_id", sessionId)
+      52                      })
+      53                  }
+      54 -                "/fitguard/activity/rpe_dismiss" -> {          
+      55 -                    val rpeValue = json.optInt("rpe_value", -1)
+      56 -                    val sessionId = json.optString("session_id"
+         -, "")                                                          
+      57 -                    Log.d(TAG, "RPE dismiss from phone: rpe=$rp
+         -eValue session=$sessionId")                                    
+      58 -                    sendBroadcast(Intent(RpePromptActivity.ACTI
+         -ON_RPE_DISMISS).apply {                                        
+      59 -                        setPackage(packageName)                
+      60 -                        putExtra(RpePromptActivity.EXTRA_RPE_VA
+         -LUE, rpeValue)                                                 
+      61 -                        putExtra(RpePromptActivity.EXTRA_SESSIO
+         -N_ID, sessionId)                                               
+      62 -                    })                                         
+      63 -                }                                              
+      54                  "/fitguard/tracker/start" -> {
+      55                      val trackerType = json.optString("tracker_t
+          ype", "")
+      56                      Log.d(TAG, "Tracker start command: $tracker
+          Type")
+
+● Update(wear\src\main\java\com\example\fitguard\presentation\SensorSequenceMana
+        ger.kt)
+  ⎿  Removed 4 lines
+      33      var onProgress: ((elapsedSeconds: Int, totalSeconds: Int) -
+          > Unit)? = null
+      34      var onComplete: (() -> Unit)? = null
+      35      var onSequenceLoopComplete: ((sequenceCount: Int) -> Unit)?
+           = null
+      36 -    var onRpePromptNeeded: ((sequenceCount: Int) -> Unit)? = nu
+         -ll                                                             
+      37 -                                                               
+      38 -    var rpeIntervalSequences: Int = 8  // default ~10 min at 77
+         -s/seq                                                          
+      39 -                                                               
+      36      private var sequenceJob: Job? = null
+      37      private var currentPhase = SequencePhase.IDLE
+      38      private var sequenceId: String = ""
+
+● Update(wear\src\main\java\com\example\fitguard\presentation\SensorSequenceMana
+        ger.kt)
+  ⎿  Removed 8 lines
+      111                      sequenceCount++
+      112                      Log.d(TAG, "=== Sequence #$sequenceCount c
+           ollection complete, sending data ===")
+      113  
+      114 -                    // RPE check BEFORE sending — defer via Ha
+          -ndler.post so batch send isn't blocked                        
+      115 -                    if (sequenceCount > 0 && sequenceCount % r
+          -peIntervalSequences == 0) {                                   
+      116 -                        val count = sequenceCount             
+      117 -                        android.os.Handler(android.os.Looper.g
+          -etMainLooper()).post {                                        
+      118 -                            onRpePromptNeeded?.invoke(count)  
+      119 -                        }                                     
+      120 -                    }                                         
+      121 -                                                              
+      114                      setPhase(SequencePhase.SENDING)
+      115                      batchSendAllData()
+      116                      onSequenceLoopComplete?.invoke(sequenceCou
+           nt)
+
+● Update(wear\src\main\AndroidManifest.xml)
+  ⎿  Removed 8 lines
+      120              </intent-filter>
+      121          </activity>
+      122  
+      123 -        <!-- RPE Prompt Activity -->                          
+      124 -        <activity                                             
+      125 -            android:name=".presentation.RpePromptActivity"    
+      126 -            android:exported="false"                          
+      127 -            android:turnScreenOn="true"                       
+      128 -            android:showWhenLocked="true"                     
+      129 -            android:theme="@android:style/Theme.DeviceDefault"
+          - />                                                           
+      130 -                                                              
+      123          <!-- Workout Session Foreground Service -->
+      124          <service
+      125              android:name=".presentation.SessionForegroundServi
+           ce"
+● Update(wear\src\main\AndroidManifest.xml)
+  ⎿  Removed 9 lines
+      132              android:foregroundServiceType="health"
+      133              android:exported="false" />
+      134  
+      135 -        <!-- RPE Notification Action Receiver -->             
+      136 -        <receiver                                             
+      137 -            android:name=".presentation.RpeNotificationReceive
+          -r"                                                            
+      138 -            android:exported="false">                         
+      139 -            <intent-filter>                                   
+      140 -                <action android:name="com.example.fitguard.wea
+          -r.RPE_NOTIFICATION_ACTION" />                                 
+      141 -            </intent-filter>                                  
+      142 -        </receiver>                                           
+      143 -                                                              
+      135          <!-- Wearable Message Listener Service -->
+      136          <service
+      137              android:name=".presentation.WearableMessageListene
+           rService"
+
+● Now let me also check if there's a remaining reference to RpeState anywhere
+  that we haven't cleaned up, and check for any onRpeReceived method that was
+  removed from SequenceProcessor but might still be called.
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● All RPE references are clean. Now let me also check for any remaining XML
+  references.
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Only IDE workspace references (which are fine) and two stale comments in the
+  wear manifest about VIBRATE and USE_FULL_SCREEN_INTENT. Let me update those
+  comments since the permissions themselves may still be needed for other things
+   (fatigue alerts use vibration).
+
+● Update(wear\src\main\AndroidManifest.xml)
+  ⎿  Added 1 line, removed 1 line
+      59      <!-- Wake Lock - Keep device awake during tracking -->
+      60      <uses-permission android:name="android.permission.WAKE_LOCK
+          " />
+      61  
+      62 -    <!-- Vibrate - For RPE prompt haptic feedback -->          
+      62 +    <!-- Vibrate - For haptic feedback and alerts -->          
+      63      <uses-permission android:name="android.permission.VIBRATE" 
+          />
+      64  
+      65      <!-- Foreground Service - For background tracking -->
+
+● Update(wear\src\main\AndroidManifest.xml)
+  ⎿  Added 1 line, removed 1 line
+      69      <!-- Notifications - For foreground service notifications -
+          ->
+      70      <uses-permission android:name="android.permission.POST_NOTI
+          FICATIONS" />
+      71  
+      72 -    <!-- Full-screen intent - Wake watch for RPE prompts -->   
+      72 +    <!-- Full-screen intent - Wake watch for alerts -->        
+      73      <uses-permission android:name="android.permission.USE_FULL_
+          SCREEN_INTENT" />
+      74  
+      75      <!-- ========================================== -->
+
+● Now let's build both modules to verify compilation.
+
+● Bash(C:/Users/claud/AndroidStudioProjects/FitGuard/gradlew.bat --no-daemon
+      :mobile:compileDebugKotlin 2>&1)
+  ⎿  To honour the JVM settings for this build a single-use Daemon process
+     will be forked. For more on this, please refer to https://docs.gradle.
+     org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the
+     … +99 lines (ctrl+o to expand)
+  ⎿  (timeout 10m)
+
+● Bash(C:/Users/claud/AndroidStudioProjects/FitGuard/gradlew.bat --no-daemon
+      :wear:compileDebugKotlin 2>&1)
+  ⎿  To honour the JVM settings for this build a single-use Daemon process
+     will be forked. For more on this, please refer to https://docs.gradle.
+     org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the
+     … +15 lines (ctrl+o to expand)
+  ⎿  (timeout 10m)
+
+● Both modules compile successfully. No errors.
+
+● RPE removal is complete. Here's a summary of what was done:
+
+  Deleted files (6):
+  - mobile/.../RpePromptActivity.kt, RpeNotificationHelper.kt
+  - mobile/.../activity_rpe_prompt.xml
+  - wear/.../RpePromptActivity.kt, RpeNotificationHelper.kt,
+  RpeNotificationReceiver.kt
+
+  Core data model changes:
+  - PpgProcessor.kt — Removed fatigueLevel and rpeRaw from FeatureVector
+  - CsvWriter.kt — Removed RPE fields from CSV header, CSV row, JSONL, and
+  Firestore map
+  - SequenceProcessor.kt — Removed RpeState, PendingWindow, deferred-flush
+  pattern. Windows now write immediately to CSV/JSONL and broadcast
+
+  Phone module changes:
+  - ActivityTrackingViewModel.kt — Removed RPE LiveData, RPE methods, RPE
+  SharedPrefs keys, RpeState usage
+  - ActivityTrackingActivity.kt — Removed RPE observer, RPE slider setup, phone
+  RPE receiver
+  - activity_activity_tracking.xml — Removed tvLastRpe TextView and RPE Settings
+   Card
+  - WearableDataListenerService.kt — Removed RPE message handlers
+  - AndroidManifest.xml — Removed RpePromptActivity declaration
+  - SessionDetailRepository.kt — Removed loadOverallFatigueLevel()
+  - ActivityDetailViewModel.kt — Removed call to loadOverallFatigueLevel()
+  - ActivityHistoryRepository.kt — Removed RPE fields from sync CSV/JSONL
+  headers
+
+  Watch module changes:
+  - MainActivity.kt — Removed RPE receivers, pendingStopAction deferred stop
+  (now immediate), RPE interval handling
+  - WearableMessageListenerService.kt — Removed rpe_interval_minutes parsing and
+   rpe_dismiss handler
+  - SensorSequenceManager.kt — Removed onRpePromptNeeded, rpeIntervalSequences,
+  RPE trigger block
+  - AndroidManifest.xml — Removed RpePromptActivity and RpeNotificationReceiver
+  declarations
+
+✻ Baked for 2m 38s
+
+❯ C:\Users\claud\AndroidStudioProjects\FitGuard\mobile\src\main\res\layout\acti 
+vity_fatigue_prediction.xml is not able to load the model when the user is not  
+on the activity, The user has to stay on the activity until it gets enough      
+windows for it to start. Make it so as long as the app is receiving something   
+from SeqBatchAccumulator, fatigue prediction also gets it even without being on 
+ the activity                                                                   
+
+● Explore(Explore fatigue prediction flow)
+  ⎿  Done (15 tool uses · 54.1k tokens · 45s)
+  (ctrl+o to expand)
+
+● Explore(Explore FatigueViewModel details)
+  ⎿  Done (5 tool uses · 31.1k tokens · 20s)
+  (ctrl+o to expand)
+
+  Read 3 files (ctrl+o to expand)
+
+● Now I have a clear picture. Let me design the plan.
+
+● Plan(Plan background fatigue prediction)
+  ⎿  Done (10 tool uses · 44.1k tokens · 1m 31s)
+  (ctrl+o to expand)
+
+● Now let me read the FatigueDetector to understand one more critical detail —
+  the initializeWithScalerFile and initializePersonalized methods, and check if
+  onDeviceDetector is actually used.
+
+  Read 1 file (ctrl+o to expand)
+
+● I notice onDeviceDetector is initialized in FatigueViewModel's init but never
+  actually gets initialize() or any initializeWith* called — it's always
+  unready. That simplifies things.
+
+  Now let me write the final plan.
+
+  Read 1 file (ctrl+o to expand)
+
+● Updated plan
+  ⎿  /plan to preview  ⎿  User rejected Claude's plan:
+     ╭─────────────────────────────────────────────────────────────────────────╮
+     │ Plan: Background Fatigue Prediction (Always-On)                         │
+     │                                                                         │
+     │ Context                                                                 │
+     │                                                                         │
+     │ Fatigue prediction currently only works when the user has               │
+     │ FatiguePredictionActivity open. The Activity registers a broadcast      │
+     │ receiver for ACTION_SEQUENCE_PROCESSED in onCreate() and unregisters in │
+     │  onDestroy(). FatigueViewModel (created with the Activity) runs 3       │
+     │ separate FatigueDetector instances, each needing 5 windows to start     │
+     │ predicting. If the user isn't on the screen, windows are never fed to   │
+     │ these detectors, CSV history is never written, and when they later open │
+     │  the screen, they must wait for 5 fresh windows.                        │
+     │                                                                         │
+     │ FatigueAlertManager (a singleton) IS always called from                 │
+     │ SequenceProcessor.broadcastResult(), but it only fires escalation       │
+     │ notifications — it doesn't write fatigue_history.csv or comparison      │
+     │ data.                                                                   │
+     │                                                                         │
+     │ Goal: Move the always-on fatigue processing (all detectors + CSV        │
+     │ writing + baseline tracking) into FatigueAlertManager so it runs        │
+     │ regardless of which screen the user is on. FatigueViewModel becomes a   │
+     │ thin UI layer that restores from CSV on init and receives live updates  │
+     │ via broadcast while the Activity is open.                               │
+     │                                                                         │
+     │ Approach                                                                │
+     │                                                                         │
+     │ 1. Expand FatigueAlertManager with full prediction pipeline             │
+     │                                                                         │
+     │ File: mobile/src/main/java/com/example/fitguard/features/fatigue/Fatigu │
+     │ eAlertManager.kt                                                        │
+     │                                                                         │
+     │ Add to the singleton:                                                   │
+     │ - Two detectors: globalDetector (rename existing detector) and          │
+     │ externalDetector. Note: onDeviceDetector in FatigueViewModel is never   │
+     │ initialized — skip it.                                                  │
+     │ - Baseline state: baselineHrValues, baselineRmssdValues,                │
+     │ baselineEstablished, baselineHr, baselineRmssd (mirrors                 │
+     │ FatigueViewModel logic)                                                 │
+     │ - Comparison counter: comparisonWindowIndex                             │
+     │                                                                         │
+     │ In ensureInitialized(context):                                          │
+     │ - Initialize globalDetector with personalized first, fallback to        │
+     │ default (already does this)                                             │
+     │ - Initialize externalDetector with                                      │
+     │ initializeWithScalerFile(extScalerFile) (same as FatigueViewModel)      │
+     │ - Load static baselines from AppDatabase (HR, RMSSD from UserProfile) — │
+     │  use coroutine on IO dispatcher                                         │
+     │                                                                         │
+     │ In onFeatureWindow(context, features):                                  │
+     │ 1. Extract currentHr (features[0]) and currentRmssd (features[8])       │
+     │ 2. Accumulate baselines if not established (same logic as               │
+     │ FatigueViewModel lines 192-207)                                         │
+     │ 3. Run both detectors: globalResult =                                   │
+     │ globalDetector.addWindowAndPredict(features), same for external         │
+     │ 4. Existing alert escalation logic uses globalResult (unchanged)        │
+     │ 5. Write CsvWriter.writeFatigueHistoryRow() when globalResult is        │
+     │ non-null (same as FatigueViewModel lines 268-281)                       │
+     │ 6. Write CsvWriter.writeComparisonRow() when any result is non-null     │
+     │ (same as FatigueViewModel lines 295-300)                                │
+     │ 7. Return a BackgroundFatigueState data class with all results,         │
+     │ readiness flags, and baseline data                                      │
+     │                                                                         │
+     │ Define BackgroundFatigueState in the same file:                         │
+     │ data class BackgroundFatigueState(                                      │
+     │     val globalResult: FatigueResult?,                                   │
+     │     val externalResult: FatigueResult?,                                 │
+     │     val globalReady: Boolean,                                           │
+     │     val externalReady: Boolean,                                         │
+     │     val baselineComparison: BaselineComparison?,                        │
+     │     val windowCount: Int                                                │
+     │ )                                                                       │
+     │                                                                         │
+     │ In reset(): Clear all detectors, baseline state, comparison index       │
+     │ (extend existing reset).                                                │
+     │                                                                         │
+     │ 2. Update SequenceProcessor to carry fatigue state in broadcast         │
+     │                                                                         │
+     │ File: mobile/src/main/java/com/example/fitguard/data/processing/Sequenc │
+     │ eProcessor.kt                                                           │
+     │                                                                         │
+     │ In broadcastResult():                                                   │
+     │ - Change FatigueAlertManager.onFeatureWindow() to capture its           │
+     │ BackgroundFatigueState return value                                     │
+     │ - Add result extras to the existing ACTION_SEQUENCE_PROCESSED intent:   │
+     │   - has_fatigue_state (boolean)                                         │
+     │   - global_pLow, global_pHigh, global_level, global_level_index,        │
+     │ global_percent (if non-null)                                            │
+     │   - Same ext_* fields for external detector                             │
+     │   - global_ready, external_ready (boolean)                              │
+     │   - baseline_current_hr, baseline_current_rmssd, baseline_hr,           │
+     │ baseline_rmssd, baseline_established                                    │
+     │   - fatigue_window_count                                                │
+     │                                                                         │
+     │ 3. Simplify FatigueViewModel to pure UI layer                           │
+     │                                                                         │
+     │ File: mobile/src/main/java/com/example/fitguard/features/fatigue/Fatigu │
+     │ eViewModel.kt                                                           │
+     │                                                                         │
+     │ Remove:                                                                 │
+     │ - All 3 FatigueDetector instances and their initialization              │
+     │ - Baseline accumulation logic from onNewFeatureWindow()                 │
+     │ - CSV writing (writeFatigueHistoryRow, writeComparisonCsvRow)           │
+     │ - onCleared() detector cleanup                                          │
+     │                                                                         │
+     │ Change onNewFeatureWindow(features: FloatArray) →                       │
+     │ onNewFatigueState(state: BackgroundFatigueState):                       │
+     │ - Post state.globalResult to _currentResult                             │
+     │ - Add trend point and call computePrediction()                          │
+     │ - Post comparison result from state                                     │
+     │ - Post baseline comparison from state                                   │
+     │ - Post state.windowCount to _windowCount                                │
+     │                                                                         │
+     │ Keep:                                                                   │
+     │ - restoreFatigueHistory() — reads CSV on init, already works            │
+     │ - computePrediction() — lightweight linear regression for UI            │
+     │ - loadWeeklyHistory() — reads features.jsonl for 7-day chart (uses      │
+     │ globalDetector.predictBatch — need to keep one detector for this OR     │
+     │ move weekly history loading)                                            │
+     │ - loadStaticBaselines() — for display purposes                          │
+     │                                                                         │
+     │ Weekly history: loadWeeklyHistory() calls                               │
+     │ globalDetector.predictBatch(windows) to run batch inference on past     │
+     │ session data. Options:                                                  │
+     │ - Keep a single globalDetector in FatigueViewModel just for             │
+     │ loadWeeklyHistory batch inference (simplest, no regression)             │
+     │ - The detector is only used at init time for batch inference, not for   │
+     │ live windows                                                            │
+     │                                                                         │
+     │ So keep globalDetector in FatigueViewModel for weekly history only.     │
+     │ Remove externalDetector and onDeviceDetector. Remove its usage from     │
+     │ onNewFeatureWindow.                                                     │
+     │                                                                         │
+     │ 4. Update FatiguePredictionActivity broadcast receiver                  │
+     │                                                                         │
+     │ File: mobile/src/main/java/com/example/fitguard/features/fatigue/Fatigu │
+     │ ePredictionActivity.kt                                                  │
+     │                                                                         │
+     │ Change the broadcast receiver to extract BackgroundFatigueState from    │
+     │ intent extras and call viewModel.onNewFatigueState(state):              │
+     │ private val sequenceReceiver = object : BroadcastReceiver() {           │
+     │     override fun onReceive(context: Context, intent: Intent) {          │
+     │         if (!intent.getBooleanExtra("has_fatigue_state", false)) return │
+     │         val state = extractFatigueState(intent)                         │
+     │         viewModel.onNewFatigueState(state)                              │
+     │     }                                                                   │
+     │ }                                                                       │
+     │                                                                         │
+     │ Add a helper extractFatigueState(intent: Intent):                       │
+     │ BackgroundFatigueState to read all the extras.                          │
+     │                                                                         │
+     │ Critical Files                                                          │
+     │                                                                         │
+     │ File: mobile/.../features/fatigue/FatigueAlertManager.kt                │
+     │ Change: Expand: 2 detectors, baseline, CSV writing, return state        │
+     │ ────────────────────────────────────────                                │
+     │ File: mobile/.../data/processing/SequenceProcessor.kt                   │
+     │ Change: Add fatigue state extras to broadcast                           │
+     │ ────────────────────────────────────────                                │
+     │ File: mobile/.../features/fatigue/FatigueViewModel.kt                   │
+     │ Change: Simplify: remove live detectors/CSV, accept pre-computed state  │
+     │ ────────────────────────────────────────                                │
+     │ File: mobile/.../features/fatigue/FatiguePredictionActivity.kt          │
+     │ Change: Extract state from broadcast extras                             │
+     │ ────────────────────────────────────────                                │
+     │ File: mobile/.../data/processing/CsvWriter.kt                           │
+     │ Change: No changes                                                      │
+     │ ────────────────────────────────────────                                │
+     │ File: mobile/.../data/processing/FatigueDetector.kt                     │
+     │ Change: No changes                                                      │
+     │                                                                         │
+     │ Verification                                                            │
+     │                                                                         │
+     │ 1. gradlew.bat --no-daemon :mobile:compileDebugKotlin — compiles        │
+     │ 2. Start a workout session, stay on ActivityTrackingActivity (never     │
+     │ open FatiguePrediction)                                                 │
+     │ 3. After ~5 windows (~2 minutes), check                                 │
+     │ Downloads/FitGuard_Data/{userId}/{sessionDir}/fatigue_history.csv       │
+     │ exists and has rows                                                     │
+     │ 4. Open FatiguePredictionActivity — should immediately show restored    │
+     │ trend data and latest prediction                                        │
+     │ 5. While on FatiguePredictionActivity, new windows should update UI in  │
+     │ real-time via broadcast                                                 │
+     ╰─────────────────────────────────────────────────────────────────────────╯
