@@ -72,6 +72,7 @@ class FatiguePredictionActivity : AppCompatActivity() {
         }
 
         binding.btnSimulate.setOnClickListener {
+            viewModel.resetForNewSession()
             binding.btnSimulate.isEnabled = false
             binding.btnSimulate.text = "Running..."
             lifecycleScope.launch(Dispatchers.IO) {
@@ -110,8 +111,26 @@ class FatiguePredictionActivity : AppCompatActivity() {
             }
         }
 
+        viewModel.windowCount.observe(this) { count ->
+            // Show warmup progress when we don't have a prediction yet
+            if (viewModel.currentResult.value == null && count < 5) {
+                binding.tvFatigueStatus.text = "Collecting data... ($count/5)"
+                binding.tvFatigueStatus.setTextColor(Color.parseColor("#999999"))
+                binding.tvFatigueClassification.text = "--"
+                binding.gaugeFatigue.setRecovery(0f, "...", Color.parseColor("#999999"))
+            }
+        }
+
         viewModel.currentResult.observe(this) { result ->
-            if (result == null) return@observe
+            if (result == null) {
+                // Show warmup state
+                val count = viewModel.windowCount.value ?: 0
+                binding.tvFatigueStatus.text = if (count > 0) "Collecting data... ($count/5)" else "Waiting for data..."
+                binding.tvFatigueStatus.setTextColor(Color.parseColor("#999999"))
+                binding.tvFatigueClassification.text = "--"
+                binding.gaugeFatigue.setRecovery(0f, "...", Color.parseColor("#999999"))
+                return@observe
+            }
             val color = when (result.levelIndex) {
                 0 -> Color.parseColor("#4CAF50")  // Mild - green
                 1 -> Color.parseColor("#FF8C00")  // Moderate - orange

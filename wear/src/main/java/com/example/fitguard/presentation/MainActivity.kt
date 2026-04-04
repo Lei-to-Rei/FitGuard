@@ -358,9 +358,9 @@ class MainActivity : Activity() {
 
     // ─── Session ─────────────────────────────────────────────────────────────
 
-    private fun startSession() {
+    private fun startSession(phoneSessionId: String? = null) {
         if (!::sensorSequenceManager.isInitialized) return
-        val sessionId = "watch_${System.currentTimeMillis()}"
+        val sessionId = phoneSessionId ?: "watch_${System.currentTimeMillis()}"
         PassiveTrackerService.stopTracker(this, "HeartRate")
         PassiveTrackerService.stopTracker(this, "SpO2")
         PassiveTrackerService.stopTracker(this, "SkinTemp")
@@ -454,7 +454,7 @@ class MainActivity : Activity() {
                             runOnUiThread {
                                 selectedActivity = activityType
                                 showSessionScreen(activityType)
-                                startSession()
+                                startSession(sessionId)
                             }
                         } else {
                             sendMessageToPhone("/fitguard/activity/ack", JSONObject().apply {

@@ -50,6 +50,7 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
         private const val PREDICTION_STEP_MS = 30_000L
         private const val MIN_POINTS_FOR_PREDICTION = 3
         private const val MAX_REGRESSION_POINTS = 10
+        private const val WINDOW_STEP_MS = 15_000L
     }
 
     private val globalDetector = FatigueDetector(application)
@@ -81,6 +82,8 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
 
     // Session fatigue trend
     private val sessionTrendPoints = mutableListOf<FatigueTrendPoint>()
+    private var trendWindowCount = 0
+    private var trendAnchorTimeMs = 0L
     private val _sessionTrend = MutableLiveData<List<FatigueTrendPoint>>()
     val sessionTrend: LiveData<List<FatigueTrendPoint>> = _sessionTrend
 
@@ -143,7 +146,36 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun refreshSessionState() {
+        val wasActive = _isSessionActive.value ?: false
         checkSessionActive()
+        // If transitioning to active and no restored data, state is already clean
+        // If transitioning to inactive→active with a new session, reset is handled by onSessionStarted()
+    }
+
+    /**
+     * Call when a brand-new session begins (not when returning to an existing one).
+     * Clears stale prediction state so the UI starts clean.
+     */
+    fun resetForNewSession() {
+        globalDetector.clearBuffer()
+        externalDetector.clearBuffer()
+        onDeviceDetector.clearBuffer()
+        FatigueAlertManager.reset()
+        _currentResult.postValue(null)
+        _windowCount.postValue(0)
+        _comparisonResult.postValue(null)
+        sessionTrendPoints.clear()
+        trendWindowCount = 0
+        trendAnchorTimeMs = 0L
+        _sessionTrend.postValue(emptyList())
+        _predictionTrend.postValue(emptyList())
+        baselineHrValues.clear()
+        baselineRmssdValues.clear()
+        baselineEstablished = false
+        _baselineWindowsCollected.postValue(0)
+        _baselineComparison.postValue(null)
+        comparisonWindowIndex = 0
+        Log.d(TAG, "Session reset: all buffers cleared")
     }
 
     private fun checkSessionActive() {
@@ -239,10 +271,17 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
                         sPHigh < 0.75f -> 2
                         else -> 3
                     }
+                    val smoothedLevel = when (smoothedLevelIndex) {
+                        0 -> "Mild"
+                        1 -> "Moderate"
+                        2 -> "High"
+                        3 -> "Critical"
+                        else -> "Unknown"
+                    }
                     val smoothedResult = FatigueResult(
                         pLow = 1f - sPHigh,
                         pHigh = sPHigh,
-                        level = globalResult.level,
+                        level = smoothedLevel,
                         levelIndex = smoothedLevelIndex,
                         percentDisplay = (sPHigh * 100).toInt().coerceIn(0, 100)
                     )
@@ -253,11 +292,16 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
                 Log.d(TAG, "Prediction: raw=${String.format("%.2f", globalResult.pHigh)}, " +
                         "smoothed=${String.format("%.2f", sPHigh)}, ${globalResult.percentDisplay}%")
 
-                // Add smoothed percent to session trend
+                // Add smoothed percent to session trend, spaced by sliding window interval
                 val smoothedPercent = if (sPHigh >= 0f)
                     (sPHigh * 100f).coerceIn(0f, 100f)
                 else globalResult.percentDisplay.toFloat()
-                val point = FatigueTrendPoint(System.currentTimeMillis(), smoothedPercent)
+                if (trendAnchorTimeMs == 0L) {
+                    trendAnchorTimeMs = System.currentTimeMillis()
+                }
+                val pointTimeMs = trendAnchorTimeMs + trendWindowCount * WINDOW_STEP_MS
+                trendWindowCount++
+                val point = FatigueTrendPoint(pointTimeMs, smoothedPercent)
                 sessionTrendPoints.add(point)
                 _sessionTrend.postValue(sessionTrendPoints.toList())
 
@@ -342,6 +386,13 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
             sessionTrendPoints.add(FatigueTrendPoint(row.timestamp, percent))
         }
         _sessionTrend.postValue(sessionTrendPoints.toList())
+
+        // Resume trend counter from restored points
+        trendWindowCount = sessionTrendPoints.size
+        if (sessionTrendPoints.isNotEmpty()) {
+            val first = sessionTrendPoints.first().timeMs
+            trendAnchorTimeMs = first
+        }
 
         // Restore latest results
         val last = rows.last()
