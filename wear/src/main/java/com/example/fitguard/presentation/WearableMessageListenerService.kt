@@ -67,6 +67,12 @@ class WearableMessageListenerService : WearableListenerService() {
                     val percentDisplay = json.optInt("percentDisplay", 0)
                     Log.d(TAG, "Fatigue alert: $level ($percentDisplay%)")
                     FatigueAlertHelper.showAlert(this, level, levelIndex, percentDisplay)
+                    sendBroadcast(Intent(MainActivity.ACTION_FATIGUE_UPDATE).apply {
+                        setPackage(packageName)
+                        putExtra("level", level)
+                        putExtra("levelIndex", levelIndex)
+                        putExtra("percentDisplay", percentDisplay)
+                    })
                 }
                 "/fitguard/recovery/active" -> {
                     val watchText = json.optString("watchText", "")
