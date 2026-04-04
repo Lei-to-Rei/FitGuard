@@ -7,9 +7,15 @@ import android.content.IntentFilter
 import android.graphics.Color
 import android.os.Bundle
 import android.view.View
+import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.example.fitguard.MainActivity
 import com.example.fitguard.R
 import android.widget.TextView
@@ -63,6 +69,25 @@ class FatiguePredictionActivity : AppCompatActivity() {
             startActivity(Intent(this, ActivityTrackingActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             })
+        }
+
+        binding.btnSimulate.setOnClickListener {
+            binding.btnSimulate.isEnabled = false
+            binding.btnSimulate.text = "Running..."
+            lifecycleScope.launch(Dispatchers.IO) {
+                val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                val result = SimulationRunner.run(this@FatiguePredictionActivity, userId)
+                withContext(Dispatchers.Main) {
+                    binding.btnSimulate.isEnabled = true
+                    binding.btnSimulate.text = "Run Simulation"
+                    when (result) {
+                        is SimulationRunner.SimResult.Error ->
+                            Toast.makeText(this@FatiguePredictionActivity, result.message, Toast.LENGTH_LONG).show()
+                        is SimulationRunner.SimResult.Success ->
+                            Toast.makeText(this@FatiguePredictionActivity, "Simulation queued ~${result.windowsQueued} windows", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
         }
     }
 

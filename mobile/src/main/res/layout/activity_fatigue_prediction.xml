@@ -55,6 +55,19 @@
             app:cornerRadius="8dp"
             android:backgroundTint="@color/green_primary" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSimulate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Run Simulation"
+            android:textAllCaps="false"
+            app:cornerRadius="8dp"
+            app:strokeColor="@color/green_primary"
+            app:strokeWidth="1dp"
+            android:backgroundTint="@android:color/transparent"
+            android:textColor="@color/green_primary" />
+
     </LinearLayout>
 
     <!-- ===== Scrollable Content ===== -->
