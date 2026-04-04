@@ -15,6 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.fitguard.auth.LoginActivity
 import com.example.fitguard.data.processing.CsvWriter
+import com.example.fitguard.data.repository.ActivityHistoryRepository
 import com.example.fitguard.data.repository.AuthRepository
 import com.example.fitguard.databinding.ActivityMainBinding
 import com.example.fitguard.features.activitytracking.ActivityHistoryActivity
@@ -33,6 +34,8 @@ import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import java.time.LocalDate
+import java.time.ZoneId
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -98,6 +101,7 @@ class MainActivity : AppCompatActivity() {
         binding.chartHeartRateMini.showGrid = false
         registerReceiver(healthReceiver, IntentFilter("com.example.fitguard.HEALTH_DATA"), RECEIVER_NOT_EXPORTED)
         loadHealthData()
+        loadProgressStats()
     }
 
     override fun onResume() {
@@ -105,6 +109,7 @@ class MainActivity : AppCompatActivity() {
         if (::binding.isInitialized) {
             binding.bottomNavigation.selectedItemId = R.id.nav_home
             loadHealthData()
+            loadProgressStats()
         }
     }
 
@@ -221,6 +226,63 @@ class MainActivity : AppCompatActivity() {
                             updateSpO2Dot(lastSpo2)
                         }
                     }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun loadProgressStats() {
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return@launch
+                val sessions = ActivityHistoryRepository.loadSessions(userId)
+
+                val today = LocalDate.now(ZoneId.systemDefault())
+                val zone = ZoneId.systemDefault()
+
+                // Filter to current month
+                val monthSessions = sessions.filter { session ->
+                    val date = java.time.Instant.ofEpochMilli(session.startTimeMillis)
+                        .atZone(zone).toLocalDate()
+                    date.year == today.year && date.monthValue == today.monthValue
+                }
+
+                val activitiesCount = monthSessions.size
+
+                // Estimate calories via MET × 70 kg × hours
+                val totalCalories = monthSessions.sumOf { session ->
+                    val hours = session.durationMillis / 3_600_000.0
+                    val met = when {
+                        session.activityType.contains("Run", ignoreCase = true) -> 8.0
+                        session.activityType.contains("Cycl", ignoreCase = true) -> 6.0
+                        session.activityType.contains("Walk", ignoreCase = true) -> 3.5
+                        else -> 5.0
+                    }
+                    (met * 70.0 * hours).toInt()
+                }
+
+                // Streak: consecutive days ending today that have at least one session
+                val sessionDates = sessions.map { session ->
+                    java.time.Instant.ofEpochMilli(session.startTimeMillis)
+                        .atZone(zone).toLocalDate()
+                }.toSet()
+
+                var streak = 0
+                var day = today
+                while (day in sessionDates) {
+                    streak++
+                    day = day.minusDays(1)
+                }
+
+                val caloriesText = if (totalCalories >= 1000)
+                    String.format("%.1fk", totalCalories / 1000.0)
+                else
+                    totalCalories.toString()
+
+                withContext(Dispatchers.Main) {
+                    binding.tvActivities.text = activitiesCount.toString()
+                    binding.tvCalories.text = caloriesText
+                    binding.tvStreak.text = streak.toString()
                 }
             } catch (_: Exception) {}
         }

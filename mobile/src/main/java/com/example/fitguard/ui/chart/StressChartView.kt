@@ -22,7 +22,7 @@ class StressChartView @JvmOverloads constructor(
         2f to "Average",
         1f to "Relaxed"
     )
-    private val dateLabels = listOf("3/11", "4/11", "5/11", "6/11", "7/11", "8/11")
+    private var dateLabels = listOf<String>()
 
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#6EDB34")
@@ -59,22 +59,23 @@ class StressChartView @JvmOverloads constructor(
 
     private val linePath = Path()
 
-    init {
-        // Stress levels over 6 days: peaks near "High" around 6/11 then recedes
-        dataPoints.addAll(listOf(0.8f, 1.2f, 1.8f, 2.8f, 2.3f, 1.5f))
-    }
-
     fun setData(points: List<Float>) {
         dataPoints.clear()
         dataPoints.addAll(points)
         invalidate()
     }
 
+    fun setDateLabels(labels: List<String>) {
+        if (labels.isNotEmpty()) {
+            dateLabels = labels
+            invalidate()
+        }
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (dataPoints.isEmpty()) return
 
-        val leftPad = 72f
+        val leftPad = levelLabels.maxOf { (_, label) -> labelPaint.measureText(label) } + 16f
         val rightPad = 20f
         val topPad = 16f
         val bottomPad = 40f
@@ -100,11 +101,15 @@ class StressChartView @JvmOverloads constructor(
         canvas.drawLine(arrowX - arrowSize, xAxisY + arrowSize / 2, arrowX, xAxisY, axisLinePaint)
 
         // Date labels
-        val dateLabelStep = chartW / (dateLabels.size - 1)
-        for (i in dateLabels.indices) {
-            val x = leftPad + i * dateLabelStep
-            canvas.drawText(dateLabels[i], x, height.toFloat() - 8f, dateLabelPaint)
+        if (dateLabels.size >= 2) {
+            val dateLabelStep = chartW / (dateLabels.size - 1)
+            for (i in dateLabels.indices) {
+                val x = leftPad + i * dateLabelStep
+                canvas.drawText(dateLabels[i], x, height.toFloat() - 8f, dateLabelPaint)
+            }
         }
+
+        if (dataPoints.isEmpty()) return
 
         // Smooth curve using cubic bezier
         val dataStepX = chartW / (dataPoints.size - 1).coerceAtLeast(1)

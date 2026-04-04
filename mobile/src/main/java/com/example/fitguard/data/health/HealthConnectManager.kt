@@ -12,6 +12,7 @@ import kotlinx.coroutines.coroutineScope
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
 class HealthConnectManager(private val context: Context) {
@@ -125,9 +126,11 @@ class HealthConnectManager(private val context: Context) {
         if (response.records.isEmpty()) return null
         val latest = response.records.maxByOrNull { it.time } ?: return null
         val score = rmssdToStress(latest.heartRateVariabilityMillis)
-        val history = response.records.sortedBy { it.time }.takeLast(6)
-            .map { mapStressToChartLevel(rmssdToStress(it.heartRateVariabilityMillis)) }
-        return StressResult(score = score, label = stressLabel(score), history = history)
+        val last6 = response.records.sortedBy { it.time }.takeLast(6)
+        val history = last6.map { mapStressToChartLevel(rmssdToStress(it.heartRateVariabilityMillis)) }
+        val dateFormatter = DateTimeFormatter.ofPattern("M/d").withZone(ZoneId.systemDefault())
+        val historyDates = last6.map { dateFormatter.format(it.time) }
+        return StressResult(score = score, label = stressLabel(score), history = history, historyDates = historyDates)
     }
 
     // ─── All Samsung Health metrics ─────────────────────────────────────────
@@ -369,7 +372,12 @@ data class SleepResult(
     val startTime: java.time.Instant, val endTime: java.time.Instant
 )
 
-data class StressResult(val score: Float, val label: String, val history: List<Float>)
+data class StressResult(
+    val score: Float,
+    val label: String,
+    val history: List<Float>,
+    val historyDates: List<String> = emptyList()
+)
 
 data class BloodPressureReading(val systolic: Int, val diastolic: Int)
 

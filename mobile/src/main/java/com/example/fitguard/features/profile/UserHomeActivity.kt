@@ -98,10 +98,6 @@ class UserHomeActivity : AppCompatActivity() {
             startActivity(Intent(this, ConnectedDevicesActivity::class.java))
         }
 
-        binding.menuSupport.setOnClickListener {
-            startActivity(Intent(this, SupportFeedbackActivity::class.java))
-        }
-
         binding.btnEditBaseline.setOnClickListener {
             startActivity(Intent(this, PersonalBaselineActivity::class.java))
         }

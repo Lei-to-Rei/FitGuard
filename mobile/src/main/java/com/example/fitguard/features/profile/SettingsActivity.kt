@@ -21,22 +21,8 @@ class SettingsActivity : AppCompatActivity() {
 
         binding.btnBack.setOnClickListener { finish() }
 
-        setupToggles()
         restorePreferences()
         setupPreferences()
-        setupDataManagement()
-    }
-
-    private fun setupToggles() {
-        binding.switchActivity.setOnCheckedChangeListener { _, isChecked ->
-            Toast.makeText(this, "Activity reminders ${if (isChecked) "enabled" else "disabled"}", Toast.LENGTH_SHORT).show()
-        }
-        binding.switchGoals.setOnCheckedChangeListener { _, isChecked ->
-            Toast.makeText(this, "Goal achievements ${if (isChecked) "enabled" else "disabled"}", Toast.LENGTH_SHORT).show()
-        }
-        binding.switchRecovery.setOnCheckedChangeListener { _, isChecked ->
-            Toast.makeText(this, "Recovery alerts ${if (isChecked) "enabled" else "disabled"}", Toast.LENGTH_SHORT).show()
-        }
     }
 
     private fun restorePreferences() {
@@ -140,12 +126,4 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupDataManagement() {
-        binding.menuExportData.setOnClickListener {
-            Toast.makeText(this, "Export data coming soon", Toast.LENGTH_SHORT).show()
-        }
-        binding.menuDeleteAccount.setOnClickListener {
-            Toast.makeText(this, "Delete account coming soon", Toast.LENGTH_SHORT).show()
-        }
-    }
 }

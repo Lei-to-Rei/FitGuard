@@ -223,7 +223,10 @@ class SleepStressActivity : AppCompatActivity() {
         binding.tvSleepQuality.text = "Quality: ${sleep.qualityLabel}"
         binding.tvSleepQuality.setTextColor(qualityColor)
         binding.tvSleepDuration.text = "Duration: ${formatDuration(sleep.durationMs)}"
-        if (sleep.chartPoints.isNotEmpty()) binding.chartSleep.setData(sleep.chartPoints)
+        if (sleep.chartPoints.isNotEmpty()) {
+            binding.chartSleep.setTimeRange(sleep.startTime, sleep.endTime)
+            binding.chartSleep.setData(sleep.chartPoints)
+        }
         binding.tvSleepStatus.visibility = View.GONE
         binding.tvSleepSource.text = "Samsung Health · ended ${formatTime(sleep.endTime)}"
         binding.tvSleepSource.visibility = View.VISIBLE
@@ -246,7 +249,10 @@ class SleepStressActivity : AppCompatActivity() {
         binding.tvStressStatus.text = "Status: ${stress.label}"
         binding.tvStressStatus.setTextColor(stressColor)
         binding.gaugeStress.setStressValue(stress.score)
-        if (stress.history.isNotEmpty()) binding.chartStress.setData(stress.history)
+        if (stress.history.isNotEmpty()) {
+            binding.chartStress.setDateLabels(stress.historyDates)
+            binding.chartStress.setData(stress.history)
+        }
         binding.tvStressSource.text = "Samsung Health · HRV-based"
         binding.tvStressSource.visibility = View.VISIBLE
     }

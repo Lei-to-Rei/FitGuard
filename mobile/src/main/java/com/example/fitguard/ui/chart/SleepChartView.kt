@@ -23,7 +23,7 @@ class SleepChartView @JvmOverloads constructor(
         2f to "Light Sleep",
         1f to "Deep Sleep"
     )
-    private val timeLabels = listOf("12AM", "1", "2", "3", "4", "5", "6")
+    private var timeLabels = listOf<String>()
 
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#1565C0")
@@ -53,25 +53,31 @@ class SleepChartView @JvmOverloads constructor(
 
     private val linePath = Path()
 
-    init {
-        // Sleep hypnogram: 13 points across 6 hours (every ~30 min, 12AM–6AM)
-        dataPoints.addAll(listOf(2f, 1f, 1f, 2f, 3f, 2f, 1f, 1f, 2f, 3f, 2f, 3f, 4f))
-    }
-
     fun setData(points: List<Float>) {
         dataPoints.clear()
         dataPoints.addAll(points)
         invalidate()
     }
 
+    fun setTimeRange(startTime: java.time.Instant, endTime: java.time.Instant) {
+        val formatter = java.time.format.DateTimeFormatter
+            .ofPattern("ha")
+            .withZone(java.time.ZoneId.systemDefault())
+        val totalMs = endTime.toEpochMilli() - startTime.toEpochMilli()
+        timeLabels = (22..8).map { i ->
+            val t = startTime.plusMillis(totalMs * i / 6)
+            formatter.format(t).lowercase()
+        }
+        invalidate()
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (dataPoints.isEmpty()) return
 
-        val leftPad = 100f
+        val leftPad = stageLabels.maxOf { (_, label) -> labelPaint.measureText(label) } + 16f
         val rightPad = 16f
         val topPad = 16f
-        val bottomPad = 40f
+        val bottomPad = labelPaint.textSize + timeLabelPaint.textSize + 16f
 
         val chartW = width.toFloat() - leftPad - rightPad
         val chartH = height.toFloat() - topPad - bottomPad
@@ -88,11 +94,15 @@ class SleepChartView @JvmOverloads constructor(
         canvas.drawText("Time", leftPad / 2f, height.toFloat() - 8f, timeLabelPaint)
 
         // X-axis time labels
-        val stepX = chartW / (timeLabels.size - 1)
-        for (i in timeLabels.indices) {
-            val x = leftPad + i * stepX
-            canvas.drawText(timeLabels[i], x, height.toFloat() - 8f, timeLabelPaint)
+        if (timeLabels.size >= 2) {
+            val stepX = chartW / (timeLabels.size - 1)
+            for (i in timeLabels.indices) {
+                val x = leftPad + i * stepX
+                canvas.drawText(timeLabels[i], x, height.toFloat() - 8f, timeLabelPaint)
+            }
         }
+
+        if (dataPoints.isEmpty()) return
 
         // Draw line path
         val dataStepX = chartW / (dataPoints.size - 1).coerceAtLeast(1)
