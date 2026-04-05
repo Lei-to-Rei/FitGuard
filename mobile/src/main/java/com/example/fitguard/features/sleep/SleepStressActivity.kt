@@ -1,7 +1,9 @@
 package com.example.fitguard.features.sleep
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
@@ -15,11 +17,20 @@ import androidx.lifecycle.lifecycleScope
 import com.example.fitguard.data.health.HealthConnectManager
 import com.example.fitguard.data.health.SleepResult
 import com.example.fitguard.data.health.StressResult
+import com.example.fitguard.data.processing.CsvWriter
+import com.example.fitguard.data.processing.StressCalculator
 import com.example.fitguard.databinding.ActivitySleepStressBinding
+import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.File
+import java.text.SimpleDateFormat
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.*
 
 class SleepStressActivity : AppCompatActivity() {
 
@@ -27,6 +38,15 @@ class SleepStressActivity : AppCompatActivity() {
     private lateinit var healthConnectManager: HealthConnectManager
 
     private val prefs by lazy { getSharedPreferences("hc_prefs", Context.MODE_PRIVATE) }
+
+    private val stressReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            intent ?: return
+            Log.d(TAG, "Watch stress broadcast received")
+            // Reload full history so chart includes the new point
+            runOnUiThread { loadSavedWatchStress() }
+        }
+    }
 
     // Track how many times the user has denied permissions (per the HC UI guidelines)
     private var denyCount: Int
@@ -77,10 +97,22 @@ class SleepStressActivity : AppCompatActivity() {
         binding.btnManageAccess.setOnClickListener {
             openHealthConnectSettings()
         }
+
+        registerReceiver(
+            stressReceiver,
+            IntentFilter(StressCalculator.ACTION_STRESS_RESULT),
+            RECEIVER_NOT_EXPORTED
+        )
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try { unregisterReceiver(stressReceiver) } catch (_: Exception) {}
     }
 
     override fun onResume() {
         super.onResume()
+        loadSavedWatchStress()
         checkAndLoad()
     }
 
@@ -232,11 +264,101 @@ class SleepStressActivity : AppCompatActivity() {
         binding.tvSleepSource.visibility = View.VISIBLE
     }
 
+    private fun loadSavedWatchStress() {
+        lifecycleScope.launch {
+            val history = withContext(Dispatchers.IO) { loadStressHistory() }
+            if (history.isEmpty()) return@launch
+
+            val latest = history.last()
+            // Only show if latest is less than 24 hours old
+            if (System.currentTimeMillis() - latest.timestamp > 24 * 60 * 60 * 1000L) return@launch
+
+            updateWatchStressUI(latest, history)
+        }
+    }
+
+    /**
+     * Reads WatchStress.jsonl from the last 7 daily folders.
+     * Returns entries sorted by timestamp.
+     */
+    private fun loadStressHistory(): List<WatchStressEntry> {
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+        val baseDir = CsvWriter.getOutputDir(userId, "")
+        val entries = mutableListOf<WatchStressEntry>()
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val cal = Calendar.getInstance()
+
+        for (dayOffset in 6 downTo 0) {
+            cal.time = Date()
+            cal.add(Calendar.DAY_OF_YEAR, -dayOffset)
+            val dateFolder = dateFormat.format(cal.time)
+            val file = File(File(baseDir, dateFolder), "WatchStress.jsonl")
+            if (!file.exists()) continue
+            try {
+                file.readLines().filter { it.isNotBlank() }.forEach { line ->
+                    try {
+                        val json = JSONObject(line)
+                        entries.add(WatchStressEntry(
+                            score = json.optDouble("score", -1.0).toFloat(),
+                            label = json.optString("label", ""),
+                            rmssd = json.optDouble("rmssd", 0.0).toFloat(),
+                            meanHr = json.optDouble("mean_hr", 0.0).toFloat(),
+                            ibiCount = json.optInt("ibi_count", 0),
+                            timestamp = json.optLong("timestamp", 0L)
+                        ))
+                    } catch (_: Exception) {}
+                }
+            } catch (_: Exception) {}
+        }
+        return entries.filter { it.score >= 0f }.sortedBy { it.timestamp }
+    }
+
+    private fun updateWatchStressUI(latest: WatchStressEntry, history: List<WatchStressEntry>) {
+        val stressColor = when {
+            latest.score < 33f -> Color.parseColor("#6EDB34")
+            latest.score < 66f -> Color.parseColor("#FFC107")
+            else               -> Color.parseColor("#F44336")
+        }
+        binding.tvStressValue.text = String.format("%.0f", latest.score)
+        binding.tvStressValue.setTextColor(stressColor)
+        binding.tvStressStatus.text = "Status: ${latest.label}"
+        binding.tvStressStatus.setTextColor(stressColor)
+
+        // Gauge
+        binding.gaugeStress.setStressValue(latest.score)
+
+        // Chart — convert 0-100 score to 1-3 scale (1=Relaxed, 2=Average, 3=High)
+        if (history.isNotEmpty()) {
+            val chartPoints = history.map { 1f + (it.score / 100f) * 2f }
+            val timeFormat = SimpleDateFormat("HH:mm", Locale.US)
+            val dateLabels = history.map { timeFormat.format(Date(it.timestamp)) }
+            binding.chartStress.setDateLabels(dateLabels)
+            binding.chartStress.setData(chartPoints)
+        }
+
+        binding.tvStressSource.text = "Watch · HRV-based (RMSSD: ${String.format("%.1f", latest.rmssd)}ms, ${latest.ibiCount} IBIs)"
+        binding.tvStressSource.visibility = View.VISIBLE
+    }
+
+    private data class WatchStressEntry(
+        val score: Float,
+        val label: String,
+        val rmssd: Float,
+        val meanHr: Float,
+        val ibiCount: Int,
+        val timestamp: Long
+    )
+
     private fun updateStressUI(stress: StressResult?) {
         if (stress == null) {
-            binding.tvStressValue.text = "--"
-            binding.tvStressStatus.text = "No HRV data — open Samsung Health to measure stress"
-            binding.tvStressSource.visibility = View.GONE
+            // Don't overwrite watch-derived stress if already showing
+            val hasWatchStress = binding.tvStressSource.visibility == View.VISIBLE
+                    && binding.tvStressSource.text.toString().startsWith("Watch")
+            if (!hasWatchStress) {
+                binding.tvStressValue.text = "--"
+                binding.tvStressStatus.text = "No HRV data — open Samsung Health to measure stress"
+                binding.tvStressSource.visibility = View.GONE
+            }
             return
         }
         val stressColor = when {

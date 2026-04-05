@@ -31,7 +31,7 @@ class MetricsMonitoringActivity : AppCompatActivity() {
         private const val TAG = "MetricsMonitoring"
 
         // Manual measurement durations (only used for manual "Measure" button)
-        private const val HR_MEASUREMENT_DURATION_MS = 30_000L
+        private const val HR_MEASUREMENT_DURATION_MS = 180_000L  // 3 min for IBI → stress
         private const val SPO2_MEASUREMENT_TIMEOUT_MS = 90_000L
         private const val SKIN_TEMP_MEASUREMENT_TIMEOUT_MS = 30_000L
         private const val MAX_HR_RETRIES = 2
@@ -439,7 +439,9 @@ class MetricsMonitoringActivity : AppCompatActivity() {
                             binding.chartHeartRate.addDataPoint(hr.toFloat())
                             hrValues.add(hr.toFloat())
                             updateHrStats()
-                            if (isManualHrMeasuring) stopManualMeasurement("HeartRate")
+                            // Don't stop manual HR here — let it keep running
+                            // to collect IBI data for stress calculation.
+                            // The watch-side timeout will stop the sensor.
                         }
                     }
                     "SpO2" -> {

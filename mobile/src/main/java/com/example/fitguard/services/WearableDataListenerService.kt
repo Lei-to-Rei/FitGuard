@@ -6,6 +6,7 @@ import android.util.Log
 import com.example.fitguard.data.processing.AccelSample
 import com.example.fitguard.data.processing.PpgSample
 import com.example.fitguard.data.processing.SequenceProcessor
+import com.example.fitguard.data.processing.StressCalculator
 import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
 import android.net.Uri
 import com.google.android.gms.wearable.*
@@ -115,6 +116,7 @@ class WearableDataListenerService : WearableListenerService() {
     }
 
     private val sequenceProcessor by lazy { SequenceProcessor(this) }
+    private val stressCalculator by lazy { StressCalculator(this) }
 
     override fun onDataChanged(dataEvents: DataEventBuffer) {
         Log.d(TAG, "onDataChanged: ${dataEvents.count} events")
@@ -243,6 +245,36 @@ class WearableDataListenerService : WearableListenerService() {
             putExtra("type", type)
             putExtra("data", json.toString())
         })
+
+        // Feed IBI data to stress calculator
+        if (type == "HeartRate") {
+            val status = bundle.getInt("status")
+            if (status == 1) {
+                val ibiList = bundle.getIntegerArrayList("ibi_list") ?: emptyList()
+                val ibiStatusList = bundle.getIntegerArrayList("ibi_status_list") ?: emptyList()
+                if (ibiList.isNotEmpty()) {
+                    if (!stressCalculator.isCollecting) {
+                        stressCalculator.startCollection()
+                    }
+                    stressCalculator.addIbiValues(ibiList, ibiStatusList)
+                    if (stressCalculator.hasEnoughData) {
+                        val result = stressCalculator.calculateStress()
+                        if (result != null) {
+                            Log.d(TAG, "Stress calculated: score=${result.score} label=${result.label}")
+                            sendBroadcast(android.content.Intent(StressCalculator.ACTION_STRESS_RESULT).apply {
+                                setPackage(packageName)
+                                putExtra("score", result.score)
+                                putExtra("label", result.label)
+                                putExtra("rmssd", result.rmssd)
+                                putExtra("mean_hr", result.meanHr)
+                                putExtra("ibi_count", result.ibiCount)
+                            })
+                        }
+                        stressCalculator.reset()
+                    }
+                }
+            }
+        }
     }
 
     private fun processBatchData(dataMap: DataMap) {

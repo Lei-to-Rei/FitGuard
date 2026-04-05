@@ -39,11 +39,13 @@ class PassiveTrackerService : Service() {
 
         // Measurement timeouts
         private const val HR_MEASUREMENT_DURATION_MS = 15_000L
+        private const val STRESS_COLLECTION_DURATION_MS = 180_000L  // 3 min for IBI → stress
         private const val SPO2_TIMEOUT_MS = 90_000L
         private const val SKIN_TEMP_TIMEOUT_MS = 30_000L
         private const val AUTO_INTERVAL_10_MIN_MS = 10 * 60 * 1000L
         private const val AUTO_INTERVAL_15_MIN_MS = 15 * 60 * 1000L
         private const val MAX_HR_RETRIES = 2
+        private const val MIN_IBI_FOR_STRESS = 30
 
         private const val SCHEDULE_PREFS = "passive_tracker_schedule"
 
@@ -94,6 +96,7 @@ class PassiveTrackerService : Service() {
     private val trackerTimeoutRunnables = mutableMapOf<String, Runnable>()
     private var hrRetryCount = 0
     private var hrReceivedValid = false
+    private var stressIbiCount = 0
 
     // Activity conflict — pause scheduled measurements during workouts
     private val activityReceiver = object : BroadcastReceiver() {
@@ -351,7 +354,7 @@ class PassiveTrackerService : Service() {
 
         // Set timeout for auto-stop
         val timeoutMs = when (trackerType) {
-            "HeartRate" -> HR_MEASUREMENT_DURATION_MS
+            "HeartRate" -> STRESS_COLLECTION_DURATION_MS  // run long enough to collect IBI for stress
             "SpO2" -> SPO2_TIMEOUT_MS
             "SkinTemp" -> SKIN_TEMP_TIMEOUT_MS
             else -> 30_000L
@@ -360,6 +363,7 @@ class PassiveTrackerService : Service() {
         if (trackerType == "HeartRate") {
             hrReceivedValid = false
             hrRetryCount = 0
+            stressIbiCount = 0
         }
 
         val timeoutRunnable = Runnable {
@@ -402,8 +406,9 @@ class PassiveTrackerService : Service() {
     /**
      * Called from sendDataToPhone when valid data is received.
      * Auto-stops scheduled measurements that have received valid data.
+     * HeartRate keeps running until enough IBI data for stress calculation.
      */
-    private fun checkScheduledAutoStop(trackerType: String, isValid: Boolean) {
+    private fun checkScheduledAutoStop(trackerType: String, isValid: Boolean, ibiCount: Int = 0) {
         if (trackerType !in scheduledActiveTrackers) return
         if (!isValid) return
 
@@ -416,8 +421,17 @@ class PassiveTrackerService : Service() {
         }
         if (mode == "Continuous") return
 
-        Log.d(TAG, "Auto-stopping $trackerType — valid data received")
-        if (trackerType == "HeartRate") hrReceivedValid = true
+        // HeartRate: keep collecting IBI for stress calculation
+        if (trackerType == "HeartRate") {
+            hrReceivedValid = true
+            stressIbiCount += ibiCount
+            if (stressIbiCount < MIN_IBI_FOR_STRESS) {
+                return  // keep running — not enough IBI yet
+            }
+            Log.d(TAG, "Auto-stopping HeartRate — collected $stressIbiCount IBIs for stress")
+        } else {
+            Log.d(TAG, "Auto-stopping $trackerType — valid data received")
+        }
         stopScheduledMeasurement(trackerType)
     }
 
@@ -505,7 +519,9 @@ class PassiveTrackerService : Service() {
         // Check for auto-stop on valid data
         when (data) {
             is HealthTrackerManager.TrackerData.HeartRateData -> {
-                checkScheduledAutoStop("HeartRate", data.heartRate > 0 && data.status == 1)
+                val validIbiCount = data.ibiList.zip(data.ibiStatusList)
+                    .count { (ibi, status) -> status == 0 && ibi in 300..2000 }
+                checkScheduledAutoStop("HeartRate", data.heartRate > 0 && data.status == 1, validIbiCount)
             }
             is HealthTrackerManager.TrackerData.SpO2Data -> {
                 val valid = (data.spO2 > 0 && data.status == 2) || data.status < 0
