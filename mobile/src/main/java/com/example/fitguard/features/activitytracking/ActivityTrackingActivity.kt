@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.example.fitguard.MainActivity
@@ -73,8 +74,7 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         Log.d(TAG, "POST_NOTIFICATIONS permission granted=$granted")
-        val type = getSelectedActivityType()
-        viewModel.startSession(type)
+        checkRecoveryAndStart()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -224,9 +224,47 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
         ) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            val type = getSelectedActivityType()
-            viewModel.startSession(type)
+            checkRecoveryAndStart()
         }
+    }
+
+    private fun checkRecoveryAndStart() {
+        val recoveryPrefs = getSharedPreferences("recovery_state", MODE_PRIVATE)
+        val sessionEndTime = recoveryPrefs.getLong("session_end_time", 0L)
+        val restHours = recoveryPrefs.getInt("rest_hours", 0)
+
+        if (sessionEndTime > 0L && restHours > 0) {
+            val elapsedMs = System.currentTimeMillis() - sessionEndTime
+            val restMs = restHours * 3_600_000L
+            val percent = ((elapsedMs.toFloat() / restMs) * 100f).coerceIn(0f, 100f).toInt()
+
+            if (percent < 100) {
+                val hoursLeft = ((restMs - elapsedMs) / 3_600_000.0)
+                val timeLeft = if (hoursLeft >= 1.0) {
+                    String.format("%.1f hours", hoursLeft)
+                } else {
+                    String.format("%.0f minutes", hoursLeft * 60)
+                }
+
+                AlertDialog.Builder(this)
+                    .setTitle("Recovery Incomplete")
+                    .setMessage(
+                        "You are only $percent% recovered from your last session. " +
+                        "Full recovery is recommended in about $timeLeft.\n\n" +
+                        "Starting a new session before full recovery may increase injury risk."
+                    )
+                    .setPositiveButton("Continue") { _, _ ->
+                        val type = getSelectedActivityType()
+                        viewModel.startSession(type)
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+                return
+            }
+        }
+
+        val type = getSelectedActivityType()
+        viewModel.startSession(type)
     }
 
     private fun getSelectedActivityType(): String {

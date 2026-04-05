@@ -226,10 +226,10 @@
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
+                                    android:fontFamily="@font/inter"
                                     android:text="Recovered"
-                                    android:textSize="8sp"
                                     android:textColor="#B3FFFFFF"
-                                    android:fontFamily="@font/inter" />
+                                    android:textSize="8sp" />
 
                             </LinearLayout>
 

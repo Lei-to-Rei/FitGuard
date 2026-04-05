@@ -260,6 +260,7 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         _passiveRecovery.postValue(passiveRec)
         FatigueAlertManager.showPassiveRecoveryNotification(getApplication(), passiveRec)
         FatigueAlertManager.sendPassiveRecoveryToWatch(getApplication(), passiveRec)
+        saveRecoveryState(passiveRec)
         saveRouteData()
         stopLocationTracking()
         SequenceProcessor.flushRemainingAndClear()
@@ -361,6 +362,7 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         _passiveRecovery.postValue(passiveRec)
         FatigueAlertManager.showPassiveRecoveryNotification(getApplication(), passiveRec)
         FatigueAlertManager.sendPassiveRecoveryToWatch(getApplication(), passiveRec)
+        saveRecoveryState(passiveRec)
         saveRouteData()
         stopTimer()
         stopLocationTracking()
@@ -430,6 +432,15 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
             .putBoolean(KEY_IS_ACTIVE, true)
             .putInt(KEY_SEQUENCE_COUNT, _sequenceCount.value ?: 0)
             .putString(KEY_SESSION_DIR, activeSessionDir ?: "")
+            .apply()
+    }
+
+    private fun saveRecoveryState(recovery: RecoveryRecommendationManager.PassiveRecovery) {
+        getApplication<Application>()
+            .getSharedPreferences("recovery_state", Application.MODE_PRIVATE)
+            .edit()
+            .putLong("session_end_time", System.currentTimeMillis())
+            .putInt("rest_hours", recovery.estimatedRestHours)
             .apply()
     }
 

@@ -328,6 +328,8 @@ object FatigueAlertManager {
                 val nodes = Wearable.getNodeClient(context).connectedNodes.await()
                 val payload = JSONObject().apply {
                     put("watchText", recovery.watchText)
+                    put("restHours", recovery.estimatedRestHours)
+                    put("sessionEndTime", System.currentTimeMillis())
                 }
                 val data = payload.toString().toByteArray(Charsets.UTF_8)
                 for (node in nodes) {

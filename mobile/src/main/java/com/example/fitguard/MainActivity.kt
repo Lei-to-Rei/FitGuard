@@ -102,6 +102,7 @@ class MainActivity : AppCompatActivity() {
         registerReceiver(healthReceiver, IntentFilter("com.example.fitguard.HEALTH_DATA"), RECEIVER_NOT_EXPORTED)
         loadHealthData()
         loadProgressStats()
+        updateRecoveryProgress()
     }
 
     override fun onResume() {
@@ -110,6 +111,7 @@ class MainActivity : AppCompatActivity() {
             binding.bottomNavigation.selectedItemId = R.id.nav_home
             loadHealthData()
             loadProgressStats()
+            updateRecoveryProgress()
         }
     }
 
@@ -286,6 +288,26 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (_: Exception) {}
         }
+    }
+
+    private fun updateRecoveryProgress() {
+        val recoveryPrefs = getSharedPreferences("recovery_state", MODE_PRIVATE)
+        val sessionEndTime = recoveryPrefs.getLong("session_end_time", 0L)
+        val restHours = recoveryPrefs.getInt("rest_hours", 0)
+
+        if (sessionEndTime == 0L || restHours == 0) {
+            // No recovery data — show 100%
+            binding.progressRecovered.progress = 100
+            binding.tvRecoveredPercent.text = "100%"
+            return
+        }
+
+        val elapsedMs = System.currentTimeMillis() - sessionEndTime
+        val restMs = restHours * 3_600_000L
+        val percent = ((elapsedMs.toFloat() / restMs) * 100f).coerceIn(0f, 100f).toInt()
+
+        binding.progressRecovered.progress = percent
+        binding.tvRecoveredPercent.text = "$percent%"
     }
 
     private fun checkStoragePermission() {
