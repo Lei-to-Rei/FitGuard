@@ -392,6 +392,13 @@ class MainActivity : Activity() {
         }
         isSessionRunning = false
         showHomeScreen()
+
+        // Force kill the watch app process after a short delay
+        // to ensure all sensors are released
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            Log.d(TAG, "Force killing watch app to release all sensors")
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }, 1500)
     }
 
     private fun startTimer() {

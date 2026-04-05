@@ -287,6 +287,13 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
                 _state.value = SessionState.ACTIVE
             }
         }
+
+        // Force kill the phone app process after a short delay
+        // to ensure all sensors are released
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            Log.d(TAG, "Force killing phone app to release all sensors")
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }, 1500)
     }
 
     fun onWatchAck(ackSessionId: String, status: String, activityType: String? = null) {
@@ -366,6 +373,13 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         _state.value = SessionState.IDLE
         clearSavedSession()
         Log.d(TAG, "Session stopped: reason=$reason sequences=$sequenceCount")
+
+        // Force kill the phone app process after a short delay
+        // to ensure all sensors are released
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            Log.d(TAG, "Force killing phone app to release all sensors")
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }, 1500)
     }
 
     fun onHeartbeat(hbSessionId: String, sequenceCount: Int, elapsedS: Int) {
