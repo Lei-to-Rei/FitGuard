@@ -6,8 +6,10 @@ import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.fitguard.data.model.ActivityHistoryItem
 import com.example.fitguard.data.repository.AuthRepository
 import com.example.fitguard.databinding.ActivityActivityHistoryBinding
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 class ActivityHistoryActivity : AppCompatActivity() {
 
@@ -23,14 +25,17 @@ class ActivityHistoryActivity : AppCompatActivity() {
         binding.btnBack.setOnClickListener { finish() }
 
         val userId = AuthRepository.currentUser?.uid ?: ""
-        adapter = ActivityHistoryAdapter { item ->
-            startActivity(Intent(this, ActivityDetailActivity::class.java).apply {
-                putExtra("session_dir", item.sessionDirName)
-                putExtra("user_id", userId)
-                putExtra("activity_type", item.activityType)
-                putExtra("start_time", item.startTimeMillis)
-            })
-        }
+        adapter = ActivityHistoryAdapter(
+            onItemClick = { item ->
+                startActivity(Intent(this, ActivityDetailActivity::class.java).apply {
+                    putExtra("session_dir", item.sessionDirName)
+                    putExtra("user_id", userId)
+                    putExtra("activity_type", item.activityType)
+                    putExtra("start_time", item.startTimeMillis)
+                })
+            },
+            onDeleteClick = { item -> confirmDelete(item) }
+        )
         binding.rvHistory.layoutManager = LinearLayoutManager(this)
         binding.rvHistory.adapter = adapter
 
@@ -40,6 +45,17 @@ class ActivityHistoryActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.loadSessions()
+    }
+
+    private fun confirmDelete(item: ActivityHistoryItem) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Delete Workout")
+            .setMessage("This will permanently delete this ${item.activityType} session from all your devices.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Delete") { _, _ ->
+                viewModel.deleteSession(item.sessionDirName)
+            }
+            .show()
     }
 
     private fun observeViewModel() {

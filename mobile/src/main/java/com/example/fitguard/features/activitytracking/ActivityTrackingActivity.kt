@@ -254,6 +254,13 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
                         "Starting a new session before full recovery may increase injury risk."
                     )
                     .setPositiveButton("Continue") { _, _ ->
+                        // Carry over remaining recovery hours to next session
+                        val remainingMs = restMs - elapsedMs
+                        val remainingHours = (remainingMs / 3_600_000.0).toFloat()
+                        recoveryPrefs.edit()
+                            .putFloat("carryover_hours", remainingHours.coerceAtLeast(0f))
+                            .apply()
+
                         val type = getSelectedActivityType()
                         viewModel.startSession(type)
                     }

@@ -436,11 +436,17 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
     }
 
     private fun saveRecoveryState(recovery: RecoveryRecommendationManager.PassiveRecovery) {
-        getApplication<Application>()
+        val prefs = getApplication<Application>()
             .getSharedPreferences("recovery_state", Application.MODE_PRIVATE)
-            .edit()
+
+        // Add any unfinished recovery from the previous session
+        val carryover = prefs.getFloat("carryover_hours", 0f)
+        val totalRestHours = recovery.estimatedRestHours + kotlin.math.ceil(carryover.toDouble()).toInt()
+
+        prefs.edit()
             .putLong("session_end_time", System.currentTimeMillis())
-            .putInt("rest_hours", recovery.estimatedRestHours)
+            .putInt("rest_hours", totalRestHours)
+            .remove("carryover_hours")
             .apply()
     }
 

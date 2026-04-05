@@ -27,6 +27,63 @@ object ActivityHistoryRepository {
     }
 
     /**
+     * Deletes a session locally and sets a "deleted" tombstone in Firestore
+     * so that other devices won't re-sync it back.
+     */
+    suspend fun deleteSession(userId: String, sessionDirName: String) {
+        // 1. Delete local files
+        val localDir = CsvWriter.getOutputDir(userId, sessionDirName)
+        if (localDir.exists()) {
+            localDir.deleteRecursively()
+        }
+
+        // 2. Set deleted tombstone in Firestore (keep the doc so other devices
+        //    see it and don't re-upload their local copy)
+        try {
+            val db = FirebaseFirestore.getInstance()
+            val docRef = db.collection("users").document(userId)
+                .collection("workout_history").document(sessionDirName)
+
+            val doc = docRef.get().await()
+            if (doc.exists()) {
+                // Mark as deleted and wipe subcollections
+                docRef.update("deleted", true).await()
+                deleteSubcollection(db, userId, sessionDirName, "feature_vectors")
+                deleteSubcollection(db, userId, sessionDirName, "route_points")
+                deleteSubcollection(db, userId, sessionDirName, "fatigue_history")
+            } else {
+                // Session was never uploaded — create a minimal tombstone
+                docRef.set(mapOf(
+                    "sessionDirName" to sessionDirName,
+                    "deleted" to true
+                )).await()
+            }
+            Log.d(TAG, "Deleted session $sessionDirName")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to set Firestore tombstone for $sessionDirName: ${e.message}")
+        }
+    }
+
+    private suspend fun deleteSubcollection(
+        db: FirebaseFirestore, userId: String, sessionDirName: String, subcollection: String
+    ) {
+        try {
+            val docs = db.collection("users").document(userId)
+                .collection("workout_history").document(sessionDirName)
+                .collection(subcollection)
+                .get().await()
+
+            docs.documents.chunked(500).forEach { chunk ->
+                val batch = db.batch()
+                chunk.forEach { batch.delete(it.reference) }
+                batch.commit().await()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to delete subcollection $subcollection: ${e.message}")
+        }
+    }
+
+    /**
      * Uploads local-only sessions to Firestore.
      * Scans local session directories and pushes any that don't exist in Firestore yet.
      */
@@ -34,11 +91,19 @@ object ActivityHistoryRepository {
         try {
             val db = FirebaseFirestore.getInstance()
 
-            // Fetch existing Firestore session IDs in one query
-            val existingSessionIds = db.collection("users").document(userId)
+            // Fetch existing Firestore sessions in one query
+            val existingDocs = db.collection("users").document(userId)
                 .collection("workout_history")
                 .get().await()
-                .documents.map { it.id }.toSet()
+
+            val existingSessionIds = mutableSetOf<String>()
+            val deletedSessionIds = mutableSetOf<String>()
+            for (doc in existingDocs.documents) {
+                existingSessionIds.add(doc.id)
+                if (doc.getBoolean("deleted") == true) {
+                    deletedSessionIds.add(doc.id)
+                }
+            }
 
             val userDir = CsvWriter.getOutputDir(userId)
             if (!userDir.exists() || !userDir.isDirectory) return
@@ -49,6 +114,12 @@ object ActivityHistoryRepository {
 
             var uploaded = 0
             for (dir in localSessionDirs) {
+                // If this session was deleted on another device, remove local copy
+                if (dir.name in deletedSessionIds) {
+                    dir.deleteRecursively()
+                    Log.d(TAG, "Removed locally synced session ${dir.name} (deleted on another device)")
+                    continue
+                }
                 if (dir.name in existingSessionIds) continue
                 uploadSession(db, userId, dir)
                 uploaded++
@@ -277,6 +348,15 @@ object ActivityHistoryRepository {
             for (doc in snapshot.documents) {
                 val sessionDir = doc.id
                 val localDir = CsvWriter.getOutputDir(userId, sessionDir)
+
+                // If flagged as deleted, remove local copy if it exists and skip
+                if (doc.getBoolean("deleted") == true) {
+                    if (localDir.exists()) {
+                        localDir.deleteRecursively()
+                        Log.d(TAG, "Removed local session $sessionDir (deleted remotely)")
+                    }
+                    continue
+                }
 
                 // Skip if local data already exists
                 if (File(localDir, "features.csv").exists()) continue

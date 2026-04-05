@@ -11,7 +11,8 @@ import java.util.Date
 import java.util.Locale
 
 class ActivityHistoryAdapter(
-    private val onItemClick: (ActivityHistoryItem) -> Unit = {}
+    private val onItemClick: (ActivityHistoryItem) -> Unit = {},
+    private val onDeleteClick: (ActivityHistoryItem) -> Unit = {}
 ) : RecyclerView.Adapter<ActivityHistoryAdapter.HistoryViewHolder>() {
 
     private var items: List<ActivityHistoryItem> = emptyList()
@@ -76,6 +77,7 @@ class ActivityHistoryAdapter(
             }
 
             itemView.setOnClickListener { onItemClick(item) }
+            binding.btnDelete.setOnClickListener { onDeleteClick(item) }
         }
 
         private fun formatDuration(millis: Long): String {

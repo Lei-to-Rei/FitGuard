@@ -107,6 +107,12 @@ object RecoveryRecommendationManager {
         val load = stats.trainingLoad
 
         val (watchText, phoneTitle, phoneBody, restHours) = when {
+            stats.durationMinutes < 2 || (load == 0.0 && stats.avgHR == 0.0) -> PassiveContent(
+                Strings.passiveWatchNone(),
+                Strings.passivePhoneTitleNone(),
+                Strings.passivePhoneBodyNone(),
+                0
+            )
             load < 0.25 -> PassiveContent(
                 Strings.passiveWatchLight(),
                 Strings.passivePhoneTitleLight(),
@@ -159,7 +165,28 @@ object RecoveryRecommendationManager {
 
     private fun calculateTrainingLoad(): Double {
         if (totalPredictions == 0) return 0.0
-        return predictionsInHigh.toDouble() / totalPredictions.toDouble()
+
+        val intensityRatio = predictionsInHigh.toDouble() / totalPredictions.toDouble()
+        val durationMinutes = ((System.currentTimeMillis() - sessionStartTime) / 60_000).toInt()
+
+        // Sessions under 2 minutes — no meaningful recovery needed
+        if (durationMinutes < 2) return 0.0
+
+        // Duration scaling:
+        //   2-5 min  → 0.5   (warmup-length, minimal stress)
+        //   5-20 min → 0.85  (short, less cumulative stress)
+        //   20-45    → 1.0   (baseline)
+        //   45-90    → up to 1.3  (longer effort compounds fatigue)
+        //   >90      → up to 1.5  (extended sessions)
+        val durationFactor = when {
+            durationMinutes < 5 -> 0.5
+            durationMinutes < 20 -> 0.85
+            durationMinutes <= 45 -> 1.0
+            durationMinutes <= 90 -> 1.0 + 0.3 * (durationMinutes - 45) / 45.0
+            else -> 1.3 + 0.2 * ((durationMinutes - 90).coerceAtMost(60)) / 60.0
+        }
+
+        return (intensityRatio * durationFactor).coerceIn(0.0, 1.0)
     }
 
     private fun generateActiveRecovery(
@@ -280,6 +307,13 @@ object RecoveryRecommendationManager {
         fun activePhoneBodyCriticalNoRef(hrInt: Int) =
             "You've reached high fatigue very quickly. Heart rate is $hrInt bpm. Stop and " +
                     "rest for at least 10 minutes. Hydrate immediately."
+
+        // Passive recovery - No rest needed
+        fun passiveWatchNone() = "Session too short"
+        fun passivePhoneTitleNone() = "No Recovery Needed"
+        fun passivePhoneBodyNone() =
+            "This session was too short to require any recovery period. " +
+                    "You're good to go whenever you're ready."
 
         // Passive recovery - Watch text
         fun passiveWatchLight() = "Good session"

@@ -42,4 +42,17 @@ class ActivityHistoryViewModel(application: Application) : AndroidViewModel(appl
             _isLoading.value = false
         }
     }
+
+    fun deleteSession(sessionDirName: String) {
+        val userId = AuthRepository.currentUser?.uid ?: return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                ActivityHistoryRepository.deleteSession(userId, sessionDirName)
+            }
+            // Remove from current list immediately
+            val updated = _sessions.value?.filter { it.sessionDirName != sessionDirName } ?: emptyList()
+            _sessions.value = updated
+            _isEmpty.value = updated.isEmpty()
+        }
+    }
 }
