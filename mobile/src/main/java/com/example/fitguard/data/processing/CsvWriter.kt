@@ -281,14 +281,8 @@ object CsvWriter {
                 "extPHigh" to (row.external?.pHigh ?: 0f),
                 "extLevel" to (row.external?.level ?: ""),
                 "extLevelIndex" to (row.external?.levelIndex ?: -1),
-                "ondevPLow" to (row.onDevice?.pLow ?: 0f),
-                "ondevPHigh" to (row.onDevice?.pHigh ?: 0f),
-                "ondevLevel" to (row.onDevice?.level ?: ""),
-                "ondevLevelIndex" to (row.onDevice?.levelIndex ?: -1),
                 "currentHr" to row.currentHr,
                 "currentRmssd" to row.currentRmssd,
-                "baselineHr" to row.baselineHr,
-                "baselineRmssd" to row.baselineRmssd,
                 "alertRawPHigh" to row.alertRawPHigh,
                 "alertSmoothedPHigh" to row.alertSmoothedPHigh
             ))
@@ -427,11 +421,8 @@ object CsvWriter {
         val fatiguePercent: Float,
         val global: FatigueResult?,
         val external: FatigueResult?,
-        val onDevice: FatigueResult?,
         val currentHr: Double,
         val currentRmssd: Double,
-        val baselineHr: Double,
-        val baselineRmssd: Double,
         val alertRawPHigh: Float = 0f,
         val alertSmoothedPHigh: Float = 0f
     )
@@ -440,8 +431,7 @@ object CsvWriter {
     private const val HISTORY_HEADER = "timestamp,fatigue_percent," +
         "global_pLow,global_pHigh,global_level,global_levelIndex," +
         "ext_pLow,ext_pHigh,ext_level,ext_levelIndex," +
-        "ondev_pLow,ondev_pHigh,ondev_level,ondev_levelIndex," +
-        "current_hr,current_rmssd,baseline_hr,baseline_rmssd," +
+        "current_hr,current_rmssd," +
         "alert_raw_pHigh,alert_smoothed_pHigh"
 
     fun writeFatigueHistoryRow(
@@ -463,8 +453,8 @@ object CsvWriter {
             }
 
             val line = "${row.timestamp},${fmt(row.fatiguePercent.toDouble())}," +
-                "${resCols(row.global)},${resCols(row.external)},${resCols(row.onDevice)}," +
-                "${fmt(row.currentHr)},${fmt(row.currentRmssd)},${fmt(row.baselineHr)},${fmt(row.baselineRmssd)}," +
+                "${resCols(row.global)},${resCols(row.external)}," +
+                "${fmt(row.currentHr)},${fmt(row.currentRmssd)}," +
                 "${fmt(row.alertRawPHigh.toDouble())},${fmt(row.alertSmoothedPHigh.toDouble())}"
 
             val content = buildString {
@@ -493,7 +483,7 @@ object CsvWriter {
             // Skip header
             for (i in 1 until lines.size) {
                 val cols = lines[i].split(",")
-                if (cols.size < 18) continue
+                if (cols.size < 14) continue
 
                 fun parseResult(offset: Int): FatigueResult? {
                     val pLow = cols.getOrNull(offset)?.toFloatOrNull() ?: return null
@@ -509,13 +499,10 @@ object CsvWriter {
                     fatiguePercent = cols[1].toFloatOrNull() ?: continue,
                     global = parseResult(2),
                     external = parseResult(6),
-                    onDevice = parseResult(10),
-                    currentHr = cols.getOrNull(14)?.toDoubleOrNull() ?: 0.0,
-                    currentRmssd = cols.getOrNull(15)?.toDoubleOrNull() ?: 0.0,
-                    baselineHr = cols.getOrNull(16)?.toDoubleOrNull() ?: 0.0,
-                    baselineRmssd = cols.getOrNull(17)?.toDoubleOrNull() ?: 0.0,
-                    alertRawPHigh = cols.getOrNull(18)?.toFloatOrNull() ?: 0f,
-                    alertSmoothedPHigh = cols.getOrNull(19)?.toFloatOrNull() ?: 0f
+                    currentHr = cols.getOrNull(10)?.toDoubleOrNull() ?: 0.0,
+                    currentRmssd = cols.getOrNull(11)?.toDoubleOrNull() ?: 0.0,
+                    alertRawPHigh = cols.getOrNull(12)?.toFloatOrNull() ?: 0f,
+                    alertSmoothedPHigh = cols.getOrNull(13)?.toFloatOrNull() ?: 0f
                 ))
             }
         } catch (e: Exception) {

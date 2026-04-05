@@ -346,11 +346,8 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
                             fatiguePercent = csvSmoothedPercent,
                             global = globalResult,
                             external = externalResult,
-                            onDevice = onDeviceResult,
                             currentHr = currentHr,
                             currentRmssd = currentRmssd,
-                            baselineHr = baselineHr,
-                            baselineRmssd = baselineRmssd,
                             alertRawPHigh = FatigueAlertManager.lastRawPHigh,
                             alertSmoothedPHigh = if (FatigueAlertManager.smoothedPHigh >= 0f)
                                 FatigueAlertManager.smoothedPHigh else 0f
@@ -409,17 +406,15 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
             ScalerComparisonResult(
                 global = last.global,
                 external = last.external,
-                onDevice = last.onDevice,
+                onDevice = null,
                 globalReady = globalDetector.isReady,
                 externalReady = externalDetector.isReady,
                 onDeviceReady = onDeviceDetector.isReady
             )
         )
 
-        // Restore baseline
-        if (last.baselineHr > 0.0 && last.baselineRmssd > 0.0) {
-            baselineHr = last.baselineHr
-            baselineRmssd = last.baselineRmssd
+        // Restore baseline from existing member variables (set from user profile at session start)
+        if (baselineHr > 0.0 && baselineRmssd > 0.0) {
             baselineEstablished = true
             _baselineWindowsCollected.postValue(BASELINE_WINDOW_COUNT)
             val hrDiff = ((last.currentHr - baselineHr) / baselineHr) * 100.0
