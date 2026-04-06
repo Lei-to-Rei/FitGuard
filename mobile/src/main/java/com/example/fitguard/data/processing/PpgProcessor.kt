@@ -47,7 +47,7 @@ data class FeatureVector(
     val cadenceSpm: Double,
     val activityLabel: String = ""
 ) {
-    /** Extract 30 model features in scaler_params.json order. */
+    /** Extract 19 PPG-only model features in scaler_params.json order. */
     fun toFeatureFloatArray(): FloatArray = floatArrayOf(
         ppg.meanHrBpm.toFloat(), ppg.hrStdBpm.toFloat(), ppg.hrMinBpm.toFloat(),
         ppg.hrMaxBpm.toFloat(), ppg.hrRangeBpm.toFloat(), ppg.hrSlopeBpmPerS.toFloat(),
@@ -55,10 +55,7 @@ data class FeatureVector(
         ppg.pnn50Pct.toFloat(), ppg.meanNnMs.toFloat(), ppg.cvNn.toFloat(),
         ppg.lfPowerMs2.toFloat(), ppg.hfPowerMs2.toFloat(), ppg.lfHfRatio.toFloat(),
         ppg.totalPowerMs2.toFloat(), ppg.spo2MeanPct.toFloat(), ppg.spo2MinPct.toFloat(),
-        ppg.spo2StdPct.toFloat(), accelXMean.toFloat(), accelYMean.toFloat(),
-        accelZMean.toFloat(), accelXVar.toFloat(), accelYVar.toFloat(),
-        accelZVar.toFloat(), accelMagMean.toFloat(), accelMagVar.toFloat(),
-        accelPeak.toFloat(), totalSteps.toFloat(), cadenceSpm.toFloat()
+        ppg.spo2StdPct.toFloat()
     )
 }
 
