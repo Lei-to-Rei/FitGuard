@@ -165,15 +165,6 @@ class FatiguePredictionActivity : AppCompatActivity() {
             }
             binding.chartSessionTrend.setPrediction(chartPoints)
         }
-
-        // Scaler comparison
-        viewModel.comparisonResult.observe(this) { comp ->
-            if (comp == null) return@observe
-            updateComparisonColumn(comp.global, comp.globalReady,
-                binding.tvCompGlobalLevel, binding.tvCompGlobalPHigh, binding.tvCompGlobalStatus)
-            updateComparisonColumn(comp.external, comp.externalReady,
-                binding.tvCompExternalLevel, binding.tvCompExternalPHigh, binding.tvCompExternalStatus)
-        }
     }
 
     private fun updateComparisonColumn(
