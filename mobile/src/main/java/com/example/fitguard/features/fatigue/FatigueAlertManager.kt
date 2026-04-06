@@ -33,6 +33,7 @@ object FatigueAlertManager {
     private const val ACTION_DISMISS = "com.example.fitguard.FATIGUE_ALERT_DISMISS_PHONE"
     private const val EMA_ALPHA = 0.4f
     private const val CONSECUTIVE_HIGH_THRESHOLD = 3
+    private const val TREND_SLOPE_THRESHOLD = 0.025f
 
     private var detector: FatigueDetector? = null
     private var initialized = false
@@ -49,10 +50,14 @@ object FatigueAlertManager {
     private var consecutiveHighCount = 0
 
     // EMA smoothing state — future window (~60 s ahead)
-    var smoothedFuturePHigh: Float = -1f
+    var futureSmoothedPHigh: Float = 0f
         private set
     var futureLevel: Int = 0
         private set
+
+    // Slope-based trend: last 5 alertSmoothedPHigh values
+    private val smoothedHistory = ArrayDeque<Float>()
+    val currentTrend: String get() = computeTrend()
 
     private fun ensureInitialized(context: Context) {
         if (initialized) return
@@ -126,11 +131,11 @@ object FatigueAlertManager {
         }
 
         // Apply EMA smoothing — future window
-        smoothedFuturePHigh = if (smoothedFuturePHigh < 0f) {
-            result.futurePHigh
-        } else {
-            EMA_ALPHA * result.futurePHigh + (1f - EMA_ALPHA) * smoothedFuturePHigh
-        }
+        futureSmoothedPHigh = EMA_ALPHA * result.futurePHigh + (1f - EMA_ALPHA) * futureSmoothedPHigh
+
+        // Append current smoothed value to trend history (keep last 5)
+        smoothedHistory.addLast(smoothedPHigh)
+        if (smoothedHistory.size > 5) smoothedHistory.removeFirst()
 
         // Classify using smoothed pHigh
         val smoothedLevelIndex = when {
@@ -143,9 +148,9 @@ object FatigueAlertManager {
 
         // Classify future level
         futureLevel = when {
-            smoothedFuturePHigh < 0.25f -> 0
-            smoothedFuturePHigh < 0.50f -> 1
-            smoothedFuturePHigh < 0.75f -> 2
+            futureSmoothedPHigh < 0.25f -> 0
+            futureSmoothedPHigh < 0.50f -> 1
+            futureSmoothedPHigh < 0.75f -> 2
             else -> 3
         }
 
@@ -158,8 +163,9 @@ object FatigueAlertManager {
 
         Log.d(TAG, "Prediction: raw=${String.format("%.3f", lastRawPHigh)}, " +
                 "smoothed=${String.format("%.3f", smoothedPHigh)}, " +
+                "futureSmoothed=${String.format("%.3f", futureSmoothedPHigh)}, " +
                 "level=$smoothedLevelIndex, futureLevel=$futureLevel, " +
-                "consecutiveHigh=$consecutiveHighCount")
+                "trend=$currentTrend, consecutiveHigh=$consecutiveHighCount")
 
         // Feed recovery recommendation manager (features[0]=HR, features[8]=RMSSD)
         val currentHR = features[0].toDouble()
@@ -223,10 +229,22 @@ object FatigueAlertManager {
         smoothedPHigh = -1f
         lastRawPHigh = 0f
         consecutiveHighCount = 0
-        smoothedFuturePHigh = -1f
+        futureSmoothedPHigh = 0f
         futureLevel = 0
+        // smoothedHistory intentionally not cleared — let it warm up naturally across resets
         detector?.clearBuffer()
         Log.d(TAG, "Reset")
+    }
+
+    private fun computeTrend(): String {
+        if (smoothedHistory.size < 3) return "STABLE"
+        val n = smoothedHistory.size.toFloat()
+        val slope = (smoothedHistory.last() - smoothedHistory.first()) / (n - 1f)
+        return when {
+            slope >  TREND_SLOPE_THRESHOLD  -> "INCREASING"
+            slope < -TREND_SLOPE_THRESHOLD  -> "DECREASING"
+            else                            -> "STABLE"
+        }
     }
 
     // --- Fatigue alert notifications ---
@@ -397,17 +415,12 @@ object FatigueAlertManager {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val nodes = Wearable.getNodeClient(context).connectedNodes.await()
-                val trendStr = when {
-                    futureLevel > result.levelIndex -> "INCREASING"
-                    futureLevel < result.levelIndex -> "DECREASING"
-                    else -> "STABLE"
-                }
                 val payload = JSONObject().apply {
                     put("level", result.level)
                     put("levelIndex", result.levelIndex)
                     put("pHigh", result.pHigh.toDouble())
                     put("percentDisplay", result.percentDisplay)
-                    put("trend", trendStr)
+                    put("trend", currentTrend)
                 }
                 val data = payload.toString().toByteArray(Charsets.UTF_8)
                 for (node in nodes) {

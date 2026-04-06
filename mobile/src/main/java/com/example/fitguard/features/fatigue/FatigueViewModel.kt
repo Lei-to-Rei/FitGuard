@@ -311,13 +311,13 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
                     _currentResult.postValue(smoothedResult)
 
                     // Next-step prediction from model's future output tensor
-                    val sFuturePHigh = FatigueAlertManager.smoothedFuturePHigh
-                    if (sFuturePHigh >= 0f) {
+                    val sFuturePHigh = FatigueAlertManager.futureSmoothedPHigh
+                    if (sFuturePHigh > 0f) {
                         val futureLvl = FatigueAlertManager.futureLevel
-                        val trend = when {
-                            futureLvl > smoothedLevelIndex -> Trend.INCREASING
-                            futureLvl < smoothedLevelIndex -> Trend.DECREASING
-                            else -> Trend.STABLE
+                        val trend = when (FatigueAlertManager.currentTrend) {
+                            "INCREASING" -> Trend.INCREASING
+                            "DECREASING" -> Trend.DECREASING
+                            else         -> Trend.STABLE
                         }
                         _nextStepPrediction.value = NextStepPrediction(
                             futureLevel = futureLvl,
@@ -380,12 +380,6 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
                         FatigueAlertManager.smoothedPHigh < 0.75f -> 2
                         else -> 3
                     } else globalResult.levelIndex
-                    val csvFutureLevel = FatigueAlertManager.futureLevel
-                    val csvTrend = when {
-                        csvFutureLevel > smoothedCurrentLevel -> "INCREASING"
-                        csvFutureLevel < smoothedCurrentLevel -> "DECREASING"
-                        else -> "STABLE"
-                    }
                     CsvWriter.writeFatigueHistoryRow(
                         CsvWriter.FatigueHistoryRow(
                             timestamp = System.currentTimeMillis(),
@@ -397,10 +391,9 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
                             alertRawPHigh = FatigueAlertManager.lastRawPHigh,
                             alertSmoothedPHigh = if (FatigueAlertManager.smoothedPHigh >= 0f)
                                 FatigueAlertManager.smoothedPHigh else 0f,
-                            futurePHigh = if (FatigueAlertManager.smoothedFuturePHigh >= 0f)
-                                FatigueAlertManager.smoothedFuturePHigh else 0f,
-                            futureLevel = csvFutureLevel,
-                            trend = csvTrend
+                            futurePHigh = FatigueAlertManager.futureSmoothedPHigh,
+                            futureLevel = FatigueAlertManager.futureLevel,
+                            trend = FatigueAlertManager.currentTrend
                         ),
                         userId, sessionDir
                     )
