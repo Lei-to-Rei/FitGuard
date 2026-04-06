@@ -15,6 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.fitguard.auth.LoginActivity
 import com.example.fitguard.data.processing.CsvWriter
+import com.example.fitguard.data.processing.SequenceProcessor
 import com.example.fitguard.data.repository.ActivityHistoryRepository
 import com.example.fitguard.data.repository.AuthRepository
 import com.example.fitguard.databinding.ActivityMainBinding
@@ -72,6 +73,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Fallback: PPG-derived HR from SequenceProcessor during active sessions
+    private val featureReceiver = object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context?, intent: Intent?) {
+            intent ?: return
+            val hr = intent.getDoubleExtra("mean_hr_bpm", 0.0)
+            if (hr > 0) {
+                runOnUiThread {
+                    binding.tvHeartRateValue.text = "${String.format("%.0f", hr)} bpm"
+                    binding.chartHeartRateMini.addDataPoint(hr.toFloat())
+                }
+            }
+        }
+    }
+
     private val manageStorageLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
@@ -100,6 +115,7 @@ class MainActivity : AppCompatActivity() {
 
         binding.chartHeartRateMini.showGrid = false
         registerReceiver(healthReceiver, IntentFilter("com.example.fitguard.HEALTH_DATA"), RECEIVER_NOT_EXPORTED)
+        registerReceiver(featureReceiver, IntentFilter(SequenceProcessor.ACTION_SEQUENCE_PROCESSED), RECEIVER_NOT_EXPORTED)
         loadHealthData()
         loadProgressStats()
         updateRecoveryProgress()
@@ -119,6 +135,7 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         coroutineScope.cancel()
         try { unregisterReceiver(healthReceiver) } catch (_: Exception) {}
+        try { unregisterReceiver(featureReceiver) } catch (_: Exception) {}
     }
 
     private fun setupHeader() {
@@ -188,7 +205,8 @@ class MainActivity : AppCompatActivity() {
                 val dateFolder = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
                 val dir = File(CsvWriter.getOutputDir(userId, ""), dateFolder)
 
-                // Heart Rate
+                // Heart Rate — try sensor data first, fall back to PPG features
+                var hrLoaded = false
                 val hrFile = File(dir, "HeartRate.jsonl")
                 if (hrFile.exists()) {
                     val readings = hrFile.readLines()
@@ -200,8 +218,22 @@ class MainActivity : AppCompatActivity() {
                         .filter { it > 0f }
 
                     if (readings.isNotEmpty()) {
+                        hrLoaded = true
                         val chartPoints = readings.takeLast(12)
                         val lastHr = readings.last().toInt()
+                        withContext(Dispatchers.Main) {
+                            binding.tvHeartRateValue.text = "$lastHr bpm"
+                            binding.chartHeartRateMini.setData(chartPoints)
+                        }
+                    }
+                }
+
+                // Fallback: read mean_hr_bpm from features.csv (PPG-derived)
+                if (!hrLoaded) {
+                    val hrFromFeatures = readHrFromFeaturesCsv(userId)
+                    if (hrFromFeatures.isNotEmpty()) {
+                        val chartPoints = hrFromFeatures.takeLast(12)
+                        val lastHr = hrFromFeatures.last().toInt()
                         withContext(Dispatchers.Main) {
                             binding.tvHeartRateValue.text = "$lastHr bpm"
                             binding.chartHeartRateMini.setData(chartPoints)
@@ -332,6 +364,33 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton("Later", null)
             .setCancelable(false)
             .show()
+    }
+
+    /**
+     * Read mean_hr_bpm from features.csv — checks active session dir first, then base user dir.
+     */
+    private fun readHrFromFeaturesCsv(userId: String): List<Float> {
+        val sessionDir = com.example.fitguard.features.activitytracking.ActivityTrackingViewModel.activeSessionDir ?: ""
+        val candidates = mutableListOf<File>()
+        if (sessionDir.isNotEmpty()) {
+            candidates.add(File(CsvWriter.getOutputDir(userId, sessionDir), "features.csv"))
+        }
+        candidates.add(File(CsvWriter.getOutputDir(userId, ""), "features.csv"))
+
+        for (file in candidates) {
+            if (!file.exists()) continue
+            try {
+                val readings = file.readLines().drop(1) // skip header
+                    .mapNotNull { line ->
+                        val cols = line.split(",")
+                        // mean_hr_bpm is column index 4
+                        cols.getOrNull(4)?.toFloatOrNull()
+                    }
+                    .filter { it > 0f }
+                if (readings.isNotEmpty()) return readings
+            } catch (_: Exception) {}
+        }
+        return emptyList()
     }
 
     private fun setupBottomNavigation() {

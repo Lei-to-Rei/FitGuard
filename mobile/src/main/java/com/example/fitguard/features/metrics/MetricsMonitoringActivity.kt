@@ -339,7 +339,8 @@ class MetricsMonitoringActivity : AppCompatActivity() {
                 val baseDir = CsvWriter.getOutputDir(userId, "")
                 val dir = File(baseDir, dateFolder)
 
-                // --- Heart Rate ---
+                // --- Heart Rate — sensor data first, PPG features fallback ---
+                var hrLoaded = false
                 val hrFile = File(dir, "HeartRate.jsonl")
                 if (hrFile.exists()) {
                     val readings = hrFile.readLines()
@@ -352,12 +353,28 @@ class MetricsMonitoringActivity : AppCompatActivity() {
                         .filter { it > 0f }
 
                     if (readings.isNotEmpty()) {
+                        hrLoaded = true
                         val chartPoints = readings.takeLast(12)
                         val lastHr = readings.last()
                         withContext(Dispatchers.Main) {
                             binding.tvHeartRateValue.text = "${lastHr.toInt()} bpm"
                             binding.chartHeartRate.setData(chartPoints)
                             hrValues.addAll(readings)
+                            updateHrStats()
+                        }
+                    }
+                }
+
+                // Fallback: read mean_hr_bpm from features.csv (PPG-derived)
+                if (!hrLoaded) {
+                    val hrFromFeatures = readHrFromFeaturesCsv(userId)
+                    if (hrFromFeatures.isNotEmpty()) {
+                        val chartPoints = hrFromFeatures.takeLast(12)
+                        val lastHr = hrFromFeatures.last()
+                        withContext(Dispatchers.Main) {
+                            binding.tvHeartRateValue.text = "${lastHr.toInt()} bpm"
+                            binding.chartHeartRate.setData(chartPoints)
+                            hrValues.addAll(hrFromFeatures)
                             updateHrStats()
                         }
                     }
@@ -419,6 +436,29 @@ class MetricsMonitoringActivity : AppCompatActivity() {
                 Log.e(TAG, "Failed to load historical data: ${e.message}")
             }
         }
+    }
+
+    private fun readHrFromFeaturesCsv(userId: String): List<Float> {
+        val sessionDir = ActivityTrackingViewModel.activeSessionDir ?: ""
+        val candidates = mutableListOf<File>()
+        if (sessionDir.isNotEmpty()) {
+            candidates.add(File(CsvWriter.getOutputDir(userId, sessionDir), "features.csv"))
+        }
+        candidates.add(File(CsvWriter.getOutputDir(userId, ""), "features.csv"))
+
+        for (file in candidates) {
+            if (!file.exists()) continue
+            try {
+                val readings = file.readLines().drop(1)
+                    .mapNotNull { line ->
+                        val cols = line.split(",")
+                        cols.getOrNull(4)?.toFloatOrNull()
+                    }
+                    .filter { it > 0f }
+                if (readings.isNotEmpty()) return readings
+            } catch (_: Exception) {}
+        }
+        return emptyList()
     }
 
     // ===== Data Receivers (UI updates only) =====
