@@ -27,7 +27,9 @@ data class FatigueResult(
     val pHigh: Float,
     val level: String,
     val levelIndex: Int,
-    val percentDisplay: Int
+    val percentDisplay: Int,
+    val futurePLow: Float = 0f,
+    val futurePHigh: Float = 0f
 )
 
 class FatigueDetector(private val context: Context) {
@@ -152,18 +154,30 @@ class FatigueDetector(private val context: Context) {
         val interp = interpreter ?: return null
         val s = scaler ?: return null
         return try {
-            val output = Array(1) { FloatArray(2) }
-            interp.run(input, output)
-            val pLow = output[0][0]
-            val pHigh = output[0][1]
-            mapToFatigueResult(pLow, pHigh, s)
+            val output0 = Array(1) { FloatArray(2) }
+            val output1 = Array(1) { FloatArray(2) }
+            interp.runForMultipleInputsOutputs(
+                arrayOf<Any>(input),
+                mapOf<Int, Any>(0 to output0, 1 to output1)
+            )
+            val pLow = output0[0][0]
+            val pHigh = output0[0][1]
+            val futurePLow = output1[0][0]
+            val futurePHigh = output1[0][1]
+            mapToFatigueResult(pLow, pHigh, s, futurePLow, futurePHigh)
         } catch (e: Exception) {
             Log.e(TAG, "Inference failed: ${e.message}", e)
             null
         }
     }
 
-    private fun mapToFatigueResult(pLow: Float, pHigh: Float, s: ScalerParams): FatigueResult {
+    private fun mapToFatigueResult(
+        pLow: Float,
+        pHigh: Float,
+        s: ScalerParams,
+        futurePLow: Float = 0f,
+        futurePHigh: Float = 0f
+    ): FatigueResult {
         val thresholds = s.fatigueThresholds
         val mildMax = thresholds["mild_max"] ?: 0.25f
         val moderateMax = thresholds["moderate_max"] ?: 0.50f
@@ -178,7 +192,7 @@ class FatigueDetector(private val context: Context) {
         val level = s.fatigueLevelNames.getOrElse(levelIndex) { "Unknown" }
         val percentDisplay = (pHigh * 100).toInt().coerceIn(0, 100)
 
-        return FatigueResult(pLow, pHigh, level, levelIndex, percentDisplay)
+        return FatigueResult(pLow, pHigh, level, levelIndex, percentDisplay, futurePLow, futurePHigh)
     }
 
     private fun loadScalerFromAssets(filename: String): ScalerParams {

@@ -424,7 +424,10 @@ object CsvWriter {
         val currentHr: Double,
         val currentRmssd: Double,
         val alertRawPHigh: Float = 0f,
-        val alertSmoothedPHigh: Float = 0f
+        val alertSmoothedPHigh: Float = 0f,
+        val futurePHigh: Float = 0f,
+        val futureLevel: Int = 0,
+        val trend: String = "STABLE"
     )
 
     private const val HISTORY_FILE = "fatigue_history.csv"
@@ -432,7 +435,8 @@ object CsvWriter {
         "global_pLow,global_pHigh,global_level,global_levelIndex," +
         "ext_pLow,ext_pHigh,ext_level,ext_levelIndex," +
         "current_hr,current_rmssd," +
-        "alert_raw_pHigh,alert_smoothed_pHigh"
+        "alert_raw_pHigh,alert_smoothed_pHigh," +
+        "future_p_high,future_level,trend"
 
     fun writeFatigueHistoryRow(
         row: FatigueHistoryRow,
@@ -455,7 +459,8 @@ object CsvWriter {
             val line = "${row.timestamp},${fmt(row.fatiguePercent.toDouble())}," +
                 "${resCols(row.global)},${resCols(row.external)}," +
                 "${fmt(row.currentHr)},${fmt(row.currentRmssd)}," +
-                "${fmt(row.alertRawPHigh.toDouble())},${fmt(row.alertSmoothedPHigh.toDouble())}"
+                "${fmt(row.alertRawPHigh.toDouble())},${fmt(row.alertSmoothedPHigh.toDouble())}," +
+                "${fmt(row.futurePHigh.toDouble())},${row.futureLevel},${row.trend}"
 
             val content = buildString {
                 if (needsHeader) appendLine(HISTORY_HEADER)
@@ -502,7 +507,10 @@ object CsvWriter {
                     currentHr = cols.getOrNull(10)?.toDoubleOrNull() ?: 0.0,
                     currentRmssd = cols.getOrNull(11)?.toDoubleOrNull() ?: 0.0,
                     alertRawPHigh = cols.getOrNull(12)?.toFloatOrNull() ?: 0f,
-                    alertSmoothedPHigh = cols.getOrNull(13)?.toFloatOrNull() ?: 0f
+                    alertSmoothedPHigh = cols.getOrNull(13)?.toFloatOrNull() ?: 0f,
+                    futurePHigh = cols.getOrNull(14)?.toFloatOrNull() ?: 0f,
+                    futureLevel = cols.getOrNull(15)?.toIntOrNull() ?: 0,
+                    trend = cols.getOrNull(16)?.takeIf { it.isNotEmpty() } ?: "STABLE"
                 ))
             }
         } catch (e: Exception) {

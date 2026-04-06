@@ -15,6 +15,9 @@ import com.example.fitguard.data.processing.FatigueResult
 import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.File
@@ -22,6 +25,15 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 data class FatigueTrendPoint(val timeMs: Long, val fatiguePercent: Float)
+
+enum class Trend { STABLE, INCREASING, DECREASING }
+
+data class NextStepPrediction(
+    val futureLevel: Int,
+    val futurePHigh: Float,
+    val trend: Trend,
+    val trendMessage: String
+)
 
 data class BaselineComparison(
     val currentHr: Double,
@@ -87,9 +99,13 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
     private val _sessionTrend = MutableLiveData<List<FatigueTrendPoint>>()
     val sessionTrend: LiveData<List<FatigueTrendPoint>> = _sessionTrend
 
-    // 5-minute prediction
+    // 5-minute prediction (linear regression, unchanged)
     private val _predictionTrend = MutableLiveData<List<FatigueTrendPoint>>()
     val predictionTrend: LiveData<List<FatigueTrendPoint>> = _predictionTrend
+
+    // ~60-second next-step prediction from model's second output tensor
+    private val _nextStepPrediction = MutableStateFlow<NextStepPrediction?>(null)
+    val nextStepPrediction: StateFlow<NextStepPrediction?> = _nextStepPrediction.asStateFlow()
 
     // Scaler comparison
     private val _comparisonResult = MutableLiveData<ScalerComparisonResult?>()
@@ -175,6 +191,7 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
         trendAnchorTimeMs = 0L
         _sessionTrend.postValue(emptyList())
         _predictionTrend.postValue(emptyList())
+        _nextStepPrediction.value = null
         baselineHrValues.clear()
         baselineRmssdValues.clear()
         baselineEstablished = false
@@ -292,6 +309,23 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
                         percentDisplay = (sPHigh * 100).toInt().coerceIn(0, 100)
                     )
                     _currentResult.postValue(smoothedResult)
+
+                    // Next-step prediction from model's future output tensor
+                    val sFuturePHigh = FatigueAlertManager.smoothedFuturePHigh
+                    if (sFuturePHigh >= 0f) {
+                        val futureLvl = FatigueAlertManager.futureLevel
+                        val trend = when {
+                            futureLvl > smoothedLevelIndex -> Trend.INCREASING
+                            futureLvl < smoothedLevelIndex -> Trend.DECREASING
+                            else -> Trend.STABLE
+                        }
+                        _nextStepPrediction.value = NextStepPrediction(
+                            futureLevel = futureLvl,
+                            futurePHigh = sFuturePHigh,
+                            trend = trend,
+                            trendMessage = buildTrendMessage(smoothedLevelIndex, futureLvl)
+                        )
+                    }
                 } else {
                     _currentResult.postValue(globalResult)
                 }
@@ -336,10 +370,22 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
             if (globalResult != null) {
                 val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
                 val sessionDir = ActivityTrackingViewModel.activeSessionDir ?: ""
-                if (userId.isNotEmpty() && sessionDir.isNotEmpty()) {
+                if (userId.isNotEmpty()) {
                     val csvSmoothedPercent = if (FatigueAlertManager.smoothedPHigh >= 0f)
                         (FatigueAlertManager.smoothedPHigh * 100f).coerceIn(0f, 100f)
                     else globalResult.percentDisplay.toFloat()
+                    val smoothedCurrentLevel = if (FatigueAlertManager.smoothedPHigh >= 0f) when {
+                        FatigueAlertManager.smoothedPHigh < 0.25f -> 0
+                        FatigueAlertManager.smoothedPHigh < 0.50f -> 1
+                        FatigueAlertManager.smoothedPHigh < 0.75f -> 2
+                        else -> 3
+                    } else globalResult.levelIndex
+                    val csvFutureLevel = FatigueAlertManager.futureLevel
+                    val csvTrend = when {
+                        csvFutureLevel > smoothedCurrentLevel -> "INCREASING"
+                        csvFutureLevel < smoothedCurrentLevel -> "DECREASING"
+                        else -> "STABLE"
+                    }
                     CsvWriter.writeFatigueHistoryRow(
                         CsvWriter.FatigueHistoryRow(
                             timestamp = System.currentTimeMillis(),
@@ -350,7 +396,11 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
                             currentRmssd = currentRmssd,
                             alertRawPHigh = FatigueAlertManager.lastRawPHigh,
                             alertSmoothedPHigh = if (FatigueAlertManager.smoothedPHigh >= 0f)
-                                FatigueAlertManager.smoothedPHigh else 0f
+                                FatigueAlertManager.smoothedPHigh else 0f,
+                            futurePHigh = if (FatigueAlertManager.smoothedFuturePHigh >= 0f)
+                                FatigueAlertManager.smoothedFuturePHigh else 0f,
+                            futureLevel = csvFutureLevel,
+                            trend = csvTrend
                         ),
                         userId, sessionDir
                     )
@@ -580,6 +630,21 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
         cal.set(Calendar.SECOND, 0)
         cal.set(Calendar.MILLISECOND, 0)
         return cal.timeInMillis
+    }
+
+    private fun buildTrendMessage(currentLevel: Int, futureLevel: Int): String = when {
+        futureLevel <= currentLevel - 2             -> "Strong recovery — fatigue falling"
+        currentLevel == 0 && futureLevel == 0       -> "Fatigue stable — feeling good"
+        currentLevel == 0 && futureLevel == 1       -> "Fatigue starting to build"
+        currentLevel == 1 && futureLevel == 0       -> "Fatigue dropping — good recovery"
+        currentLevel == 1 && futureLevel == 1       -> "Fatigue stable — monitor pace"
+        currentLevel == 1 && futureLevel == 2       -> "Fatigue increasing — ease up"
+        currentLevel == 2 && futureLevel == 1       -> "Fatigue recovering"
+        currentLevel == 2 && futureLevel == 2       -> "Fatigue sustained — consider a break"
+        currentLevel == 2 && futureLevel == 3       -> "Fatigue worsening — rest recommended"
+        currentLevel == 3 && futureLevel == 2       -> "Fatigue easing, still elevated"
+        currentLevel == 3 && futureLevel == 3       -> "High fatigue — rest now"
+        else                                        -> "Fatigue stable"
     }
 
     override fun onCleared() {

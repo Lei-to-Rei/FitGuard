@@ -102,6 +102,33 @@ object RecoveryRecommendationManager {
         return recovery
     }
 
+    /**
+     * Anticipatory warning: fires the Moderate recovery message one cycle early
+     * when the current level is Moderate (1) and the model predicts High+ (≥2) next window.
+     * Shares [lastAlertTimestamp] with [checkActiveRecovery] for the 2-minute cooldown
+     * but does NOT update [lastAlertedLevel], so the regular escalation path still fires.
+     */
+    fun checkEarlyWarning(currentLevel: Int, futureLevel: Int, currentHR: Double): ActiveRecovery? {
+        if (currentLevel != 1 || futureLevel < 2) return null
+
+        val now = System.currentTimeMillis()
+        if (now - lastAlertTimestamp < ALERT_COOLDOWN_MS) return null
+
+        lastAlertTimestamp = now
+        val sessionMinutes = ((now - sessionStartTime) / 60_000).toInt()
+        val recovery = ActiveRecovery(
+            timestamp = now,
+            fatigueLevel = 1,
+            smoothedPHigh = 0.0,
+            watchText = "Heads up: ease up soon",
+            phoneTitle = "Heads up: Fatigue Building",
+            phoneBody = "Heads up: fatigue is building. Consider easing your pace now."
+        )
+        _activeRecoveryHistory.add(recovery)
+        Log.d(TAG, "Early warning triggered: currentLevel=$currentLevel, futureLevel=$futureLevel")
+        return recovery
+    }
+
     fun generatePassiveRecovery(): PassiveRecovery {
         val stats = getSessionStats()
         val load = stats.trainingLoad

@@ -41,12 +41,18 @@ object FatigueAlertManager {
     private var vibrator: Vibrator? = null
     private var recoveryChannelCreated = false
 
-    // EMA smoothing state
+    // EMA smoothing state — current window
     var smoothedPHigh: Float = -1f
         private set
     var lastRawPHigh: Float = 0f
         private set
     private var consecutiveHighCount = 0
+
+    // EMA smoothing state — future window (~60 s ahead)
+    var smoothedFuturePHigh: Float = -1f
+        private set
+    var futureLevel: Int = 0
+        private set
 
     private fun ensureInitialized(context: Context) {
         if (initialized) return
@@ -112,11 +118,18 @@ object FatigueAlertManager {
         // Update raw pHigh
         lastRawPHigh = result.pHigh
 
-        // Apply EMA smoothing
+        // Apply EMA smoothing — current window
         smoothedPHigh = if (smoothedPHigh < 0f) {
             result.pHigh
         } else {
             EMA_ALPHA * result.pHigh + (1f - EMA_ALPHA) * smoothedPHigh
+        }
+
+        // Apply EMA smoothing — future window
+        smoothedFuturePHigh = if (smoothedFuturePHigh < 0f) {
+            result.futurePHigh
+        } else {
+            EMA_ALPHA * result.futurePHigh + (1f - EMA_ALPHA) * smoothedFuturePHigh
         }
 
         // Classify using smoothed pHigh
@@ -128,6 +141,14 @@ object FatigueAlertManager {
         }
         val smoothedPercentDisplay = (smoothedPHigh * 100).toInt().coerceIn(0, 100)
 
+        // Classify future level
+        futureLevel = when {
+            smoothedFuturePHigh < 0.25f -> 0
+            smoothedFuturePHigh < 0.50f -> 1
+            smoothedFuturePHigh < 0.75f -> 2
+            else -> 3
+        }
+
         // Track consecutive predictions above High threshold (0.50)
         if (smoothedPHigh >= 0.50f) {
             consecutiveHighCount++
@@ -137,7 +158,8 @@ object FatigueAlertManager {
 
         Log.d(TAG, "Prediction: raw=${String.format("%.3f", lastRawPHigh)}, " +
                 "smoothed=${String.format("%.3f", smoothedPHigh)}, " +
-                "level=$smoothedLevelIndex, consecutiveHigh=$consecutiveHighCount")
+                "level=$smoothedLevelIndex, futureLevel=$futureLevel, " +
+                "consecutiveHigh=$consecutiveHighCount")
 
         // Feed recovery recommendation manager (features[0]=HR, features[8]=RMSSD)
         val currentHR = features[0].toDouble()
@@ -151,6 +173,17 @@ object FatigueAlertManager {
         if (activeRec != null) {
             showRecoveryNotification(context, activeRec)
             sendRecoveryToWatch(context, activeRec)
+        }
+
+        // Early warning: currently Moderate and model predicts High or above next window
+        if (smoothedLevelIndex == 1 && futureLevel >= 2) {
+            val earlyWarning = RecoveryRecommendationManager.checkEarlyWarning(
+                smoothedLevelIndex, futureLevel, currentHR
+            )
+            if (earlyWarning != null) {
+                showRecoveryNotification(context, earlyWarning)
+                sendRecoveryToWatch(context, earlyWarning)
+            }
         }
 
         if (previousLevelIndex == -1) {
@@ -190,6 +223,8 @@ object FatigueAlertManager {
         smoothedPHigh = -1f
         lastRawPHigh = 0f
         consecutiveHighCount = 0
+        smoothedFuturePHigh = -1f
+        futureLevel = 0
         detector?.clearBuffer()
         Log.d(TAG, "Reset")
     }
@@ -362,11 +397,17 @@ object FatigueAlertManager {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val nodes = Wearable.getNodeClient(context).connectedNodes.await()
+                val trendStr = when {
+                    futureLevel > result.levelIndex -> "INCREASING"
+                    futureLevel < result.levelIndex -> "DECREASING"
+                    else -> "STABLE"
+                }
                 val payload = JSONObject().apply {
                     put("level", result.level)
                     put("levelIndex", result.levelIndex)
                     put("pHigh", result.pHigh.toDouble())
                     put("percentDisplay", result.percentDisplay)
+                    put("trend", trendStr)
                 }
                 val data = payload.toString().toByteArray(Charsets.UTF_8)
                 for (node in nodes) {
