@@ -171,10 +171,6 @@ class ActivityDetailActivity : AppCompatActivity() {
             }
         }
 
-        viewModel.fatigueLevel.observe(this) { level ->
-            binding.tvDetailFatigueLevel.text = level
-        }
-
         viewModel.splits.observe(this) { splits ->
             if (splits.isNotEmpty()) {
                 binding.cardSplits.visibility = View.VISIBLE

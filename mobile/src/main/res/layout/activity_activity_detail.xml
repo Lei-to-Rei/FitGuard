@@ -239,57 +239,6 @@
                                 android:text="Avg HR" />
                         </LinearLayout>
 
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical"
-                            android:gravity="center">
-
-                            <TextView
-                                android:id="@+id/tvDetailCalories"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:textSize="16sp"
-                                android:textStyle="bold"
-                                android:fontFamily="@font/inter"
-                                android:textColor="@color/text_dark"
-                                android:text="--" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:textSize="12sp"
-                                android:fontFamily="@font/inter"
-                                android:textColor="@color/text_secondary"
-                                android:text="Calories" />
-                        </LinearLayout>
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical"
-                            android:gravity="center">
-
-                            <TextView
-                                android:id="@+id/tvDetailFatigueLevel"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:textSize="16sp"
-                                android:textStyle="bold"
-                                android:fontFamily="@font/inter"
-                                android:textColor="@color/text_dark"
-                                android:text="--" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:textSize="12sp"
-                                android:fontFamily="@font/inter"
-                                android:textColor="@color/text_secondary"
-                                android:text="Fatigue" />
-                        </LinearLayout>
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>

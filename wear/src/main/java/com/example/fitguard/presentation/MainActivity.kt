@@ -129,7 +129,6 @@ class MainActivity : Activity() {
 
         // Navigation listeners
         findViewById<Button>(R.id.btnStartActivity).setOnClickListener { showActivityListScreen() }
-        findViewById<Button>(R.id.btnFatigueLevel).setOnClickListener { showFatigueScreen() }
         findViewById<TextView>(R.id.btnBackToHome).setOnClickListener { showHomeScreen() }
         findViewById<TextView>(R.id.btnBackFromFatigue).setOnClickListener { showHomeScreen() }
         btnStartStop.setOnClickListener {
@@ -419,10 +418,6 @@ class MainActivity : Activity() {
     private fun styleHomeButtons() {
         findViewById<Button>(R.id.btnStartActivity).apply {
             background = pillDrawable("#4CAF50")
-            setTextColor(Color.WHITE)
-        }
-        findViewById<Button>(R.id.btnFatigueLevel).apply {
-            background = pillDrawable("#2C2C2C")
             setTextColor(Color.WHITE)
         }
     }

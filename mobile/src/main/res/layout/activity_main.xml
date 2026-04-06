@@ -189,11 +189,15 @@
 
                         </LinearLayout>
 
-                        <!-- Recovered (circular progress) -->
+                        <!-- Recovered (circular progress) — tap to open detail dialog -->
                         <FrameLayout
+                            android:id="@+id/containerRecovered"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1">
+                            android:layout_weight="1"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:foreground="?attr/selectableItemBackgroundBorderless">
 
                             <ProgressBar
                                 android:id="@+id/progressRecovered"

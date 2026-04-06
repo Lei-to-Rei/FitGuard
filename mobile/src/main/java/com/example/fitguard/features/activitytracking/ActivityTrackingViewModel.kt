@@ -446,6 +446,8 @@ class ActivityTrackingViewModel(application: Application) : AndroidViewModel(app
         prefs.edit()
             .putLong("session_end_time", System.currentTimeMillis())
             .putInt("rest_hours", totalRestHours)
+            .putString("phone_title", recovery.phoneTitle)
+            .putString("phone_body", recovery.phoneBody)
             .remove("carryover_hours")
             .apply()
     }

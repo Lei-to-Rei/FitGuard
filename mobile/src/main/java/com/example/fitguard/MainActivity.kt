@@ -1,13 +1,20 @@
 package com.example.fitguard
 
+import android.app.Dialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
+import android.view.Window
+import android.view.WindowManager
+import android.widget.ProgressBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -119,6 +126,8 @@ class MainActivity : AppCompatActivity() {
         loadHealthData()
         loadProgressStats()
         updateRecoveryProgress()
+
+        binding.containerRecovered.setOnClickListener { showRecoveryDialog() }
     }
 
     override fun onResume() {
@@ -391,6 +400,59 @@ class MainActivity : AppCompatActivity() {
             } catch (_: Exception) {}
         }
         return emptyList()
+    }
+
+    private fun showRecoveryDialog() {
+        val recoveryPrefs = getSharedPreferences("recovery_state", MODE_PRIVATE)
+        val sessionEndTime = recoveryPrefs.getLong("session_end_time", 0L)
+        val restHours      = recoveryPrefs.getInt("rest_hours", 0)
+        val recTitle       = recoveryPrefs.getString("phone_title", null)
+        val recBody        = recoveryPrefs.getString("phone_body", null)
+
+        val percent = if (sessionEndTime == 0L || restHours == 0) {
+            100
+        } else {
+            val elapsedMs = System.currentTimeMillis() - sessionEndTime
+            val restMs    = restHours * 3_600_000L
+            ((elapsedMs.toFloat() / restMs) * 100f).coerceIn(0f, 100f).toInt()
+        }
+
+        val statusMsg = when {
+            percent >= 100 -> "Fully recovered. Ready to train!"
+            percent >= 75  -> "Nearly fully recovered. Ready to train."
+            percent >= 50  -> "Good recovery! Ready for moderate training."
+            percent >= 25  -> "Partial recovery. Light activity is fine."
+            else           -> "Still recovering. Avoid intense training."
+        }
+
+        val dialog = Dialog(this)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        val view = layoutInflater.inflate(R.layout.dialog_recovery_progress, null)
+        dialog.setContentView(view)
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setLayout(
+                (resources.displayMetrics.widthPixels * 0.9f).toInt(),
+                WindowManager.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        view.findViewById<ProgressBar>(R.id.dialogProgressGauge).progress = percent
+        view.findViewById<TextView>(R.id.dialogTvPercent).text   = "$percent%"
+        view.findViewById<TextView>(R.id.dialogTvStatusMsg).text = statusMsg
+
+        val recTitleView = view.findViewById<TextView>(R.id.dialogTvRecTitle)
+        val recBodyView  = view.findViewById<TextView>(R.id.dialogTvRecBody)
+        if (recTitle != null && recBody != null) {
+            recTitleView.text = recTitle
+            recBodyView.text  = recBody
+        } else {
+            recTitleView.text = "No recommendation yet"
+            recBodyView.text  = "Complete a workout session to receive a personalized recovery recommendation."
+        }
+
+        view.findViewById<TextView>(R.id.btnDialogBack).setOnClickListener { dialog.dismiss() }
+        dialog.show()
     }
 
     private fun setupBottomNavigation() {

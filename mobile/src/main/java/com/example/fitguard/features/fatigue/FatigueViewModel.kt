@@ -460,7 +460,7 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
         if (trendAnchorTimeMs == 0L) {
             trendAnchorTimeMs = System.currentTimeMillis()
         }
-        val pointTimeMs = trendAnchorTimeMs + trendWindowCount * WINDOW_STEP_MS
+        val pointTimeMs = trendAnchorTimeMs + trendWindowCount * (WINDOW_STEP_MS * ACCUM_WINDOW_COUNT)
         trendWindowCount++
         sessionTrendPoints.add(FatigueTrendPoint(pointTimeMs, avgPercent))
         _sessionTrend.postValue(sessionTrendPoints.toList())

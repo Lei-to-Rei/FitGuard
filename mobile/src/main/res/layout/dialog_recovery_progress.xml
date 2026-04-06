@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:overScrollMode="never">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/bg_dialog_rounded"
+        android:padding="24dp">
+
+        <!-- Header row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="24dp">
+
+            <TextView
+                android:id="@+id/btnDialogBack"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="←"
+                android:textSize="22sp"
+                android:textColor="#1A1A1A"
+                android:paddingEnd="8dp"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Recovery Progress Tracking"
+                android:textSize="17sp"
+                android:textStyle="bold"
+                android:textColor="#1A1A1A"
+                android:fontFamily="@font/inter" />
+
+        </LinearLayout>
+
+        <!-- Enlarged circular gauge -->
+        <FrameLayout
+            android:layout_width="200dp"
+            android:layout_height="200dp"
+            android:layout_gravity="center_horizontal">
+
+            <ProgressBar
+                android:id="@+id/dialogProgressGauge"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:indeterminate="false"
+                android:max="100"
+                android:progress="0"
+                android:progressDrawable="@drawable/bg_circular_progress_green" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:orientation="vertical"
+                android:gravity="center">
+
+                <TextView
+                    android:id="@+id/dialogTvPercent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0%"
+                    android:textSize="52sp"
+                    android:textStyle="bold"
+                    android:textColor="#1A1A1A"
+                    android:fontFamily="@font/inter" />
+
+                <TextView
+                    android:id="@+id/dialogTvLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Recovered"
+                    android:textSize="16sp"
+                    android:textColor="@color/green_primary"
+                    android:fontFamily="@font/inter" />
+
+            </LinearLayout>
+
+        </FrameLayout>
+
+        <!-- Status message based on recovery % -->
+        <TextView
+            android:id="@+id/dialogTvStatusMsg"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:gravity="center"
+            android:textSize="14sp"
+            android:textColor="#888888"
+            android:fontFamily="@font/inter" />
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="16dp"
+            android:background="#E0E0E0" />
+
+        <!-- Last session recommendation title -->
+        <TextView
+            android:id="@+id/dialogTvRecTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Last Session Recommendation"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:textColor="#444444"
+            android:fontFamily="@font/inter" />
+
+        <!-- Last session recommendation body -->
+        <TextView
+            android:id="@+id/dialogTvRecBody"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:layout_marginBottom="4dp"
+            android:textSize="13sp"
+            android:lineSpacingMultiplier="1.4"
+            android:textColor="#666666"
+            android:fontFamily="@font/inter" />
+
+    </LinearLayout>
+
+</ScrollView>
