@@ -20,6 +20,8 @@ import com.example.fitguard.MainActivity
 import com.example.fitguard.R
 import android.widget.TextView
 import com.example.fitguard.data.processing.FatigueResult
+import java.text.SimpleDateFormat
+import java.util.Locale
 import com.example.fitguard.data.processing.SequenceProcessor
 import com.example.fitguard.databinding.ActivityFatiguePredictionBinding
 import com.example.fitguard.features.profile.UserHomeActivity
@@ -164,6 +166,32 @@ class FatiguePredictionActivity : AppCompatActivity() {
                 SessionFatigueTrendChartView.TrendPoint(it.timeMs, it.fatiguePercent)
             }
             binding.chartSessionTrend.setPrediction(chartPoints)
+        }
+
+        // Recovery plan card
+        viewModel.latestRecovery.observe(this) { recovery ->
+            if (recovery == null) {
+                binding.layoutRecoveryDefault.visibility = View.VISIBLE
+                binding.layoutRecoveryAlert.visibility = View.GONE
+            } else {
+                binding.layoutRecoveryDefault.visibility = View.GONE
+                binding.layoutRecoveryAlert.visibility = View.VISIBLE
+
+                binding.tvRecoveryTitle.text = recovery.phoneTitle
+                binding.tvRecoveryBody.text = recovery.phoneBody
+
+                val (priorityText, priorityColor) = when (recovery.fatigueLevel) {
+                    1 -> "Moderate" to Color.parseColor("#FF8C00")
+                    2 -> "High" to Color.parseColor("#FF5722")
+                    3 -> "Critical" to Color.parseColor("#D32F2F")
+                    else -> "Alert" to Color.parseColor("#FF8C00")
+                }
+                binding.tvRecoveryPriority.text = priorityText
+                binding.tvRecoveryPriority.setTextColor(priorityColor)
+
+                val sdf = SimpleDateFormat("h:mm a", Locale.getDefault())
+                binding.tvRecoveryTime.text = sdf.format(recovery.timestamp)
+            }
         }
     }
 

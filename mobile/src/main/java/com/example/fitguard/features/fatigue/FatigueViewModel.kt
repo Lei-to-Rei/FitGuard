@@ -13,6 +13,7 @@ import com.example.fitguard.data.processing.CsvWriter
 import com.example.fitguard.data.processing.FatigueDetector
 import com.example.fitguard.data.processing.FatigueResult
 import com.example.fitguard.features.activitytracking.ActivityTrackingViewModel
+import com.example.fitguard.features.recommendations.RecoveryRecommendationManager
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -107,6 +108,10 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
     private val _nextStepPrediction = MutableStateFlow<NextStepPrediction?>(null)
     val nextStepPrediction: StateFlow<NextStepPrediction?> = _nextStepPrediction.asStateFlow()
 
+    // Latest active recovery recommendation
+    private val _latestRecovery = MutableLiveData<RecoveryRecommendationManager.ActiveRecovery?>()
+    val latestRecovery: LiveData<RecoveryRecommendationManager.ActiveRecovery?> = _latestRecovery
+
     // Scaler comparison
     private val _comparisonResult = MutableLiveData<ScalerComparisonResult?>()
     val comparisonResult: LiveData<ScalerComparisonResult?> = _comparisonResult
@@ -162,6 +167,12 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
                     _windowCount.postValue(featureCount.coerceAtMost(5))
                 }
             }
+
+            // Restore latest recovery alert if session is still running
+            val recoveryHistory = RecoveryRecommendationManager.activeRecoveryHistory
+            if (recoveryHistory.isNotEmpty()) {
+                _latestRecovery.postValue(recoveryHistory.last())
+            }
         }
 
         checkSessionActive()
@@ -192,6 +203,7 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
         _sessionTrend.postValue(emptyList())
         _predictionTrend.postValue(emptyList())
         _nextStepPrediction.value = null
+        _latestRecovery.postValue(null)
         baselineHrValues.clear()
         baselineRmssdValues.clear()
         baselineEstablished = false
@@ -347,6 +359,12 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
 
                 // Compute 5-minute prediction
                 computePrediction()
+            }
+
+            // Poll latest active recovery recommendation
+            val recoveryHistory = RecoveryRecommendationManager.activeRecoveryHistory
+            if (recoveryHistory.isNotEmpty()) {
+                _latestRecovery.postValue(recoveryHistory.last())
             }
 
             // Post comparison result
