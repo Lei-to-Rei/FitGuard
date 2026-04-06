@@ -181,15 +181,17 @@ object FatigueAlertManager {
             sendRecoveryToWatch(context, activeRec)
         }
 
-        // Early warning: currently Moderate and model predicts High or above next window
-        if (smoothedLevelIndex == 1 && futureLevel >= 2) {
-            val earlyWarning = RecoveryRecommendationManager.checkEarlyWarning(
-                smoothedLevelIndex, futureLevel, currentHR
-            )
-            if (earlyWarning != null) {
-                showRecoveryNotification(context, earlyWarning)
-                sendRecoveryToWatch(context, earlyWarning)
-            }
+        // Early warning: Option B threshold-crossing, all cases handled internally
+        val earlyWarning = RecoveryRecommendationManager.checkEarlyWarning(
+            smoothedLevelIndex,
+            futureLevel,
+            futureSmoothedPHigh.toDouble(),
+            currentTrend,
+            currentHR
+        )
+        if (earlyWarning != null) {
+            showRecoveryNotification(context, earlyWarning)
+            sendRecoveryToWatch(context, earlyWarning)
         }
 
         if (previousLevelIndex == -1) {

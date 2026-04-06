@@ -5,7 +5,9 @@ import android.util.Log
 object RecoveryRecommendationManager {
     private const val TAG = "RecoveryRecManager"
     private const val SESSION_START_WINDOW_COUNT = 5
-    private const val ALERT_COOLDOWN_MS = 120_000L // 2 minutes
+    private const val ALERT_COOLDOWN_MS       = 120_000L // 2 minutes — for checkActiveRecovery
+    private const val EARLY_ALERT_COOLDOWN_MS =  60_000L // 1 minute  — for checkEarlyWarning
+    private const val EARLY_WARN_PERSISTENCE  = 2        // consecutive windows before firing
 
     // Session-start reference (average of first 5 predictions)
     private val earlyHRValues = mutableListOf<Double>()
@@ -22,9 +24,14 @@ object RecoveryRecommendationManager {
     private var predictionsInCritical: Int = 0
     private val allHRValues = mutableListOf<Double>()
 
-    // Active recovery alert tracking
+    // Active recovery alert tracking (checkActiveRecovery — do not share with early warning)
     private var lastAlertedLevel: Int = -1
     private var lastAlertTimestamp: Long = 0L
+
+    // Early warning tracking (checkEarlyWarning — independent state)
+    private var earlyWarnConsecutiveCount: Int = 0
+    private var lastEarlyAlertedNextLevel: Int  = -1
+    private var lastEarlyAlertTimestamp: Long   = 0L
 
     // History of active recovery alerts during this session
     val activeRecoveryHistory: List<ActiveRecovery> get() = _activeRecoveryHistory.toList()
@@ -44,6 +51,9 @@ object RecoveryRecommendationManager {
         allHRValues.clear()
         lastAlertedLevel = -1
         lastAlertTimestamp = 0L
+        earlyWarnConsecutiveCount = 0
+        lastEarlyAlertedNextLevel = -1
+        lastEarlyAlertTimestamp = 0L
         _activeRecoveryHistory.clear()
         Log.d(TAG, "Session started")
     }
@@ -95,7 +105,7 @@ object RecoveryRecommendationManager {
         lastAlertedLevel = currentLevel
         lastAlertTimestamp = now
 
-        val sessionMinutes = ((now - sessionStartTime) / 60_000).toInt()
+        val sessionMinutes = if (sessionStartTime > 0L) ((now - sessionStartTime) / 60_000).toInt() else 0
         val recovery = generateActiveRecovery(currentLevel, smoothedPHigh, currentHR, currentRMSSD, sessionMinutes)
         _activeRecoveryHistory.add(recovery)
         Log.d(TAG, "Active recovery triggered: level=$currentLevel, watchText='${recovery.watchText}'")
@@ -103,29 +113,83 @@ object RecoveryRecommendationManager {
     }
 
     /**
-     * Anticipatory warning: fires the Moderate recovery message one cycle early
-     * when the current level is Moderate (1) and the model predicts High+ (≥2) next window.
-     * Shares [lastAlertTimestamp] with [checkActiveRecovery] for the 2-minute cooldown
-     * but does NOT update [lastAlertedLevel], so the regular escalation path still fires.
+     * Option B early alert: fires when futureLevel > currentLevel for
+     * [EARLY_WARN_PERSISTENCE] consecutive windows, and the same next-level
+     * warning hasn't already fired within [EARLY_ALERT_COOLDOWN_MS].
+     *
+     * Does NOT share state with [checkActiveRecovery] — both can fire
+     * independently. Does NOT update [lastAlertedLevel], so the regular
+     * escalation path in [checkActiveRecovery] still fires on time.
      */
-    fun checkEarlyWarning(currentLevel: Int, futureLevel: Int, currentHR: Double): ActiveRecovery? {
-        if (currentLevel != 1 || futureLevel < 2) return null
+    fun checkEarlyWarning(
+        currentLevel: Int,
+        futureLevel: Int,
+        futurePHigh: Double,
+        trend: String,
+        currentHR: Double
+    ): ActiveRecovery? {
+
+        // Reset and suppress on DECREASING trend
+        if (trend == "DECREASING") {
+            earlyWarnConsecutiveCount = 0
+            return null
+        }
+
+        // Only meaningful when future predicts a higher level than current
+        if (futureLevel <= currentLevel) {
+            earlyWarnConsecutiveCount = 0
+            return null
+        }
+
+        // Accumulate consecutive windows where future > current
+        earlyWarnConsecutiveCount++
+        if (earlyWarnConsecutiveCount < EARLY_WARN_PERSISTENCE) return null
 
         val now = System.currentTimeMillis()
-        if (now - lastAlertTimestamp < ALERT_COOLDOWN_MS) return null
 
-        lastAlertTimestamp = now
-        val sessionMinutes = ((now - sessionStartTime) / 60_000).toInt()
-        val recovery = ActiveRecovery(
-            timestamp = now,
-            fatigueLevel = 1,
-            smoothedPHigh = 0.0,
-            watchText = "Heads up: ease up soon",
-            phoneTitle = "Heads up: Fatigue Building",
-            phoneBody = "Heads up: fatigue is building. Consider easing your pace now."
-        )
+        // Don't re-fire the same next-level warning within cooldown
+        if (futureLevel == lastEarlyAlertedNextLevel &&
+            now - lastEarlyAlertTimestamp < EARLY_ALERT_COOLDOWN_MS) return null
+
+        // Fire — record state and reset persistence counter
+        lastEarlyAlertedNextLevel = futureLevel
+        lastEarlyAlertTimestamp   = now
+        earlyWarnConsecutiveCount  = 0
+
+        val sessionMinutes = if (sessionStartTime > 0L) ((now - sessionStartTime) / 60_000).toInt() else 0
+        val hrInt = currentHR.toInt()
+
+        val recovery = when (futureLevel) {
+            1 -> ActiveRecovery(
+                timestamp     = now,
+                fatigueLevel  = 1,
+                smoothedPHigh = futurePHigh,
+                watchText     = Strings.earlyWatchApproachModerate(),
+                phoneTitle    = Strings.earlyPhoneTitleApproachModerate(),
+                phoneBody     = Strings.earlyPhoneBodyApproachModerate(sessionMinutes, hrInt)
+            )
+            2 -> ActiveRecovery(
+                timestamp     = now,
+                fatigueLevel  = 2,
+                smoothedPHigh = futurePHigh,
+                watchText     = Strings.earlyWatchApproachHigh(),
+                phoneTitle    = Strings.earlyPhoneTitleApproachHigh(),
+                phoneBody     = Strings.earlyPhoneBodyApproachHigh(sessionMinutes, hrInt)
+            )
+            3 -> ActiveRecovery(
+                timestamp     = now,
+                fatigueLevel  = 3,
+                smoothedPHigh = futurePHigh,
+                watchText     = Strings.earlyWatchApproachCritical(),
+                phoneTitle    = Strings.earlyPhoneTitleApproachCritical(),
+                phoneBody     = Strings.earlyPhoneBodyApproachCritical(sessionMinutes, hrInt)
+            )
+            else -> return null
+        }
+
         _activeRecoveryHistory.add(recovery)
-        Log.d(TAG, "Early warning triggered: currentLevel=$currentLevel, futureLevel=$futureLevel")
+        Log.d(TAG, "Early warning fired: currentLevel=$currentLevel → " +
+            "futureLevel=$futureLevel, futurePHigh=${String.format("%.3f", futurePHigh)}")
         return recovery
     }
 
@@ -374,6 +438,29 @@ object RecoveryRecommendationManager {
                     "12-18 hours of recovery. Have a meal with carbohydrates and protein within " +
                     "30 minutes. Get at least 7-8 hours of sleep tonight and limit yourself to " +
                     "light activity tomorrow."
+
+        // Early warning — Watch text (anticipatory, softer than active recovery)
+        fun earlyWatchApproachModerate()  = "Fatigue building"
+        fun earlyWatchApproachHigh()      = "Ease up \u00B7 High soon"
+        fun earlyWatchApproachCritical()  = "Reduce pace now"
+
+        // Early warning — Phone title
+        fun earlyPhoneTitleApproachModerate()  = "Fatigue Increasing"
+        fun earlyPhoneTitleApproachHigh()      = "Approaching High Fatigue"
+        fun earlyPhoneTitleApproachCritical()  = "Critical Fatigue Approaching"
+
+        // Early warning — Phone body
+        fun earlyPhoneBodyApproachModerate(sessionMinutes: Int, hrInt: Int) =
+            "Fatigue is starting to build at $sessionMinutes min in (HR $hrInt bpm). " +
+            "Consider easing your intensity slightly to stay in the comfortable zone."
+
+        fun earlyPhoneBodyApproachHigh(sessionMinutes: Int, hrInt: Int) =
+            "The model predicts High fatigue within the next ~30 seconds " +
+            "(HR $hrInt bpm, $sessionMinutes min in). Ease up now to get ahead of it."
+
+        fun earlyPhoneBodyApproachCritical(sessionMinutes: Int, hrInt: Int) =
+            "You're approaching Critical fatigue (HR $hrInt bpm, $sessionMinutes min in). " +
+            "Reduce your pace significantly or take a 2\u20133 minute walk break now."
 
         fun passivePhoneBodyExtreme(stats: SessionStats) =
             "Session: ${stats.durationMinutes} minutes, Avg HR: ${stats.avgHR.toInt()} bpm, " +
