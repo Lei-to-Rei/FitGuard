@@ -34,6 +34,7 @@ class FatigueDetector(private val context: Context) {
     companion object {
         private const val TAG = "FatigueDetector"
         private const val SEQ_LENGTH = 5
+        private const val LSTM_UNITS = 64
         private const val DEFAULT_MODEL = "fatigue_model.tflite"
         private const val DEFAULT_SCALER = "scaler_params.json"
     }
@@ -41,6 +42,18 @@ class FatigueDetector(private val context: Context) {
     private var interpreter: InterpreterApi? = null
     private var scaler: ScalerParams? = null
     private val windowBuffer = ArrayDeque<FloatArray>()
+
+    // LSTM state carried across inference calls within a session
+    private var stateH = Array(1) { FloatArray(LSTM_UNITS) }
+    private var stateC = Array(1) { FloatArray(LSTM_UNITS) }
+
+    // Tensor indices resolved at init by name
+    private var inputSeqIdx = 0
+    private var inputStateHIdx = 1
+    private var inputStateCIdx = 2
+    private var outputProbsIdx = 0
+    private var outputStateHIdx = 1
+    private var outputStateCIdx = 2
 
     val isReady: Boolean get() = interpreter != null && scaler != null
     val bufferedWindows: Int get() = windowBuffer.size
@@ -51,6 +64,7 @@ class FatigueDetector(private val context: Context) {
             scaler = loadScalerFromAssets(DEFAULT_SCALER)
             val options = InterpreterApi.Options().setRuntime(TfLiteRuntime.FROM_SYSTEM_ONLY)
             interpreter = InterpreterApi.create(loadModelFromAssets(DEFAULT_MODEL), options)
+            resolveTensorIndices()
             Log.d(TAG, "Initialized with default model and scaler")
             true
         } catch (e: Exception) {
@@ -83,11 +97,76 @@ class FatigueDetector(private val context: Context) {
                 interpreter = InterpreterApi.create(loadModelFromAssets(DEFAULT_MODEL), options)
                 Log.d(TAG, "Initialized base model + personalized scaler for user $userId")
             }
+            resolveTensorIndices()
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load personalized config: ${e.message}", e)
             false
         }
+    }
+
+    private fun resolveTensorIndices() {
+        val interp = interpreter ?: return
+
+        // Resolve inputs by shape: [1,5,30] = sequence, [1,64] = LSTM states
+        val stateInputIndices = mutableListOf<Int>()
+        for (i in 0 until interp.inputTensorCount) {
+            val tensor = interp.getInputTensor(i)
+            val shape = tensor.shape()
+            val name = tensor.name()
+            Log.d(TAG, "Input tensor $i: name=$name, shape=${shape.contentToString()}")
+
+            when {
+                shape.contentEquals(intArrayOf(1, SEQ_LENGTH, 30)) -> inputSeqIdx = i
+                shape.contentEquals(intArrayOf(1, LSTM_UNITS)) -> {
+                    // Try name hint first, otherwise collect for ordered assignment
+                    when {
+                        name.contains("state_c") -> inputStateCIdx = i
+                        name.contains("state_h") -> inputStateHIdx = i
+                        else -> stateInputIndices.add(i)
+                    }
+                }
+            }
+        }
+        // If names didn't distinguish H vs C, assign by index order
+        if (stateInputIndices.size == 2) {
+            inputStateHIdx = stateInputIndices[0]
+            inputStateCIdx = stateInputIndices[1]
+        } else if (stateInputIndices.size == 1) {
+            // One was matched by name, assign the remaining one
+            if (inputStateHIdx == inputSeqIdx) inputStateHIdx = stateInputIndices[0]
+            else if (inputStateCIdx == inputSeqIdx) inputStateCIdx = stateInputIndices[0]
+        }
+
+        // Resolve outputs by shape: [1,2] = probs, [1,64] = LSTM states
+        val stateOutputIndices = mutableListOf<Int>()
+        for (i in 0 until interp.outputTensorCount) {
+            val tensor = interp.getOutputTensor(i)
+            val shape = tensor.shape()
+            val name = tensor.name()
+            Log.d(TAG, "Output tensor $i: name=$name, shape=${shape.contentToString()}")
+
+            when {
+                shape.contentEquals(intArrayOf(1, 2)) -> outputProbsIdx = i
+                shape.contentEquals(intArrayOf(1, LSTM_UNITS)) -> {
+                    when {
+                        name.contains("state_c") -> outputStateCIdx = i
+                        name.contains("state_h") -> outputStateHIdx = i
+                        else -> stateOutputIndices.add(i)
+                    }
+                }
+            }
+        }
+        if (stateOutputIndices.size == 2) {
+            outputStateHIdx = stateOutputIndices[0]
+            outputStateCIdx = stateOutputIndices[1]
+        } else if (stateOutputIndices.size == 1) {
+            if (outputStateHIdx == outputProbsIdx) outputStateHIdx = stateOutputIndices[0]
+            else if (outputStateCIdx == outputProbsIdx) outputStateCIdx = stateOutputIndices[0]
+        }
+
+        Log.d(TAG, "Tensor indices — inputs: seq=$inputSeqIdx, stateH=$inputStateHIdx, stateC=$inputStateCIdx; " +
+                "outputs: probs=$outputProbsIdx, stateH=$outputStateHIdx, stateC=$outputStateCIdx")
     }
 
     fun normalize(features: FloatArray): FloatArray {
@@ -131,6 +210,7 @@ class FatigueDetector(private val context: Context) {
             scaler = loadScalerFromFile(scalerFile)
             val options = InterpreterApi.Options().setRuntime(TfLiteRuntime.FROM_SYSTEM_ONLY)
             interpreter = InterpreterApi.create(loadModelFromAssets(DEFAULT_MODEL), options)
+            resolveTensorIndices()
             Log.d(TAG, "Initialized with base model + scaler from ${scalerFile.name}")
             true
         } catch (e: Exception) {
@@ -139,8 +219,15 @@ class FatigueDetector(private val context: Context) {
         }
     }
 
-    fun clearBuffer() {
+    fun resetSessionState() {
+        stateH = Array(1) { FloatArray(LSTM_UNITS) }
+        stateC = Array(1) { FloatArray(LSTM_UNITS) }
         windowBuffer.clear()
+        Log.d(TAG, "Session state reset (LSTM states zeroed, buffer cleared)")
+    }
+
+    fun clearBuffer() {
+        resetSessionState()
     }
 
     private fun runInference(): FatigueResult? {
@@ -152,10 +239,30 @@ class FatigueDetector(private val context: Context) {
         val interp = interpreter ?: return null
         val s = scaler ?: return null
         return try {
-            val output = Array(1) { FloatArray(2) }
-            interp.run(input, output)
-            val pLow = output[0][0]
-            val pHigh = output[0][1]
+            // Build inputs array ordered by tensor index
+            val inputs = arrayOfNulls<Any>(3)
+            inputs[inputSeqIdx] = input
+            inputs[inputStateHIdx] = stateH
+            inputs[inputStateCIdx] = stateC
+
+            val outputProbs = Array(1) { FloatArray(2) }
+            val newStateH = Array(1) { FloatArray(LSTM_UNITS) }
+            val newStateC = Array(1) { FloatArray(LSTM_UNITS) }
+
+            val outputs: Map<Int, Any> = mapOf(
+                outputProbsIdx to outputProbs,
+                outputStateHIdx to newStateH,
+                outputStateCIdx to newStateC
+            )
+
+            interp.runForMultipleInputsOutputs(inputs, outputs)
+
+            // Persist LSTM state for next call
+            stateH = newStateH
+            stateC = newStateC
+
+            val pLow = outputProbs[0][0]
+            val pHigh = outputProbs[0][1]
             mapToFatigueResult(pLow, pHigh, s)
         } catch (e: Exception) {
             Log.e(TAG, "Inference failed: ${e.message}", e)

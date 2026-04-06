@@ -14,6 +14,7 @@ import java.io.File
 object SimulationRunner {
 
     private const val TAG = "SimulationRunner"
+    private const val BATCH_DURATION_MS = 60_000L  // 60s per batch, matching watch collection interval
 
     sealed class SimResult {
         data class Success(val windowsQueued: Int) : SimResult()
@@ -76,15 +77,42 @@ object SimulationRunner {
         SequenceProcessor.clearBuffer()
 
         val processor = SequenceProcessor(context)
-        val seqId = "sim_${System.currentTimeMillis()}"
+        val simTs = System.currentTimeMillis()
 
-        processor.accumulator.addPpgSamples(seqId, 1, ppgSamples)
-        processor.accumulator.addAccelSamples(seqId, 1, accelSamples)
-        processor.accumulator.markBatchReceived(seqId, 1, 1)
+        // Sort by timestamp to ensure correct ordering
+        val sortedPpg = ppgSamples.sortedBy { it.timestamp }
+        val sortedAccel = accelSamples.sortedBy { it.timestamp }
 
-        val spanMs = ppgSamples.last().timestamp - ppgSamples.first().timestamp
+        // Determine the time range from PPG (primary signal)
+        val dataStart = sortedPpg.first().timestamp
+        val dataEnd = sortedPpg.last().timestamp
+        val spanMs = dataEnd - dataStart
+
+        // Split into 60-second batches, matching real watch behavior:
+        // watch sends ~1600 PPG + ~1500 accel samples every 60 seconds
+        var batchStart = dataStart
+        var batchIdx = 0
+        while (batchStart < dataEnd) {
+            val batchEnd = batchStart + BATCH_DURATION_MS
+
+            val batchPpg = sortedPpg.filter { it.timestamp in batchStart until batchEnd }
+            val batchAccel = sortedAccel.filter { it.timestamp in batchStart until batchEnd }
+
+            if (batchPpg.isNotEmpty()) {
+                val seqId = "sim_${simTs}_$batchIdx"
+                processor.accumulator.addPpgSamples(seqId, 1, batchPpg)
+                processor.accumulator.addAccelSamples(seqId, 1, batchAccel)
+                processor.accumulator.markBatchReceived(seqId, 1, 1)
+                Log.d(TAG, "Batch $batchIdx: ${batchPpg.size} PPG, ${batchAccel.size} accel " +
+                        "(${batchStart}-${batchEnd}ms)")
+            }
+
+            batchStart = batchEnd
+            batchIdx++
+        }
+
         val windowCount = ((spanMs - 60_000L) / 15_000L + 1).coerceAtLeast(0).toInt()
-        Log.d(TAG, "Simulation submitted. Estimated $windowCount windows from ${spanMs}ms span.")
+        Log.d(TAG, "Simulation submitted: $batchIdx batches, estimated $windowCount windows from ${spanMs}ms span.")
 
         SimResult.Success(windowCount)
     }
