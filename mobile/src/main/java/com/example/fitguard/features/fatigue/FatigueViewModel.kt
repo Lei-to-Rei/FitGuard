@@ -64,6 +64,7 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
         private const val MIN_POINTS_FOR_PREDICTION = 3
         private const val MAX_REGRESSION_POINTS = 10
         private const val WINDOW_STEP_MS = 15_000L
+        private const val ACCUM_WINDOW_COUNT = 4  // flush after 4 windows (= one 60s sequence)
     }
 
     private val globalDetector = FatigueDetector(application)
@@ -123,6 +124,22 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
     private var baselineEstablished = false
     private var baselineHr = 0.0
     private var baselineRmssd = 0.0
+
+    // Burst accumulator — averages rapid-fire windows into one fatigue_history row
+    private data class HistoryAccum(
+        var count: Int = 0,
+        var fatiguePercentSum: Float = 0f,
+        var hrSum: Double = 0.0,
+        var rmssdSum: Double = 0.0,
+        var alertRawSum: Float = 0f,
+        var alertSmoothedSum: Float = 0f,
+        var futurePHighSum: Float = 0f,
+        var lastGlobal: FatigueResult? = null,
+        var lastExternal: FatigueResult? = null,
+        var lastFutureLevel: Int = 0,
+        var lastTrend: String = "STABLE"
+    )
+    private val historyAccum = HistoryAccum()
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
@@ -210,6 +227,7 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
         _baselineWindowsCollected.postValue(0)
         _baselineComparison.postValue(null)
         comparisonWindowIndex = 0
+        historyAccum.count = 0
         Log.d(TAG, "Session reset: all buffers cleared")
     }
 
@@ -344,18 +362,18 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
                 Log.d(TAG, "Prediction: raw=${String.format("%.2f", globalResult.pHigh)}, " +
                         "smoothed=${String.format("%.2f", sPHigh)}, ${globalResult.percentDisplay}%")
 
-                // Add smoothed percent to session trend, spaced by sliding window interval
-                val smoothedPercent = if (sPHigh >= 0f)
-                    (sPHigh * 100f).coerceIn(0f, 100f)
-                else globalResult.percentDisplay.toFloat()
-                if (trendAnchorTimeMs == 0L) {
-                    trendAnchorTimeMs = System.currentTimeMillis()
-                }
-                val pointTimeMs = trendAnchorTimeMs + trendWindowCount * WINDOW_STEP_MS
-                trendWindowCount++
-                val point = FatigueTrendPoint(pointTimeMs, smoothedPercent)
-                sessionTrendPoints.add(point)
-                _sessionTrend.postValue(sessionTrendPoints.toList())
+                // Trend point is now added in flushHistoryAccum() after averaging the burst
+                // val smoothedPercent = if (sPHigh >= 0f)
+                //     (sPHigh * 100f).coerceIn(0f, 100f)
+                // else globalResult.percentDisplay.toFloat()
+                // if (trendAnchorTimeMs == 0L) {
+                //     trendAnchorTimeMs = System.currentTimeMillis()
+                // }
+                // val pointTimeMs = trendAnchorTimeMs + trendWindowCount * WINDOW_STEP_MS
+                // trendWindowCount++
+                // val point = FatigueTrendPoint(pointTimeMs, smoothedPercent)
+                // sessionTrendPoints.add(point)
+                // _sessionTrend.postValue(sessionTrendPoints.toList())
 
                 // Compute 5-minute prediction
                 computePrediction()
@@ -384,40 +402,81 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
                 writeComparisonCsvRow(globalResult, externalResult, onDeviceResult)
             }
 
-            // Write fatigue history for persistence across activity re-entry
+            // Accumulate fatigue history — burst windows are averaged into one row
             if (globalResult != null) {
-                val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
-                val sessionDir = ActivityTrackingViewModel.activeSessionDir ?: ""
-                if (userId.isNotEmpty()) {
-                    val csvSmoothedPercent = if (FatigueAlertManager.smoothedPHigh >= 0f)
-                        (FatigueAlertManager.smoothedPHigh * 100f).coerceIn(0f, 100f)
-                    else globalResult.percentDisplay.toFloat()
-                    val smoothedCurrentLevel = if (FatigueAlertManager.smoothedPHigh >= 0f) when {
-                        FatigueAlertManager.smoothedPHigh < 0.25f -> 0
-                        FatigueAlertManager.smoothedPHigh < 0.50f -> 1
-                        FatigueAlertManager.smoothedPHigh < 0.75f -> 2
-                        else -> 3
-                    } else globalResult.levelIndex
-                    CsvWriter.writeFatigueHistoryRow(
-                        CsvWriter.FatigueHistoryRow(
-                            timestamp = System.currentTimeMillis(),
-                            fatiguePercent = csvSmoothedPercent,
-                            global = globalResult,
-                            external = externalResult,
-                            currentHr = currentHr,
-                            currentRmssd = currentRmssd,
-                            alertRawPHigh = FatigueAlertManager.lastRawPHigh,
-                            alertSmoothedPHigh = if (FatigueAlertManager.smoothedPHigh >= 0f)
-                                FatigueAlertManager.smoothedPHigh else 0f,
-                            futurePHigh = FatigueAlertManager.futureSmoothedPHigh,
-                            futureLevel = FatigueAlertManager.futureLevel,
-                            trend = FatigueAlertManager.currentTrend
-                        ),
-                        userId, sessionDir
-                    )
+                val csvSmoothedPercent = if (FatigueAlertManager.smoothedPHigh >= 0f)
+                    (FatigueAlertManager.smoothedPHigh * 100f).coerceIn(0f, 100f)
+                else globalResult.percentDisplay.toFloat()
+
+                historyAccum.count++
+                historyAccum.fatiguePercentSum += csvSmoothedPercent
+                historyAccum.hrSum += currentHr
+                historyAccum.rmssdSum += currentRmssd
+                historyAccum.alertRawSum += FatigueAlertManager.lastRawPHigh
+                historyAccum.alertSmoothedSum += if (FatigueAlertManager.smoothedPHigh >= 0f)
+                    FatigueAlertManager.smoothedPHigh else 0f
+                historyAccum.futurePHighSum += FatigueAlertManager.futureSmoothedPHigh
+                historyAccum.lastGlobal = globalResult
+                historyAccum.lastExternal = externalResult
+                historyAccum.lastFutureLevel = FatigueAlertManager.futureLevel
+                historyAccum.lastTrend = FatigueAlertManager.currentTrend
+
+                // Flush after every ACCUM_WINDOW_COUNT windows
+                if (historyAccum.count >= ACCUM_WINDOW_COUNT) {
+                    flushHistoryAccum()
                 }
             }
         }
+    }
+
+    private fun flushHistoryAccum() {
+        val a = historyAccum
+        if (a.count == 0) return
+        val n = a.count.toFloat()
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+        val sessionDir = ActivityTrackingViewModel.activeSessionDir ?: ""
+        if (userId.isEmpty()) return
+
+        CsvWriter.writeFatigueHistoryRow(
+            CsvWriter.FatigueHistoryRow(
+                timestamp = System.currentTimeMillis(),
+                fatiguePercent = a.fatiguePercentSum / n,
+                global = a.lastGlobal,
+                external = a.lastExternal,
+                currentHr = a.hrSum / a.count,
+                currentRmssd = a.rmssdSum / a.count,
+                alertRawPHigh = a.alertRawSum / n,
+                alertSmoothedPHigh = a.alertSmoothedSum / n,
+                futurePHigh = a.futurePHighSum / n,
+                futureLevel = a.lastFutureLevel,
+                trend = a.lastTrend
+            ),
+            userId, sessionDir
+        )
+        Log.d(TAG, "Flushed fatigue history: averaged ${ a.count } windows into 1 row")
+
+        // Add one trend point per averaged flush
+        val avgPercent = a.fatiguePercentSum / n
+        if (trendAnchorTimeMs == 0L) {
+            trendAnchorTimeMs = System.currentTimeMillis()
+        }
+        val pointTimeMs = trendAnchorTimeMs + trendWindowCount * WINDOW_STEP_MS
+        trendWindowCount++
+        sessionTrendPoints.add(FatigueTrendPoint(pointTimeMs, avgPercent))
+        _sessionTrend.postValue(sessionTrendPoints.toList())
+
+        // Reset accumulator
+        a.count = 0
+        a.fatiguePercentSum = 0f
+        a.hrSum = 0.0
+        a.rmssdSum = 0.0
+        a.alertRawSum = 0f
+        a.alertSmoothedSum = 0f
+        a.futurePHighSum = 0f
+        a.lastGlobal = null
+        a.lastExternal = null
+        a.lastFutureLevel = 0
+        a.lastTrend = "STABLE"
     }
 
     private fun writeComparisonCsvRow(
@@ -442,21 +501,21 @@ class FatigueViewModel(application: Application) : AndroidViewModel(application)
 
         Log.d(TAG, "Restoring ${rows.size} fatigue history rows")
 
-        // Restore trend points (prefer smoothed values for backward compat)
-        for (row in rows) {
+        // Restore trend points with evenly-spaced synthetic timestamps
+        // (raw CSV timestamps are bunched because burst windows share the same wall-clock time)
+        val anchorMs = rows.first().timestamp
+        for ((i, row) in rows.withIndex()) {
             val percent = if (row.alertSmoothedPHigh > 0f)
                 (row.alertSmoothedPHigh * 100f).coerceIn(0f, 100f)
             else row.fatiguePercent
-            sessionTrendPoints.add(FatigueTrendPoint(row.timestamp, percent))
+            val syntheticTimeMs = anchorMs + i * WINDOW_STEP_MS
+            sessionTrendPoints.add(FatigueTrendPoint(syntheticTimeMs, percent))
         }
         _sessionTrend.postValue(sessionTrendPoints.toList())
 
         // Resume trend counter from restored points
         trendWindowCount = sessionTrendPoints.size
-        if (sessionTrendPoints.isNotEmpty()) {
-            val first = sessionTrendPoints.first().timeMs
-            trendAnchorTimeMs = first
-        }
+        trendAnchorTimeMs = anchorMs
 
         // Restore latest results
         val last = rows.last()
