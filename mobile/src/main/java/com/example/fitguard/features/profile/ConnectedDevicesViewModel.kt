@@ -42,8 +42,8 @@ class ConnectedDevicesViewModel(application: Application) : AndroidViewModel(app
     private val _watchDevices = MutableLiveData<List<WatchDevice>>(emptyList())
     val watchDevices: LiveData<List<WatchDevice>> = _watchDevices
 
-    private val _lastSyncTime = MutableLiveData<Long>(0L)
-    val lastSyncTime: LiveData<Long> = _lastSyncTime
+    private val _watchLastSyncTime = MutableLiveData<Long>(0L)
+    val watchLastSyncTime: LiveData<Long> = _watchLastSyncTime
 
     private var pollJob: Job? = null
 
@@ -93,7 +93,7 @@ class ConnectedDevicesViewModel(application: Application) : AndroidViewModel(app
 
     private fun refreshLastSync() {
         val prefs = getApplication<Application>().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        _lastSyncTime.postValue(prefs.getLong(KEY_LAST_SYNC, 0L))
+        _watchLastSyncTime.postValue(prefs.getLong(KEY_LAST_SYNC, 0L))
     }
 
     private suspend fun requestWatchBattery() {
@@ -116,5 +116,10 @@ class ConnectedDevicesViewModel(application: Application) : AndroidViewModel(app
             else device
         }
         _watchDevices.value = updated
+
+        val now = System.currentTimeMillis()
+        getApplication<Application>().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putLong(KEY_LAST_SYNC, now).apply()
+        _watchLastSyncTime.postValue(now)
     }
 }

@@ -190,14 +190,6 @@
         </activity-alias>
 
         <!-- ========================================== -->
-        <!-- SAMSUNG HEALTH DASHBOARD -->
-        <!-- ========================================== -->
-        <activity
-            android:name=".features.health.SamsungHealthActivity"
-            android:exported="false"
-            android:screenOrientation="portrait" />
-
-        <!-- ========================================== -->
         <!-- HEALTH CONNECT ONBOARDING (pre-Android 14) -->
         <!-- ========================================== -->
         <activity

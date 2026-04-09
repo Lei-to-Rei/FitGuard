@@ -26,7 +26,6 @@ class StressCalculator(private val context: Context) {
         private const val TAG = "StressCalculator"
         const val ACTION_STRESS_RESULT = "com.example.fitguard.STRESS_RESULT"
         const val MIN_IBI_COUNT = 30       // minimum IBIs for a valid calculation
-        const val TARGET_IBI_COUNT = 150   // ideal (~2.5 min of data)
         const val PREFS_NAME = "stress_calculator"
 
         // RMSSD → stress mapping boundaries (milliseconds)
@@ -35,7 +34,6 @@ class StressCalculator(private val context: Context) {
     }
 
     private val ibiValues = mutableListOf<Int>()
-    private var collectionStartTime = 0L
     @Volatile var isCollecting = false
         private set
 
@@ -44,7 +42,6 @@ class StressCalculator(private val context: Context) {
 
     fun startCollection() {
         ibiValues.clear()
-        collectionStartTime = System.currentTimeMillis()
         isCollecting = true
         Log.d(TAG, "IBI collection started")
     }
@@ -164,7 +161,6 @@ class StressCalculator(private val context: Context) {
 
     fun reset() {
         ibiValues.clear()
-        collectionStartTime = 0L
         isCollecting = false
     }
 

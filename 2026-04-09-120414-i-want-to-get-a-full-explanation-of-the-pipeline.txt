@@ -1,0 +1,175 @@
+ ▐▛███▜▌   Claude Code v2.1.96
+▝▜█████▛▘  Sonnet 4.6 · Claude Pro
+  ▘▘ ▝▝    ~\AndroidStudioProjects\FitGuard
+
+  ↑ Install the PyCharm plugin from the JetBrains Marketplace:
+    https://docs.claude.com/s/claude-code-jetbrains
+
+❯ I want to get a full explanation of the pipeline From getting the raw data    
+  from the watch to getting classification from the tflite model which has 2    
+  outputs Current and predict                                                   
+
+● Explore(Explore FitGuard data pipeline)
+  ⎿  Done (33 tool uses · 95.6k tokens · 2m 21s)
+  (ctrl+o to expand)
+
+● Here's the complete end-to-end pipeline:
+
+  ---
+  FitGuard Data Pipeline: Watch Sensors → TFLite Classification
+
+  Stage 1: Watch — Raw Sensor Collection
+
+  wear/.../HealthTrackerManager.kt
+
+  Uses the Samsung Health Tracking API to continuously sample at ~25 Hz:
+  - PPG sensor: green, IR, red channels + timestamp
+  - Accelerometer: x, y, z axes + timestamp
+
+  Stage 2: Watch — Sequence Batching & Transmission
+
+  wear/.../SensorSequenceManager.kt
+
+  - Buffers PPG + accel samples into a 60-second sequence window
+  - Splits into JSON batches (~75KB max each) and sends via Wearable Data API
+  - Each batch includes metadata: sequence_id, batch_number, total_batches,
+  activity_type
+  - Path: /health_tracker_batch/{sequenceId}/{batchNumber}
+
+  Stage 3: Phone — Data Reception
+
+  mobile/.../WearableDataListenerService.kt
+
+  - Receives batch data events, parses JSON into PpgSample(timestamp, green, ir,
+   red) and AccelSample(timestamp, x, y, z)
+  - Routes samples to the accumulator
+  - Also logs raw data to JSONL files for persistence
+
+  Stage 4: Phone — Batch Reassembly
+
+  mobile/.../SequenceBatchAccumulator.kt
+
+  - Tracks partial sequences in a map keyed by sequenceId
+  - As batches arrive, appends samples and marks batches received
+  - When all batches for a sequence arrive → fires onSequenceReady(SequenceData)
+   callback with sorted PPG + accel samples
+
+  Stage 5: Phone — Windowing & Feature Extraction
+
+  mobile/.../SequenceProcessor.kt
+
+  Maintains sliding buffers and generates 60-second windows with 15-second step:
+
+  PPG Processing (PpgProcessor.kt) → 19 features:
+
+  1. Bandpass filter (Butterworth 2nd-order, 0.5–5 Hz, forward-backward)
+  2. Peak detection (rolling mean, beat timestamps)
+  3. NN interval extraction (333–1500 ms valid range, ±30% outlier removal)
+
+  ┌─────────────────────┬─────────────────────────────────────────────────┐
+  │      Category       │                    Features                     │
+  ├─────────────────────┼─────────────────────────────────────────────────┤
+  │ Heart Rate (6)      │ meanHR, stdHR, minHR, maxHR, rangeHR, slopeHR   │
+  ├─────────────────────┼─────────────────────────────────────────────────┤
+  │ HRV Time-domain (6) │ nnQuality, SDNN, RMSSD, pNN50, meanNN, cvNN     │
+  ├─────────────────────┼─────────────────────────────────────────────────┤
+  │ HRV Frequency (4)   │ LF power, HF power, LF/HF ratio, total power    │
+  ├─────────────────────┼─────────────────────────────────────────────────┤
+  │ SpO2 (3)            │ mean, min, std (AC/DC ratio on IR+Red channels) │
+  └─────────────────────┴─────────────────────────────────────────────────┘
+
+  Accel Processing (AccelProcessor.kt) → 11 features:
+
+  - Raw ADC → m/s² conversion
+  - Per-axis mean & variance (x, y, z) + magnitude mean, variance, peak
+  - Step detection: bandpass 1–4 Hz, count half-cycles > 0.15 m/s²
+  - Total steps + cadence (SPM)
+
+  Total: 30 features extracted per window (19 PPG + 11 accel), but only the 19 
+  PPG features go to the model.
+
+  Stage 6: Phone — TFLite Model Inference
+
+  mobile/.../FatigueDetector.kt + mobile/src/main/assets/fatigue_model.tflite
+
+  Input preparation:
+
+  1. Z-score normalize each of the 19 features using scaler_params.json
+  (pre-computed mean/std per feature)
+  2. Buffer into sliding window of 5 normalized feature vectors
+  3. Only run inference every 3rd window (stride=3) after 5 warmup windows;
+  intermediate windows are buffered via bufferWindowOnly()
+
+  Model shape:
+
+  Input:   [1, 5, 19]  →  batch=1, sequence_length=5, features=19
+  Output0: [1, 2]      →  Current:  [pLow, pHigh]
+  Output1: [1, 2]      →  Predict:  [futurePLow, futurePHigh]  (~60s ahead)
+
+  - Output 0 ("Current"): probability of low vs high fatigue for the current
+  moment
+  - Output 1 ("Predict"): probability of low vs high fatigue ~60 seconds in the
+  future
+
+  Classification from pHigh:
+
+  ┌─────────────┬───────┬──────────┐
+  │ pHigh Range │ Level │  Label   │
+  ├─────────────┼───────┼──────────┤
+  │ < 0.25      │ 0     │ Mild     │
+  ├─────────────┼───────┼──────────┤
+  │ 0.25 – 0.50 │ 1     │ Moderate │
+  ├─────────────┼───────┼──────────┤
+  │ 0.50 – 0.75 │ 2     │ High     │
+  ├─────────────┼───────┼──────────┤
+  │ ≥ 0.75      │ 3     │ Critical │
+  └─────────────┴───────┴──────────┘
+
+  Supports personalized models per user from
+  Downloads/FitGuard_Data/{userId}/personalized/.
+
+  Stage 7: Phone — Smoothing & Alerting
+
+  mobile/.../FatigueAlertManager.kt
+
+  - EMA smoothing: smoothed = 0.4 × raw + 0.6 × previous (reduces noise)
+  - Trend analysis: linear slope over last 5 smoothed values → INCREASING /
+  STABLE / DECREASING
+  - Alert triggers: level escalation, or 3+ consecutive pHigh ≥ 0.50, with 60s
+  cooldown
+  - Sends alerts to both phone notification (with vibration patterns per level)
+  and watch via /fitguard/fatigue/alert
+
+  Stage 8: Phone — UI & Recovery
+
+  FatigueViewModel.kt + RecoveryRecommendationManager.kt
+
+  - LiveData streams: currentResult, sessionTrend, nextStepPrediction,
+  baselineComparison
+  - Recovery recommendations: active (on escalation), early warning (future >
+  current for 2 consecutive windows), passive (post-session rest hours)
+  - Persistence: features.csv, fatigue_history.csv, comparison.csv in
+  Downloads/FitGuard_Data/
+
+  Visual Flow
+
+  Watch PPG+Accel (25Hz, 60s)
+      ↓ Wearable Data API (JSON batches)
+  WearableDataListenerService
+      ↓ PpgSample + AccelSample
+  SequenceBatchAccumulator (reassemble)
+      ↓ Complete SequenceData
+  SequenceProcessor (60s window, 15s step)
+      ├─ PpgProcessor  → 19 features
+      └─ AccelProcessor → 11 features
+      ↓ FloatArray[19] (PPG only)
+  FatigueDetector (z-normalize, buffer 5 windows)
+      ↓ TFLite [1,5,19] → [1,2] + [1,2]
+      ├─ Output0: Current  (pLow, pHigh)
+      └─ Output1: Predict  (futurePLow, futurePHigh)
+      ↓ FatigueResult
+  FatigueAlertManager (EMA smooth, classify, alert)
+      ↓ LiveData + Notifications
+  FatigueViewModel → UI
+
+✻ Crunched for 3m 17s

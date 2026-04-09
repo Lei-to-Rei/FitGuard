@@ -6,7 +6,6 @@
     <color name="red_stop">#FFD32F2F</color>
 
     <!-- FitGuard Green Palette -->
-    <color name="green_gradient_start">#FFFFFF</color>
     <color name="green_gradient_end">#D8FCC5</color>
     <color name="green_primary">#6EDB34</color>
     <color name="green_primary_dark">#2A9544</color>
@@ -14,17 +13,14 @@
 
     <!-- Logo Colors -->
     <color name="logo_dark_blue">#005FB8</color>
-    <color name="logo_bright_blue">#0088FF</color>
     <color name="heading_blue_auth">#0160B9</color>
 
     <!-- Neutral -->
     <color name="bg_light_gray">#F8F9FA</color>
-    <color name="bg_gray">#F5F5F5</color>
     <color name="text_dark">#1A1A1A</color>
     <color name="text_secondary">#666666</color>
     <color name="text_hint">#999999</color>
     <color name="border_light">#E0E0E0</color>
-    <color name="border_green">#6EDB34</color>
 
     <!-- Goal Icons -->
     <color name="goal_red">#FF0000</color>
@@ -35,13 +31,10 @@
     <color name="divider_gray">#CCCCCC</color>
 
     <!-- Nutrition UI -->
-    <color name="nutrition_green">#4CAF50</color>
-    <color name="nutrition_green_light">#E8F5E9</color>
     <color name="protein_blue">#2196F3</color>
     <color name="carbs_amber">#FF9800</color>
     <color name="fat_red">#F44336</color>
     <color name="water_blue">#2196F3</color>
-    <color name="water_blue_light">#E3F2FD</color>
 
     <!-- Goals Progress Colors -->
     <color name="progress_calories">#FF4444</color>
@@ -54,7 +47,6 @@
 
     <!-- Chart Colors -->
     <color name="chart_green_fill">#1A6EDB34</color>
-    <color name="stat_box_bg">#E8F5E9</color>
     <color name="chart_blue_systolic">#1565C0</color>
     <color name="chart_red_diastolic">#E53935</color>
     <color name="tooltip_bg">#333333</color>

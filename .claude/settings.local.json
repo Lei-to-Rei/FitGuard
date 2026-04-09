@@ -67,7 +67,16 @@
       "Bash(echo \"exit: $?\")",
       "Bash(.h5 \")",
       "Bash(python3:*)",
-      "Bash(find /c/Users/claud/AndroidStudioProjects/FitGuard/wear/src -type f \\\\\\(-name *.kt -o -name *.xml -o -name *.java \\\\\\))"
+      "Bash(find /c/Users/claud/AndroidStudioProjects/FitGuard/wear/src -type f \\\\\\(-name *.kt -o -name *.xml -o -name *.java \\\\\\))",
+      "Bash(sed 's/\\\\.xml$//')",
+      "Bash(sed 's/.*,\\\\s*//')",
+      "Bash(sed 's/^\\\\.//g')",
+      "Bash(cat)",
+      "Bash(bash /tmp/check_drawables.sh)",
+      "Bash(bash /tmp/check_colors.sh)",
+      "Bash(bash /tmp/check_layouts.sh)",
+      "Bash(bash /tmp/check_layouts_v2.sh)",
+      "Bash(awk '{print $NF}')"
     ]
   }
 }

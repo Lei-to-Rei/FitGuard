@@ -83,10 +83,10 @@ class ConnectedDevicesActivity : AppCompatActivity() {
             }
         }
 
-        viewModel.lastSyncTime.observe(this) { timestamp ->
-            val text = formatRelativeTime(timestamp)
-            binding.tvPhoneSync.text = "Last sync: $text"
-            binding.tvWatchSync.text = "Last sync: $text"
+        binding.tvPhoneSync.text = "Last sync: Just now"
+
+        viewModel.watchLastSyncTime.observe(this) { timestamp ->
+            binding.tvWatchSync.text = "Last sync: ${formatRelativeTime(timestamp)}"
         }
     }
 
