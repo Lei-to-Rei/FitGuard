@@ -13,7 +13,7 @@ class StressGaugeView @JvmOverloads constructor(
 
     private var stressValue = 52f // 0–100
 
-    private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
 
@@ -45,17 +45,22 @@ class StressGaugeView @JvmOverloads constructor(
         val rightPad = 16f
         val trackW = width.toFloat() - leftPad - rightPad
         val trackY = height / 2f - 14f
-        val dotRadius = 6f
+        val trackHeight = 12f
         val thumbRadius = 14f
-        val dotCount = 20
 
-        // Draw colored dots along the gauge track
-        for (i in 0 until dotCount) {
-            val fraction = i.toFloat() / (dotCount - 1)
-            val x = leftPad + fraction * trackW
-            dotPaint.color = gaugeColor(fraction)
-            canvas.drawCircle(x, trackY, dotRadius, dotPaint)
-        }
+        // Draw gradient track
+        val trackRect = RectF(leftPad, trackY - trackHeight / 2, leftPad + trackW, trackY + trackHeight / 2)
+        trackPaint.shader = LinearGradient(
+            leftPad, 0f, leftPad + trackW, 0f,
+            intArrayOf(
+                Color.HSVToColor(floatArrayOf(120f, 0.85f, 0.82f)),
+                Color.HSVToColor(floatArrayOf(60f, 0.85f, 0.82f)),
+                Color.HSVToColor(floatArrayOf(0f, 0.85f, 0.82f))
+            ),
+            floatArrayOf(0f, 0.5f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(trackRect, trackHeight / 2, trackHeight / 2, trackPaint)
 
         // Draw thumb at stress value position
         val thumbX = leftPad + (stressValue / 100f) * trackW
@@ -72,11 +77,5 @@ class StressGaugeView @JvmOverloads constructor(
 
         labelPaint.textAlign = Paint.Align.RIGHT
         canvas.drawText("High", width.toFloat() - rightPad, labelY, labelPaint)
-    }
-
-    // Interpolates hue: green (120°) → yellow (60°) → red (0°)
-    private fun gaugeColor(fraction: Float): Int {
-        val hue = 120f * (1f - fraction)
-        return Color.HSVToColor(floatArrayOf(hue, 0.85f, 0.82f))
     }
 }

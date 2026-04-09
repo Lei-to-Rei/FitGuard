@@ -383,21 +383,27 @@ class MetricsMonitoringActivity : AppCompatActivity() {
                 // --- SpO2 ---
                 val spo2File = File(dir, "SpO2.jsonl")
                 if (spo2File.exists()) {
-                    val readings = spo2File.readLines()
+                    data class Spo2Entry(val value: Float, val timestamp: Long)
+                    val entries = spo2File.readLines()
                         .filter { it.isNotBlank() }
                         .mapNotNull { line ->
                             try {
-                                JSONObject(line).optInt("spo2", 0).toFloat()
+                                val json = JSONObject(line)
+                                val spo2 = json.optInt("spo2", 0).toFloat()
+                                val ts = json.optLong("timestamp", 0L)
+                                if (spo2 > 0f) Spo2Entry(spo2, ts) else null
                             } catch (_: Exception) { null }
                         }
-                        .filter { it > 0f }
 
-                    if (readings.isNotEmpty()) {
-                        val chartPoints = readings.takeLast(12)
-                        val lastSpO2 = readings.last()
+                    if (entries.isNotEmpty()) {
+                        val last12 = entries.takeLast(12)
+                        val lastSpO2 = entries.last().value
                         withContext(Dispatchers.Main) {
                             binding.tvSpO2Value.text = "${lastSpO2.toInt()}% SpO2"
-                            binding.chartBloodOxygen.setData(chartPoints)
+                            binding.chartBloodOxygen.setData(
+                                last12.map { it.value },
+                                last12.map { it.timestamp }
+                            )
                         }
                     }
                 }
@@ -405,8 +411,8 @@ class MetricsMonitoringActivity : AppCompatActivity() {
                 // --- Skin Temperature ---
                 val skinTempFile = File(dir, "SkinTemp.jsonl")
                 if (skinTempFile.exists()) {
-                    val objTemps = mutableListOf<Float>()
-                    val ambTemps = mutableListOf<Float>()
+                    data class SkinTempEntry(val obj: Float, val amb: Float, val timestamp: Long)
+                    val entries = mutableListOf<SkinTempEntry>()
 
                     skinTempFile.readLines()
                         .filter { it.isNotBlank() }
@@ -415,20 +421,23 @@ class MetricsMonitoringActivity : AppCompatActivity() {
                                 val json = JSONObject(line)
                                 val obj = json.optDouble("object_temp", 0.0).toFloat()
                                 val amb = json.optDouble("ambient_temp", 0.0).toFloat()
+                                val ts = json.optLong("timestamp", 0L)
                                 if (obj > 0f) {
-                                    objTemps.add(obj)
-                                    ambTemps.add(amb)
+                                    entries.add(SkinTempEntry(obj, amb, ts))
                                 }
                             } catch (_: Exception) {}
                         }
 
-                    if (objTemps.isNotEmpty()) {
-                        val lastObj = objTemps.last()
-                        val skinLast12 = objTemps.takeLast(12)
-                        val ambLast12 = ambTemps.takeLast(12)
+                    if (entries.isNotEmpty()) {
+                        val lastObj = entries.last().obj
+                        val last12 = entries.takeLast(12)
                         withContext(Dispatchers.Main) {
                             binding.tvSkinTempValue.text = String.format("%.1f °C", lastObj)
-                            binding.chartSkinTemp.setData(skinLast12, ambLast12)
+                            binding.chartSkinTemp.setData(
+                                last12.map { it.obj },
+                                last12.map { it.amb },
+                                last12.map { it.timestamp }
+                            )
                         }
                     }
                 }

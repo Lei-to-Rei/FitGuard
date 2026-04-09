@@ -332,10 +332,6 @@ class ActivityTrackingActivity : AppCompatActivity(), MessageClient.OnMessageRec
             binding.tvElapsedTime.text = String.format("%02d:%02d:%02d", h, m, s)
         }
 
-        viewModel.sequenceCount.observe(this) { count ->
-            binding.tvSequenceCount.text = "Sequences: $count"
-        }
-
         viewModel.error.observe(this) { errorMsg ->
             if (errorMsg != null) {
                 binding.tvError.text = errorMsg

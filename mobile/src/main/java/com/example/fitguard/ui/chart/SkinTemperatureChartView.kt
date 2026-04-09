@@ -5,6 +5,9 @@ import android.graphics.*
 import android.util.AttributeSet
 import android.view.View
 import com.example.fitguard.R
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class SkinTemperatureChartView @JvmOverloads constructor(
     context: Context,
@@ -14,10 +17,13 @@ class SkinTemperatureChartView @JvmOverloads constructor(
 
     private val skinData = mutableListOf<Float>()
     private val ambientData = mutableListOf<Float>()
+    private val timestamps = mutableListOf<Long>()
 
     private companion object {
         const val MAX_POINTS = 12
     }
+
+    private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 
     private val skinPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = context.getColor(R.color.chart_blue_systolic)
@@ -47,6 +53,12 @@ class SkinTemperatureChartView @JvmOverloads constructor(
         textAlign = Paint.Align.RIGHT
     }
 
+    private val xLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#999999")
+        textSize = 22f
+        textAlign = Paint.Align.CENTER
+    }
+
     private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
@@ -63,20 +75,24 @@ class SkinTemperatureChartView @JvmOverloads constructor(
     private val maxY = 42f
     private val gridLines = listOf(20f, 25f, 30f, 35f, 40f)
 
-    fun setData(skin: List<Float>, ambient: List<Float>) {
+    fun setData(skin: List<Float>, ambient: List<Float>, times: List<Long> = emptyList()) {
         skinData.clear()
         skinData.addAll(skin)
         ambientData.clear()
         ambientData.addAll(ambient)
+        timestamps.clear()
+        timestamps.addAll(times)
         invalidate()
     }
 
     fun addDataPoint(skin: Float, ambient: Float) {
         skinData.add(skin)
         ambientData.add(ambient)
+        timestamps.add(System.currentTimeMillis())
         if (skinData.size > MAX_POINTS) {
             skinData.removeAt(0)
             ambientData.removeAt(0)
+            timestamps.removeAt(0)
         }
         invalidate()
     }
@@ -85,14 +101,14 @@ class SkinTemperatureChartView @JvmOverloads constructor(
         super.onDraw(canvas)
 
         val leftPad = 60f
-        val rightPad = 20f
+        val rightPad = 40f
         val topPad = 20f
-        val bottomPad = 40f
+        val bottomPad = 60f
 
         val chartW = width - leftPad - rightPad
         val chartH = height - topPad - bottomPad
 
-        // Grid (always visible)
+        // Grid
         for (value in gridLines) {
             val y = topPad + chartH * (1f - (value - minY) / (maxY - minY))
             canvas.drawLine(leftPad, y, width - rightPad, y, gridPaint)
@@ -133,6 +149,22 @@ class SkinTemperatureChartView @JvmOverloads constructor(
             val ambY = topPad + chartH * (1f - (ambientData[i] - minY) / (maxY - minY))
             dotPaint.color = context.getColor(R.color.chart_red_diastolic)
             canvas.drawCircle(x, ambY, 5f, dotPaint)
+        }
+
+        // X-axis time labels
+        if (timestamps.size >= count) {
+            val labelStep = when {
+                count <= 4 -> 1
+                count <= 8 -> 2
+                else -> 3
+            }
+            for (i in 0 until count) {
+                if (i % labelStep == 0 || i == count - 1) {
+                    val x = leftPad + i * stepX
+                    val label = timeFormat.format(Date(timestamps[i]))
+                    canvas.drawText(label, x, topPad + chartH + 30f, xLabelPaint)
+                }
+            }
         }
 
         // Legend

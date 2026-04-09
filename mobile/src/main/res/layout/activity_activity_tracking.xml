@@ -165,15 +165,6 @@
                         android:textSize="14sp"
                         android:textColor="@android:color/darker_gray" />
 
-                    <TextView
-                        android:id="@+id/tvSequenceCount"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Sequences: 0"
-                        android:textSize="12sp"
-                        android:textColor="@android:color/darker_gray"
-                        android:layout_marginEnd="12dp" />
-
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

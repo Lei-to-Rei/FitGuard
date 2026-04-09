@@ -22,8 +22,6 @@ class StressChartView @JvmOverloads constructor(
         2f to "Average",
         1f to "Relaxed"
     )
-    private var dateLabels = listOf<String>()
-
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#6EDB34")
         style = Paint.Style.STROKE
@@ -39,22 +37,10 @@ class StressChartView @JvmOverloads constructor(
         pathEffect = DashPathEffect(floatArrayOf(10f, 8f), 0f)
     }
 
-    private val axisLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#CCCCCC")
-        style = Paint.Style.STROKE
-        strokeWidth = 1f
-    }
-
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#999999")
         textSize = 26f
         textAlign = Paint.Align.RIGHT
-    }
-
-    private val dateLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#999999")
-        textSize = 24f
-        textAlign = Paint.Align.CENTER
     }
 
     private val linePath = Path()
@@ -65,20 +51,13 @@ class StressChartView @JvmOverloads constructor(
         invalidate()
     }
 
-    fun setDateLabels(labels: List<String>) {
-        if (labels.isNotEmpty()) {
-            dateLabels = labels
-            invalidate()
-        }
-    }
-
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
         val leftPad = levelLabels.maxOf { (_, label) -> labelPaint.measureText(label) } + 16f
         val rightPad = 20f
         val topPad = 16f
-        val bottomPad = 40f
+        val bottomPad = 16f
 
         val chartW = width.toFloat() - leftPad - rightPad
         val chartH = height.toFloat() - topPad - bottomPad
@@ -88,25 +67,6 @@ class StressChartView @JvmOverloads constructor(
             val y = topPad + chartH * (1f - (value - minY) / (maxY - minY))
             canvas.drawLine(leftPad, y, width.toFloat() - rightPad, y, gridPaint)
             canvas.drawText(label, leftPad - 8f, y + 9f, labelPaint)
-        }
-
-        // X-axis baseline
-        val xAxisY = topPad + chartH
-        canvas.drawLine(leftPad, xAxisY, width.toFloat() - rightPad, xAxisY, axisLinePaint)
-
-        // Arrow at end of x-axis
-        val arrowX = width.toFloat() - rightPad + 2f
-        val arrowSize = 8f
-        canvas.drawLine(arrowX - arrowSize, xAxisY - arrowSize / 2, arrowX, xAxisY, axisLinePaint)
-        canvas.drawLine(arrowX - arrowSize, xAxisY + arrowSize / 2, arrowX, xAxisY, axisLinePaint)
-
-        // Date labels
-        if (dateLabels.size >= 2) {
-            val dateLabelStep = chartW / (dateLabels.size - 1)
-            for (i in dateLabels.indices) {
-                val x = leftPad + i * dateLabelStep
-                canvas.drawText(dateLabels[i], x, height.toFloat() - 8f, dateLabelPaint)
-            }
         }
 
         if (dataPoints.isEmpty()) return

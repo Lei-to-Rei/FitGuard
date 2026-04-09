@@ -31,7 +31,6 @@ import com.example.fitguard.features.activitytracking.ActivityTrackingActivity
 import com.example.fitguard.features.fatigue.FatiguePredictionActivity
 import com.example.fitguard.features.metrics.MetricsMonitoringActivity
 import com.example.fitguard.features.nutrition.NutritionTrackingActivity
-import com.example.fitguard.features.health.SamsungHealthActivity
 import com.example.fitguard.features.sleep.SleepStressActivity
 import com.example.fitguard.features.profile.UserHomeActivity
 import com.example.fitguard.ui.adapter.DashboardAdapter
@@ -179,12 +178,6 @@ class MainActivity : AppCompatActivity() {
                 icon = R.drawable.ic_salad,
                 activityClass = NutritionTrackingActivity::class.java
             ),
-            DashboardItem(
-                title = "Samsung Health",
-                description = "Steps, body, vitals & more from Health Connect",
-                icon = R.drawable.ic_heart_rate,
-                activityClass = SamsungHealthActivity::class.java
-            )
         )
 
         dashboardAdapter = DashboardAdapter(dashboardItems) { item ->

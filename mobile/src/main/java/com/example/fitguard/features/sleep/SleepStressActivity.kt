@@ -16,7 +16,6 @@ import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.lifecycleScope
 import com.example.fitguard.data.health.HealthConnectManager
 import com.example.fitguard.data.health.SleepResult
-import com.example.fitguard.data.health.StressResult
 import com.example.fitguard.data.processing.CsvWriter
 import com.example.fitguard.data.processing.StressCalculator
 import com.example.fitguard.databinding.ActivitySleepStressBinding
@@ -176,10 +175,8 @@ class SleepStressActivity : AppCompatActivity() {
         showStatus("Syncing from Samsung Health…")
         try {
             val sleep = healthConnectManager.readLatestSleep()
-            val stress = healthConnectManager.readLatestStress()
-            Log.d(TAG, "sleep=${sleep != null}, stress=${stress != null}")
+            Log.d(TAG, "sleep=${sleep != null}")
             updateSleepUI(sleep)
-            updateStressUI(stress)
             hideStatus()
             binding.btnManageAccess.visibility = View.VISIBLE
         } catch (e: Exception) {
@@ -242,7 +239,7 @@ class SleepStressActivity : AppCompatActivity() {
     private fun updateSleepUI(sleep: SleepResult?) {
         if (sleep == null) {
             binding.tvSleepQuality.text = "Quality: --"
-            binding.tvSleepDuration.text = "No sleep data — open Samsung Health to track sleep"
+            binding.tvSleepDuration.text = "No sleep data"
             binding.tvSleepSource.visibility = View.GONE
             return
         }
@@ -260,7 +257,7 @@ class SleepStressActivity : AppCompatActivity() {
             binding.chartSleep.setData(sleep.chartPoints)
         }
         binding.tvSleepStatus.visibility = View.GONE
-        binding.tvSleepSource.text = "Samsung Health · ended ${formatTime(sleep.endTime)}"
+        binding.tvSleepSource.text = "${formatTime(sleep.startTime)} – ${formatTime(sleep.endTime)}"
         binding.tvSleepSource.visibility = View.VISIBLE
     }
 
@@ -330,14 +327,11 @@ class SleepStressActivity : AppCompatActivity() {
         // Chart — convert 0-100 score to 1-3 scale (1=Relaxed, 2=Average, 3=High)
         if (history.isNotEmpty()) {
             val chartPoints = history.map { 1f + (it.score / 100f) * 2f }
-            val timeFormat = SimpleDateFormat("HH:mm", Locale.US)
-            val dateLabels = history.map { timeFormat.format(Date(it.timestamp)) }
-            binding.chartStress.setDateLabels(dateLabels)
             binding.chartStress.setData(chartPoints)
         }
 
-        binding.tvStressSource.text = "Watch · HRV-based (RMSSD: ${String.format("%.1f", latest.rmssd)}ms, ${latest.ibiCount} IBIs)"
-        binding.tvStressSource.visibility = View.VISIBLE
+        binding.tvStressSource.text = "Watch"
+        binding.tvStressSource.visibility = View.GONE
     }
 
     private data class WatchStressEntry(
@@ -349,35 +343,6 @@ class SleepStressActivity : AppCompatActivity() {
         val timestamp: Long
     )
 
-    private fun updateStressUI(stress: StressResult?) {
-        if (stress == null) {
-            // Don't overwrite watch-derived stress if already showing
-            val hasWatchStress = binding.tvStressSource.visibility == View.VISIBLE
-                    && binding.tvStressSource.text.toString().startsWith("Watch")
-            if (!hasWatchStress) {
-                binding.tvStressValue.text = "--"
-                binding.tvStressStatus.text = "No HRV data — open Samsung Health to measure stress"
-                binding.tvStressSource.visibility = View.GONE
-            }
-            return
-        }
-        val stressColor = when {
-            stress.score < 33f -> Color.parseColor("#6EDB34")
-            stress.score < 66f -> Color.parseColor("#FFC107")
-            else               -> Color.parseColor("#F44336")
-        }
-        binding.tvStressValue.text = String.format("%.0f", stress.score)
-        binding.tvStressValue.setTextColor(stressColor)
-        binding.tvStressStatus.text = "Status: ${stress.label}"
-        binding.tvStressStatus.setTextColor(stressColor)
-        binding.gaugeStress.setStressValue(stress.score)
-        if (stress.history.isNotEmpty()) {
-            binding.chartStress.setDateLabels(stress.historyDates)
-            binding.chartStress.setData(stress.history)
-        }
-        binding.tvStressSource.text = "Samsung Health · HRV-based"
-        binding.tvStressSource.visibility = View.VISIBLE
-    }
 
     private fun formatDuration(durationMs: Long): String {
         val hours = durationMs / 3_600_000

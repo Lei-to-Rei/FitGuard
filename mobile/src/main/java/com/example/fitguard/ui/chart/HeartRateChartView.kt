@@ -75,15 +75,49 @@ class HeartRateChartView @JvmOverloads constructor(
     private val linePath = Path()
     private val fillPath = Path()
 
-    private val minY = 40f
-    private val maxY = 100f
-    private val gridLines = listOf(40f, 60f, 80f, 100f)
+    private var minY = 40f
+    private var maxY = 100f
 
+    private fun recalculateYRange() {
+        if (dataPoints.isEmpty()) {
+            minY = 40f
+            maxY = 100f
+            return
+        }
+        val dataMin = dataPoints.min()
+        val dataMax = dataPoints.max()
+        // Round down/up to nearest 10 with padding
+        minY = (((dataMin - 10f) / 10f).toInt() * 10f).coerceAtLeast(0f)
+        maxY = (((dataMax + 10f) / 10f).toInt() + 1) * 10f
+        // Ensure at least 40 range for readability
+        if (maxY - minY < 40f) {
+            val mid = (minY + maxY) / 2f
+            minY = (mid - 20f).coerceAtLeast(0f)
+            maxY = minY + 40f
+        }
+    }
+
+    private fun computeGridLines(): List<Float> {
+        val range = maxY - minY
+        val step = when {
+            range <= 40f -> 10f
+            range <= 80f -> 20f
+            else -> 30f
+        }
+        val lines = mutableListOf<Float>()
+        var v = minY
+        while (v <= maxY) {
+            lines.add(v)
+            v += step
+        }
+        return lines
+    }
 
     fun setData(points: List<Float>, highlight: Int = -1) {
         dataPoints.clear()
         dataPoints.addAll(points)
         highlightIndex = highlight
+        recalculateYRange()
         invalidate()
     }
 
@@ -93,6 +127,7 @@ class HeartRateChartView @JvmOverloads constructor(
             dataPoints.removeAt(0)
         }
         highlightIndex = dataPoints.lastIndex
+        recalculateYRange()
         invalidate()
     }
 
@@ -109,7 +144,7 @@ class HeartRateChartView @JvmOverloads constructor(
 
         // Draw grid lines and labels
         if (showGrid) {
-            for (value in gridLines) {
+            for (value in computeGridLines()) {
                 val y = topPad + chartH * (1f - (value - minY) / (maxY - minY))
                 canvas.drawLine(leftPad, y, width - rightPad, y, gridPaint)
                 canvas.drawText(value.toInt().toString(), leftPad - 10f, y + 10f, gridTextPaint)
@@ -170,12 +205,15 @@ class HeartRateChartView @JvmOverloads constructor(
             val tooltipText = "${dataPoints[highlightIndex].toInt()} bpm"
             val tooltipW = tooltipTextPaint.measureText(tooltipText) + 24f
             val tooltipH = 40f
-            val tooltipX = hx - tooltipW / 2
-            val tooltipY = hy - 30f - tooltipH
+            // Place above the point; flip below if it would be clipped
+            val tooltipAboveY = hy - 30f - tooltipH
+            val tooltipY = if (tooltipAboveY < 0f) hy + 30f else tooltipAboveY
+            // Clamp horizontally so tooltip stays within the view
+            val tooltipX = (hx - tooltipW / 2).coerceIn(0f, width - tooltipW)
 
             val tooltipRect = RectF(tooltipX, tooltipY, tooltipX + tooltipW, tooltipY + tooltipH)
             canvas.drawRoundRect(tooltipRect, 8f, 8f, tooltipBgPaint)
-            canvas.drawText(tooltipText, hx, tooltipY + tooltipH - 12f, tooltipTextPaint)
+            canvas.drawText(tooltipText, tooltipX + tooltipW / 2, tooltipY + tooltipH - 12f, tooltipTextPaint)
         }
     }
 }
