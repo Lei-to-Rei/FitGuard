@@ -61,6 +61,15 @@ class WearableMessageListenerService : WearableListenerService() {
                     Log.d(TAG, "Tracker stop command: $trackerType")
                     PassiveTrackerService.stopTracker(this, trackerType)
                 }
+                "/fitguard/tracker/set_schedule" -> {
+                    val scheduleJson = String(messageEvent.data, Charsets.UTF_8)
+                    Log.d(TAG, "Schedule set command")
+                    PassiveTrackerService.setSchedule(this, scheduleJson)
+                }
+                "/fitguard/tracker/clear_schedule" -> {
+                    Log.d(TAG, "Schedule clear command")
+                    PassiveTrackerService.clearSchedule(this)
+                }
                 "/fitguard/fatigue/alert" -> {
                     val level = json.optString("level", "Unknown")
                     val levelIndex = json.optInt("levelIndex", 0)
